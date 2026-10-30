@@ -10,7 +10,7 @@ image; the daemon and socket access are opt-in.
 On the Linux Docker host (Compose 2.24 or newer):
 
 ```sh
-./bin/jara environment --codex-version 0.166.0 --docker --out deploy/.env
+./bin/jara environment --docker --out deploy/.env
 # Add your PUBLIC key(s) to deploy/authorized_keys.
 docker compose -p jara-personal --env-file deploy/.env \
   -f deploy/compose.yaml -f deploy/compose.docker.yaml up -d --build --wait

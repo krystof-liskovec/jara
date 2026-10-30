@@ -68,9 +68,10 @@ See [Go's `os.Root` behavior](https://go.dev/blog/osroot).
   workspace files, provider credentials and Codex login state share that account.
   There is no per-repository user/secret boundary. File mode 0600 does not protect
   credentials from another process running as the same user.
-- TCP and Unix-socket forwarding are enabled. `GatewayPorts clientspecified`
-  permits authenticated clients to request non-loopback reverse listeners.
-  The CLI defaults to loopback, but that is not a server-enforced restriction.
+- TCP and Unix-socket forwarding are enabled. `GatewayPorts no` is enforced by
+  default, so remote reverse listeners stay on loopback even if a client requests
+  a wider bind. The host owner can opt in to `clientspecified` with
+  `JARA_GATEWAY_PORTS=clientspecified`; use that only for trusted users.
   See [OpenSSH GatewayPorts](https://man.openbsd.org/sshd_config#GatewayPorts).
 - Publishing SSH alone is not a constrained agent execution service:
   authorized keys grant ordinary shell/SFTP and network access by design.

@@ -33,35 +33,142 @@ func doctor(r Remote) error {
 }
 
 func forward(r Remote, direction, port, target, bind string) error {
-	n, err := strconv.Atoi(port)
+	ports, err := parsePortSpecs([]string{port})
+	if err != nil {
+		return err
+	}
+	var forwards, reverses []int
+	switch direction {
+	case "forward":
+		forwards = ports
+	case "reverse":
+		reverses = ports
+	default:
+		return fmt.Errorf("unknown tunnel direction %q", direction)
+	}
+	return openTunnel(r, forwards, reverses, target, target, bind, bind)
+}
+
+const maxTunnelPorts = 256
+
+type portSpecs []string
+
+func (p *portSpecs) String() string { return strings.Join(*p, ",") }
+func (p *portSpecs) Set(value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("port list cannot be empty")
+	}
+	*p = append(*p, value)
+	return nil
+}
+
+func parsePortSpecs(specs []string) ([]int, error) {
+	var ports []int
+	seen := map[int]bool{}
+	for _, spec := range specs {
+		for _, item := range strings.Split(spec, ",") {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				return nil, fmt.Errorf("empty port in %q", spec)
+			}
+			bounds := strings.Split(item, "-")
+			if len(bounds) > 2 {
+				return nil, fmt.Errorf("invalid port or range %q", item)
+			}
+			start, err := tunnelPort(bounds[0])
+			if err != nil {
+				return nil, err
+			}
+			end := start
+			if len(bounds) == 2 {
+				end, err = tunnelPort(bounds[1])
+				if err != nil {
+					return nil, err
+				}
+				if end < start {
+					return nil, fmt.Errorf("range %q ends before it starts", item)
+				}
+			}
+			if end-start+1 > maxTunnelPorts || len(ports)+end-start+1 > maxTunnelPorts {
+				return nil, fmt.Errorf("at most %d tunnel ports are allowed", maxTunnelPorts)
+			}
+			for port := start; port <= end; port++ {
+				if seen[port] {
+					return nil, fmt.Errorf("port %d appears more than once", port)
+				}
+				seen[port] = true
+				ports = append(ports, port)
+			}
+		}
+	}
+	return ports, nil
+}
+
+func tunnelPort(value string) (int, error) {
+	n, err := strconv.Atoi(value)
 	if err != nil || n < 1 || n > 65535 {
-		return fmt.Errorf("port must be 1–65535")
+		return 0, fmt.Errorf("invalid port %q; ports must be 1–65535", value)
 	}
-	if strings.ContainsAny(bind, "\n\r") || bind == "" {
-		return fmt.Errorf("invalid bind address")
-	}
+	return n, nil
+}
+
+func tunnelTarget(target string, port int) (string, error) {
 	if target == "" {
-		target = "127.0.0.1:" + port
+		return net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), nil
 	}
-	if strings.ContainsAny(target, "\n\r") {
-		return fmt.Errorf("invalid destination")
-	}
-	flag := "-L"
-	if direction == "reverse" {
-		flag = "-R"
+	if strings.ContainsAny(target, "\x00\r\n") {
+		return "", fmt.Errorf("invalid destination")
 	}
 	host, targetPort, err := net.SplitHostPort(target)
 	if err != nil || host == "" {
-		return fmt.Errorf("target must be HOST:PORT (bracket IPv6 addresses)")
+		return "", fmt.Errorf("target must be HOST:PORT (bracket IPv6 addresses)")
 	}
-	tn, e := strconv.Atoi(targetPort)
-	if e != nil || tn < 1 || tn > 65535 {
-		return fmt.Errorf("target port must be 1–65535")
+	if _, err = tunnelPort(targetPort); err != nil {
+		return "", fmt.Errorf("target port: %w", err)
 	}
-	spec := net.JoinHostPort(strings.Trim(bind, "[]"), port) + ":" + target
-	a := append(sshArgs(r, false), "-N", "-o", "ExitOnForwardFailure=yes", flag, spec, "--", r.Host)
-	fmt.Fprintf(os.Stderr, "%s listening on %s:%s → %s; Ctrl-C closes tunnel\n", direction, bind, port, target)
-	return interactive(exec.Command("ssh", a...))
+	return target, nil
+}
+
+func tunnelSpec(bind string, port int, target string) (string, error) {
+	if bind == "" || strings.ContainsAny(bind, "\x00\r\n") {
+		return "", fmt.Errorf("invalid bind address")
+	}
+	destination, err := tunnelTarget(target, port)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(strings.Trim(bind, "[]"), strconv.Itoa(port)) + ":" + destination, nil
+}
+
+func tunnelArgs(r Remote, forwards, reverses []int, forwardTarget, reverseTarget, localBind, remoteBind string) ([]string, error) {
+	if len(forwards) == 0 && len(reverses) == 0 {
+		return nil, fmt.Errorf("specify at least one --forward or --reverse port")
+	}
+	args := append(sshArgs(r, false), "-N", "-o", "ExitOnForwardFailure=yes")
+	for _, port := range forwards {
+		spec, err := tunnelSpec(localBind, port, forwardTarget)
+		if err != nil {
+			return nil, fmt.Errorf("forward port %d: %w", port, err)
+		}
+		args = append(args, "-L", spec)
+	}
+	for _, port := range reverses {
+		spec, err := tunnelSpec(remoteBind, port, reverseTarget)
+		if err != nil {
+			return nil, fmt.Errorf("reverse port %d: %w", port, err)
+		}
+		args = append(args, "-R", spec)
+	}
+	return append(args, "--", r.Host), nil
+}
+
+func openTunnel(r Remote, forwards, reverses []int, forwardTarget, reverseTarget, localBind, remoteBind string) error {
+	args, err := tunnelArgs(r, forwards, reverses, forwardTarget, reverseTarget, localBind, remoteBind)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Opening SSH tunnel: %d forward(s), %d reverse(s); Ctrl-C closes all.\n", len(forwards), len(reverses))
+	return interactive(exec.Command("ssh", args...))
 }
 
 func editorAlias(name string, r Remote) (string, error) {
