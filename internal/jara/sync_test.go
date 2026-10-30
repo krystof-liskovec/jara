@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"crypto/sha256"
@@ -77,9 +77,9 @@ func TestTransferRejectsSymlinkParents(t *testing.T) {
 		t.Fatal("internal link rejected")
 	}
 }
-func TestJagIgnoreAndBinaryTransfer(t *testing.T) {
+func TestJaraIgnoreAndBinaryTransfer(t *testing.T) {
 	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, ".jagignore"), []byte("build/\n**/*.secret\n!keep.secret\n"), 0644)
+	os.WriteFile(filepath.Join(root, ".jaraignore"), []byte("build/\n**/*.secret\n!keep.secret\n"), 0644)
 	os.Mkdir(filepath.Join(root, "build"), 0755)
 	for _, p := range []string{"build/output", "hide.secret", "keep.secret", "binary"} {
 		os.WriteFile(filepath.Join(root, p), []byte{0, 255, 10}, 0644)
@@ -133,7 +133,7 @@ func TestExplicitDeletionProtectsEditsAndExcludedFiles(t *testing.T) {
 
 func TestExcludedDestinationCannotBeSilentlyOverwritten(t *testing.T) {
 	root := t.TempDir()
-	os.WriteFile(filepath.Join(root, ".jagignore"), []byte("secret\n"), 0644)
+	os.WriteFile(filepath.Join(root, ".jaraignore"), []byte("secret\n"), 0644)
 	os.WriteFile(filepath.Join(root, "secret"), []byte("keep"), 0644)
 	u := Update{Files: Snapshot{"secret": file("overwrite")}, Expected: map[string]string{"secret": ""}}
 	if err := applyUpdate(root, u); err == nil {

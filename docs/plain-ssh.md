@@ -1,7 +1,7 @@
 # Plain SSH and phone access
 
-The environment runs ordinary OpenSSH. Jag is only needed on the server; a phone
-or other SSH client does not need the local Jag CLI. Your phone can attach to the
+The environment runs ordinary OpenSSH. Jara is only needed on the server; a phone
+or other SSH client does not need the local Jara CLI. Your phone can attach to the
 same persistent Codex terminals you use from your laptop.
 
 ## Termius setup
@@ -10,10 +10,10 @@ same persistent Codex terminals you use from your laptop.
    (2222 by default), username `agent`, and an authorized SSH key.
 2. Verify the SSH host fingerprint through trusted host access, as described in
    the [deployment guide](../README.md#deploy-on-a-linux-docker-host).
-3. Connect and run `jag connect` to browse workspaces and running sessions.
+3. Connect and run `jara connect` to browse workspaces and running sessions.
 
 For direct access to the menu whenever you connect, set the host's **Startup
-Command** to `jag connect`. Termius documents this feature in its
+Command** to `jara connect`. Termius documents this feature in its
 [mobile agent guide](https://termius.com/blog/8-tips-for-using-ai-agents-on-mobile-in-termius).
 Leaving the startup command empty gives you a regular shell instead.
 
@@ -23,31 +23,31 @@ project and files (including the Docker overlay when enabled). The entrypoint
 installs that file when the container starts. No password login is enabled.
 
 The default deployment binds SSH to host loopback; the phone needs access through
-your existing jump host/tunnel or a reachable `JAG_SSH_BIND` address. `localhost`
+your existing jump host/tunnel or a reachable `JARA_SSH_BIND` address. `localhost`
 on your phone is not the Docker host. Each environment has its own SSH port and
 host identity; save a separate Termius host for each.
 
 ## Commands after connecting
 
 ```sh
-jag connect                            # Workspace and running-session menu
-jag connect WORKSPACE_ID               # Attach, or start Codex if stopped
-jag connect --resume WORKSPACE_ID      # Attach, or start plain codex resume
-jag connect --new WORKSPACE_ID         # Additional terminal; warns about shared files
-jag connect --worktree WORKSPACE_ID    # New terminal in a separate Git worktree
-jag connect --takeover WORKSPACE_ID    # Detach other clients and attach here
+jara connect                            # Workspace and running-session menu
+jara connect WORKSPACE_ID               # Attach, or start Codex if stopped
+jara connect --resume WORKSPACE_ID      # Attach, or start plain codex resume
+jara connect --new WORKSPACE_ID         # Additional terminal; warns about shared files
+jara connect --worktree WORKSPACE_ID    # New terminal in a separate Git worktree
+jara connect --takeover WORKSPACE_ID    # Detach other clients and attach here
 ```
 
 The selected workspace’s ID appears below the list. Options go before the ID. These commands operate
 inside the environment and do not read the laptop's remote configuration or open
-another SSH connection. The browser lists workspaces already created by Jag's
+another SSH connection. The browser lists workspaces already created by Jara's
 clone/copy flow. You can also use ordinary shell commands, Git, editors and tmux
 for manually managed folders.
 
-From a computer without the Jag client, open the same menu directly:
+From a computer without the Jara client, open the same menu directly:
 
 ```sh
-ssh -t -p 2222 agent@example.org jag connect
+ssh -t -p 2222 agent@example.org jara connect
 ```
 
 On interactive Linux terminals, the menu adapts to the actual terminal size:
@@ -72,7 +72,7 @@ setup diagnostics. The menu does not clone files from the phone.
 
 Existing terminals are shared by default, so a phone and laptop can see and control
 the same session. Use `--takeover` to detach the other viewers. Detach with
-**Ctrl-b**, then **d**. Reconnect and run `jag connect` to reattach. A dropped mobile
+**Ctrl-b**, then **d**. Reconnect and run `jara connect` to reattach. A dropped mobile
 connection leaves Codex running in tmux. A container restart stops its processes;
 workspace files and conversation history persist, and `--resume` opens Codex's
 own session selector. Ctrl-C is passed to Codex as usual.

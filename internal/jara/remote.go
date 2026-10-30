@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"context"
@@ -39,11 +39,11 @@ type Session struct {
 }
 
 func dataRoot() string {
-	if p := os.Getenv("JAG_DATA"); p != "" {
+	if p := os.Getenv("JARA_DATA"); p != "" {
 		return p
 	}
 	h, _ := os.UserHomeDir()
-	return filepath.Join(h, ".local", "share", "jag")
+	return filepath.Join(h, ".local", "share", "jara")
 }
 func workspacePath(id string) (string, error) {
 	if !nameRE.MatchString(id) {
@@ -159,15 +159,15 @@ func remoteRPC(q Request) error {
 		defer os.RemoveAll(probe)
 		sandboxCtx, sandboxCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer sandboxCancel()
-		sandbox := exec.CommandContext(sandboxCtx, "codex", "sandbox", "-c", "sandbox_mode=\"workspace-write\"", "--", "/bin/sh", "-c", "printf jag-sandbox-ok > check.txt")
+		sandbox := exec.CommandContext(sandboxCtx, "codex", "sandbox", "-c", "sandbox_mode=\"workspace-write\"", "--", "/bin/sh", "-c", "printf jara-sandbox-ok > check.txt")
 		sandbox.Dir = probe
 		if err = sandbox.Run(); err != nil {
 			d.OK = false
-			d.Checks = append(d.Checks, "SETUP Codex sandbox cannot execute: deploy with Jag's Compose seccomp profile and enable unprivileged user namespaces on the host (see docs/verification.md)")
+			d.Checks = append(d.Checks, "SETUP Codex sandbox cannot execute: deploy with Jara's Compose seccomp profile and enable unprivileged user namespaces on the host (see docs/verification.md)")
 		} else {
 			d.Checks = append(d.Checks, "OK real Codex sandbox execution")
 		}
-		if os.Getenv("JAG_DOCKER") == "1" {
+		if os.Getenv("JARA_DOCKER") == "1" {
 			dockerCtx, dockerCancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer dockerCancel()
 			info, e := exec.CommandContext(dockerCtx, "docker", "info", "--format", "{{json .SecurityOptions}}").Output()
@@ -339,11 +339,11 @@ func runGit(dir string, args ...string) error {
 	return cmd.Run()
 }
 func tmux(args ...string) *exec.Cmd {
-	return exec.Command("tmux", append([]string{"-L", "jag"}, args...)...)
+	return exec.Command("tmux", append([]string{"-L", "jara"}, args...)...)
 }
 func sessions() ([]Session, error) {
 	// has-session distinguishes an absent server from malformed output.
-	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jag_workspace}|#{session_attached}")
+	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}")
 	b, err := probe.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -375,7 +375,7 @@ func connectCommand(args []string) error {
 		return err
 	}
 	if f.NArg() > 1 {
-		return fmt.Errorf("use jag connect [options] [WORKSPACE]")
+		return fmt.Errorf("use jara connect [options] [WORKSPACE]")
 	}
 	id := ""
 	if f.NArg() == 1 {
@@ -501,7 +501,7 @@ func remoteOpen(q Request) error {
 		return attach(matches[i], q.Takeover)
 	}
 	path := w.Path
-	name := "jag-" + q.ID + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	name := "jara-" + q.ID + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	if q.Worktree {
 		path = filepath.Join(dataRoot(), "worktrees", name)
 		if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -538,7 +538,7 @@ func remoteOpen(q Request) error {
 	if err = runTmux(args...); err != nil {
 		return fmt.Errorf("start terminal: %w", err)
 	}
-	if err = runTmux("set-option", "-t", name, "@jag_workspace", q.ID); err != nil {
+	if err = runTmux("set-option", "-t", name, "@jara_workspace", q.ID); err != nil {
 		return err
 	}
 	unlock()

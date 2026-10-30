@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"crypto/sha256"
@@ -37,14 +37,14 @@ type Config struct {
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
 func configPath() (string, error) {
-	if p := os.Getenv("JAG_CONFIG"); p != "" {
+	if p := os.Getenv("JARA_CONFIG"); p != "" {
 		return p, nil
 	}
 	d, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(d, "jag", "config.json"), nil
+	return filepath.Join(d, "jara", "config.json"), nil
 }
 func readConfig() (Config, error) {
 	c := Config{Remotes: map[string]Remote{}, Bindings: map[string]Binding{}, Associations: map[string]Binding{}}
@@ -108,7 +108,7 @@ func writeJSON(p string, v any) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(p), ".jag-*")
+	f, err := os.CreateTemp(filepath.Dir(p), ".jara-*")
 	if err != nil {
 		return err
 	}

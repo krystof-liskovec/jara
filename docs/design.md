@@ -14,7 +14,7 @@ validates them and remembers a default. Every local checkout also remembers its
 last selected remote and its association on each remote. An explicit remote
 argument updates that remembered choice. Local worktrees are distinct checkouts.
 
-Ordinary SSH execution, file transfers and forwarding remain available. Jag
+Ordinary SSH execution, file transfers and forwarding remain available. Jara
 invokes its remote entry point explicitly rather than forcing all SSH commands
 through a menu. This permits VS Code Remote SSH and other editors to operate.
 
@@ -41,7 +41,7 @@ through a menu. This permits VS Code Remote SSH and other editors to operate.
 
 tmux is the first terminal supervisor. Detach and network loss leave processes
 running. Container stop/replacement and host reboot do not preserve processes;
-durable workspaces, Codex history and Jag metadata remain available afterwards.
+durable workspaces, Codex history and Jara metadata remain available afterwards.
 Attached clients, running terminals and saved conversations are separate concepts.
 Do not claim reliable agent-busy status solely from a running terminal.
 
@@ -50,13 +50,13 @@ Do not claim reliable agent-busy status solely from a running terminal.
 Clone recreates origin, branch and exact local commit, including unpublished
 history using a Git bundle. Copy transfers working files, edits and eligible
 untracked files, independently of Git history. Exclusions use Git ignore rules
-where available plus `.jagignore`; ignored-file inclusion must be explicit.
+where available plus `.jaraignore`; ignored-file inclusion must be explicit.
 
 Push and pull are separate, explicit commands. Record previous successful
 transfer state and content hashes. Detect conflicting edits and require an
 explicit source choice. Preserve destination-only files by default. Propagating
 deletions requires an explicit option. Refuse transfer into an environment with
-a running Jag-managed agent unless explicitly overridden.
+a running Jara-managed agent unless explicitly overridden.
 
 ## Authentication, tools and editor configuration
 

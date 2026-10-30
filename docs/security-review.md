@@ -18,12 +18,12 @@ marker. No unauthenticated attack or host escape was demonstrated.
 
 The fix stores keys under root-owned `/etc/ssh/authorized_keys` and atomically
 replaces the per-user key file there. Startup no longer creates, repairs, copies
-through, or changes ownership under `.ssh`. It creates `/tmp/jag-cache` through a
+through, or changes ownership under `.ssh`. It creates `/tmp/jara-cache` through a
 root-owned temporary directory and rejects symlinks or unexpected owners on
 later starts instead of running privileged `chmod` or `chown` through that path.
 
 `python3 scripts/security_e2e.py` rebuilds no image itself; build
-`jag-agent:security-validation` first. The script confirms that a `.ssh` symlink
+`jara-agent:security-validation` first. The script confirms that a `.ssh` symlink
 cannot change executable ownership, and that a cache symlink makes startup exit
 without changing the root-owned target. It uses a generated key and disposable
 container, with no real credentials or model calls.
@@ -46,7 +46,7 @@ No host escape was attempted or established in this assessment.
 
 ## Workspace transfer boundary
 
-`internal/jag/sync.go` now validates transfer paths, bounds workspace and ignore
+`internal/jara/sync.go` now validates transfer paths, bounds workspace and ignore
 file reads, and performs reads and mutations through `os.Root`. Existing symlink
 parents are rejected; transferred symbolic links that resolve into `.git` are
 rejected. This prevents ordinary path traversal outside the workspace and blocks
@@ -55,7 +55,7 @@ sentinel and a `.git/config` sentinel.
 
 There are still limits. Go documents that `os.Root` follows symbolic links that
 stay within its root and does not prevent traversal across mount points. A process
-with the same account can also mutate the workspace concurrently with Jag, so the
+with the same account can also mutate the workspace concurrently with Jara, so the
 current preflight checks do not make a hostile same-UID process safe to share.
 Treat the agent account and selected workspace as one trust boundary. Avoid
 mounting untrusted filesystems inside workspaces. A stronger boundary requires

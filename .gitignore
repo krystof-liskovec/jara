@@ -3,5 +3,5 @@
 /deploy/.env
 *.test
 *.update.lock
-/deploy/.jag-update-*.json
+/deploy/.jara-update-*.json
 __pycache__/

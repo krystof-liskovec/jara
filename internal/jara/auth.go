@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 
 func authCommand(c Config, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("use jag auth codex|gitlab|gitea [--remote NAME] [--host HOST] [--url URL] --token-stdin")
+		return fmt.Errorf("use jara auth codex|gitlab|gitea [--remote NAME] [--host HOST] [--url URL] --token-stdin")
 	}
 	provider := args[0]
 	f := flag.NewFlagSet("auth", flag.ContinueOnError)
@@ -47,7 +47,7 @@ func authCommand(c Config, args []string) error {
 	if err := validateProvider(provider, destination); err != nil {
 		return err
 	}
-	return interactive(sshCommand(r, false, shellArgs("jag", "_auth", provider, destination)))
+	return interactive(sshCommand(r, false, shellArgs("jara", "_auth", provider, destination)))
 }
 func validateProvider(provider, destination string) error {
 	switch provider {
@@ -88,12 +88,12 @@ func remoteAuth(provider, destination string) error {
 		cmd = exec.Command("glab", "auth", "login", "--hostname", destination, "--stdin", "--git-protocol", "https", "--setup-git-credential-helper")
 		cmd.Stdin = bytes.NewReader(secret)
 	} else {
-		cmd = exec.Command("tea", "login", "add", "--name", "jag", "--url", destination, "--git-credentials")
+		cmd = exec.Command("tea", "login", "add", "--name", "jara", "--url", destination, "--git-credentials")
 		cmd.Env = append(os.Environ(), "GITEA_SERVER_TOKEN="+string(secret))
 	}
 	// Provider output is suppressed here so credentials cannot enter startup logs.
 	if err = cmd.Run(); err != nil {
-		return fmt.Errorf("%s authentication failed; verify installed CLI, host and token permissions (for Tea token rotation, remove its managed 'jag' login first)", provider)
+		return fmt.Errorf("%s authentication failed; verify installed CLI, host and token permissions (for Tea token rotation, remove its managed 'jara' login first)", provider)
 	}
 	if err = os.MkdirAll(filepath.Dir(marker), 0700); err != nil {
 		return err

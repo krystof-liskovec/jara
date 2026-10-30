@@ -1,5 +1,5 @@
 Port 22
-HostKey /var/lib/jag/ssh/ssh_host_ed25519_key
+HostKey /var/lib/jara/ssh/ssh_host_ed25519_key
 PermitRootLogin no
 PubkeyAuthentication yes
 PasswordAuthentication no
@@ -16,4 +16,4 @@ AllowAgentForwarding no
 PermitUserEnvironment no
 Subsystem sftp internal-sftp
 PrintMotd no
-Include /run/jag/sshd-env.conf
+Include /run/jara/sshd-env.conf

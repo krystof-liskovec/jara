@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ func keygen(args []string) error {
 		return err
 	}
 	f := flag.NewFlagSet("keygen", flag.ContinueOnError)
-	out := f.String("out", filepath.Join(home, ".ssh", "id_ed25519_jag"), "new private key path")
+	out := f.String("out", filepath.Join(home, ".ssh", "id_ed25519_jara"), "new private key path")
 	if err = f.Parse(args); err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func keygen(args []string) error {
 	if err = os.MkdirAll(filepath.Dir(*out), 0700); err != nil {
 		return err
 	}
-	if err = interactive(exec.Command("ssh-keygen", "-t", "ed25519", "-f", *out, "-C", "jag")); err != nil {
+	if err = interactive(exec.Command("ssh-keygen", "-t", "ed25519", "-f", *out, "-C", "jara")); err != nil {
 		return err
 	}
 	b, err := os.ReadFile(*out + ".pub")
@@ -43,7 +43,7 @@ func keygen(args []string) error {
 
 func editorImport(c Config, args []string) error {
 	if len(args) < 2 || args[0] != "import" || (args[1] != "vim" && args[1] != "nvim") {
-		return fmt.Errorf("use jag editor import vim|nvim --source DIR [--remote NAME] [--force]")
+		return fmt.Errorf("use jara editor import vim|nvim --source DIR [--remote NAME] [--force]")
 	}
 	editor := args[1]
 	f := flag.NewFlagSet("editor import", flag.ContinueOnError)

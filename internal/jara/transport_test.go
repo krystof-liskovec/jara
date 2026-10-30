@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"os/exec"

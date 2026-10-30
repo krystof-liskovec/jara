@@ -1,5 +1,5 @@
 [Unit]
-Description=Check for a stable Codex update hourly for Jag environment %i
+Description=Check for a stable Codex update hourly for Jara environment %i
 
 [Timer]
 OnCalendar=hourly

@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bufio"
@@ -17,32 +17,34 @@ import (
 	"strings"
 )
 
-const help = `jag — persistent remote Codex workspaces over OpenSSH
+const help = `Jara — Just Another Remote Agent
 
-  jag [--remote NAME] [--clone | --copy] [--source DIR]
-  jag resume [workspace options]      Run codex resume, without --last
-  jag new [--worktree] [workspace options]
-  jag connect [--resume] [--new] [--worktree] [--takeover] [WORKSPACE]
+  jara — persistent remote Codex workspaces over OpenSSH
+
+  jara [--remote NAME] [--clone | --copy] [--source DIR]
+  jara resume [workspace options]      Run codex resume, without --last
+  jara new [--worktree] [workspace options]
+  jara connect [--resume] [--new] [--worktree] [--takeover] [WORKSPACE]
                                        Open sessions directly on the SSH server
-  jag sessions [--remote NAME]         Remote workspace and session browser
-  jag tools [install] [workspace options]  Show or install this project's tool versions
-  jag edit [--editor code|vim|nvim] [workspace options]
-  jag sync push|pull [--force] [workspace options]
-  jag remote add NAME --host HOST [--port PORT] [--user USER] [--identity FILE]
-  jag remote list | use NAME
-  jag config set editor code|vim|nvim [--remote NAME]
-  jag config set editor-command NAME '["command","{ssh_alias}","{remote_path}"]'
-  jag keygen [--out FILE]             Generate a key; install its public key on host
-  jag auth codex|gitlab|gitea          Guided auth; provider tokens use --token-stdin
-  jag editor import vim|nvim --source DIR [--remote NAME] [--force]
-  jag doctor [--remote NAME]
-  jag forward|reverse PORT [--target HOST:PORT] [--bind ADDRESS] [--remote NAME]
-  jag environment --codex-version VERSION [--node-version VERSION]
+  jara sessions [--remote NAME]         Remote workspace and session browser
+  jara tools [install] [workspace options]  Show or install this project's tool versions
+  jara edit [--editor code|vim|nvim] [workspace options]
+  jara sync push|pull [--force] [workspace options]
+  jara remote add NAME --host HOST [--port PORT] [--user USER] [--identity FILE]
+  jara remote list | use NAME
+  jara config set editor code|vim|nvim [--remote NAME]
+  jara config set editor-command NAME '["command","{ssh_alias}","{remote_path}"]'
+  jara keygen [--out FILE]             Generate a key; install its public key on host
+  jara auth codex|gitlab|gitea          Guided auth; provider tokens use --token-stdin
+  jara editor import vim|nvim --source DIR [--remote NAME] [--force]
+  jara doctor [--remote NAME]
+  jara forward|reverse PORT [--target HOST:PORT] [--bind ADDRESS] [--remote NAME]
+  jara environment --codex-version VERSION [--node-version VERSION]
                   [--go-version VERSION] [--vim] [--nvim]
                   [--glab-version VERSION] [--tea-version VERSION]
                   [--mise-version VERSION] [--docker] [--docker-version VERSION]
-  jag migrate                        Explain native migration availability
-  jag host update --project NAME [--compose deploy/compose.yaml]
+  jara migrate                        Explain native migration availability
+  jara host update --project NAME [--compose deploy/compose.yaml]
                   [--compose-extra FILE] [--env-file deploy/.env] [--check] [--version VERSION]
 
 OpenSSH must be installed locally. See README.md for Compose deployment.
@@ -120,7 +122,7 @@ func Run(args []string) error {
 	}
 	if action == "sync" {
 		if len(args) == 0 {
-			return fmt.Errorf("use jag sync push or jag sync pull")
+			return fmt.Errorf("use jara sync push or jara sync pull")
 		}
 		direction = args[0]
 		args = args[1:]
@@ -145,7 +147,7 @@ func Run(args []string) error {
 	newTree := f.Bool("worktree", false, "create a separate Git worktree")
 	takeover := f.Bool("takeover", false, "detach other terminal clients")
 	force := f.Bool("force", false, "overwrite conflicts / permit transfer with running agents")
-	includeIgnored := f.Bool("include-ignored", false, "explicitly include Git-ignored files; .jagignore still applies")
+	includeIgnored := f.Bool("include-ignored", false, "explicitly include Git-ignored files; .jaraignore still applies")
 	deleteMissing := f.Bool("delete", false, "propagate deletions of previously synchronized files")
 	target := f.String("target", "", "forward destination host:port")
 	bind := f.String("bind", "127.0.0.1", "listener address")
@@ -158,13 +160,13 @@ func Run(args []string) error {
 	switch action {
 	case "open", "resume", "new", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tools":
 	default:
-		return fmt.Errorf("unknown command %q; see jag --help", action)
+		return fmt.Errorf("unknown command %q; see jara --help", action)
 	}
 	if *clone && *copyMode {
 		return fmt.Errorf("--clone and --copy are mutually exclusive")
 	}
 	if *newTree && action != "new" {
-		return fmt.Errorf("--worktree requires jag new")
+		return fmt.Errorf("--worktree requires jara new")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -195,7 +197,7 @@ func Run(args []string) error {
 	}
 	r, ok := c.Remotes[chosen]
 	if !ok {
-		return fmt.Errorf("no selected remote; use jag remote add NAME --host HOST, then jag remote use NAME")
+		return fmt.Errorf("no selected remote; use jara remote add NAME --host HOST, then jara remote use NAME")
 	}
 	if err = validateRemote(r); err != nil {
 		return err
@@ -213,13 +215,13 @@ func Run(args []string) error {
 	b, exists := c.Associations[key]
 	if !exists && !isGit && !*copyMode {
 		if action != "open" && action != "resume" {
-			return fmt.Errorf("no workspace association; first use jag --copy or open a Git repository")
+			return fmt.Errorf("no workspace association; first use jara --copy or open a Git repository")
 		}
 		return openRemote(r, Request{Resume: action == "resume"})
 	}
 	if !exists {
 		if action == "sync" || action == "edit" || action == "tools" {
-			return fmt.Errorf("workspace is not associated with %s; open it with jag first", chosen)
+			return fmt.Errorf("workspace is not associated with %s; open it with jara first", chosen)
 		}
 		if !*copyMode && !*clone {
 			yes, e := confirm("Clone this repository to " + chosen + "?")
@@ -247,7 +249,7 @@ func Run(args []string) error {
 				return err
 			}
 			if status, e := gitOutput(root, "status", "--porcelain"); e == nil && status != "" {
-				fmt.Fprintln(os.Stderr, "Local edits are excluded from clone. Transfer them explicitly with jag sync push after initialization.")
+				fmt.Fprintln(os.Stderr, "Local edits are excluded from clone. Transfer them explicitly with jara sync push after initialization.")
 			}
 		}
 		if err = rpc(r, q, nil, nil); err != nil {
@@ -313,13 +315,13 @@ func Run(args []string) error {
 			remotePath += "/" + filepath.ToSlash(rel)
 		}
 		if action == "tools" {
-			return interactive(sshCommand(r, toolsAction == "install", shellArgs("jag", "_tools", toolsAction, remotePath)))
+			return interactive(sshCommand(r, toolsAction == "install", shellArgs("jara", "_tools", toolsAction, remotePath)))
 		}
-		if err = interactive(sshCommand(r, true, shellArgs("jag", "_tools", "install", remotePath))); err != nil {
+		if err = interactive(sshCommand(r, true, shellArgs("jara", "_tools", "install", remotePath))); err != nil {
 			return err
 		}
 		if selected == "vim" || selected == "nvim" {
-			return interactive(sshCommand(r, true, shellArgs("jag", "_tools", "exec", remotePath, selected, "--", remotePath)))
+			return interactive(sshCommand(r, true, shellArgs("jara", "_tools", "exec", remotePath, selected, "--", remotePath)))
 		}
 		alias, err := editorAlias(chosen, r)
 		if err != nil {
@@ -498,9 +500,9 @@ func doctor(r Remote) error {
 		return err
 	}
 	if d.Protocol != Protocol {
-		return fmt.Errorf("Jag protocol mismatch: client %d, remote %d; update both", Protocol, d.Protocol)
+		return fmt.Errorf("Jara protocol mismatch: client %d, remote %d; update both", Protocol, d.Protocol)
 	}
-	fmt.Printf("Jag %s; protocol %d; storage %s\n", d.Version, d.Protocol, d.Root)
+	fmt.Printf("Jara %s; protocol %d; storage %s\n", d.Version, d.Protocol, d.Root)
 	for _, s := range d.Checks {
 		fmt.Println(s)
 	}
@@ -549,9 +551,9 @@ func editorAlias(name string, r Remote) (string, error) {
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
-	alias := "jag-" + name
+	alias := "jara-" + name
 	// Include is managed separately so existing user configuration is preserved.
-	generated := filepath.Join(dir, "jag_config")
+	generated := filepath.Join(dir, "jara_config")
 	c, err := readConfig()
 	if err != nil {
 		return "", err
@@ -563,7 +565,7 @@ func editorAlias(name string, r Remote) (string, error) {
 	}
 	sort.Strings(names)
 	var out strings.Builder
-	out.WriteString("# Generated by jag edit.\n")
+	out.WriteString("# Generated by jara edit.\n")
 	for _, n := range names {
 		v := c.Remotes[n]
 		if err = validateRemote(v); err != nil {
@@ -573,7 +575,7 @@ func editorAlias(name string, r Remote) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("resolve SSH configuration for %s: %w", n, err)
 		}
-		fmt.Fprintf(&out, "Host jag-%s\n", n)
+		fmt.Fprintf(&out, "Host jara-%s\n", n)
 		allowed := map[string]bool{"hostname": true, "user": true, "port": true, "identityfile": true, "certificatefile": true, "proxyjump": true, "proxycommand": true, "identitiesonly": true, "identityagent": true, "userknownhostsfile": true, "globalknownhostsfile": true, "hostkeyalias": true, "stricthostkeychecking": true, "addressfamily": true}
 		for _, line := range strings.Split(string(effective), "\n") {
 			key, _, ok := strings.Cut(line, " ")
@@ -591,7 +593,7 @@ func editorAlias(name string, r Remote) (string, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
-	include := "Include jag_config"
+	include := "Include jara_config"
 	if !strings.Contains(string(existing), include) {
 		existing = append([]byte(include+"\n"), existing...)
 		if err = os.WriteFile(config, existing, 0600); err != nil {

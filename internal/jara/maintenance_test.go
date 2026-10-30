@@ -1,6 +1,6 @@
 //go:build linux
 
-package jag
+package jara
 
 import (
 	"path/filepath"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestWorkspaceGateBlocksOnlyDuringActiveLease(t *testing.T) {
-	t.Setenv("JAG_DATA", t.TempDir())
+	t.Setenv("JARA_DATA", t.TempDir())
 	if err := writeJSON(maintenancePath(), maintenanceLease{Token: "test", Expires: time.Now().Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}

@@ -10,12 +10,12 @@ transfer, terminal inventory, editors, remote selection and networking can be
 tested deterministically without credentials or inference.
 
 The second suite (`scripts/real_codex_e2e.py`) uses the actual Compose deployment,
-named persistent volumes, OpenSSH, Jag, tmux and the installed **real Codex binary**.
-It does not replace Codex or copy a different Jag binary into the image.
+named persistent volumes, OpenSSH, Jara, tmux and the installed **real Codex binary**.
+It does not replace Codex or copy a different Jara binary into the image.
 
 Confirmed with the real binary:
 
-- Fresh-container sign-in UI is visible through `jag --copy`.
+- Fresh-container sign-in UI is visible through `jara --copy`.
 - Abruptly killing the local SSH process leaves the same remote terminal alive.
 - Reopening attaches to that same session, rather than creating a duplicate.
 - Ctrl-b d detaches the interactive client.
@@ -23,9 +23,9 @@ Confirmed with the real binary:
 - Compose container recreation preserves workspace data and SSH host identity.
 
 With explicit authorization, a temporary copy of the existing ChatGPT login was
-used for **one live model turn**. Codex created `jag-live-check.txt` with exactly
-`jag-live-ok\n` and replied `JAG_LIVE_OK`. Reattachment showed the completed
-conversation. After Compose recreation, plain `jag resume` displayed that saved
+used for **one live model turn**. Codex created `jara-live-check.txt` with exactly
+`jara-live-ok\n` and replied `JARA_LIVE_OK`. Reattachment showed the completed
+conversation. After Compose recreation, plain `jara resume` displayed that saved
 conversation in Codex's picker. The temporary login, container and volumes were
 removed. No credential values are included in this report or the test output.
 
@@ -35,7 +35,7 @@ one-time approval. The corrected sandbox was subsequently tested directly with
 the real `codex sandbox` command, without making another model call.
 
 The first live script run's final assertion expected a filename in the picker
-title. Codex generated the title “Create JAG live check file” instead; the captured
+title. Codex generated the title “Create JARA live check file” instead; the captured
 picker visibly contained the saved conversation. The test now checks picker
 inventory and reopens the selected transcript, rather than assuming its title.
 
@@ -48,7 +48,7 @@ transport suite could not detect.
 The minimal reproducer failed with `Operation not permitted`:
 
 ```sh
-docker run --rm --user agent --entrypoint /bin/sh jag-agent:real-validation \
+docker run --rm --user agent --entrypoint /bin/sh jara-agent:real-validation \
   -c 'unshare --user --map-root-user true'
 ```
 
@@ -66,7 +66,7 @@ surface; the profile is intended for these personal development environments.
 
 See [profile provenance](../deploy/seccomp/SOURCE.md) and its Apache-2.0 license.
 The profile was tested with this Docker Engine; hosts may have additional
-AppArmor, user-namespace or runtime restrictions. `jag doctor` now executes a real
+AppArmor, user-namespace or runtime restrictions. `jara doctor` now executes a real
 Codex sandbox probe and reports a setup failure when it cannot run.
 
 Sources: [Docker seccomp documentation](https://docs.docker.com/engine/security/seccomp/),
@@ -77,9 +77,9 @@ Sources: [Docker seccomp documentation](https://docs.docker.com/engine/security/
 
 ```sh
 docker build -f deploy/Dockerfile --build-arg CODEX_VERSION=0.166.0 \
-  -t jag-agent:real-validation .
+  -t jara-agent:real-validation .
 python3 scripts/real_codex_e2e.py
-JAG_TEST_IMAGE=jag-agent:real-validation python3 scripts/e2e.py
+JARA_TEST_IMAGE=jara-agent:real-validation python3 scripts/e2e.py
 go test -race ./...
 go vet ./...
 ```
@@ -134,17 +134,17 @@ mise 2026.10.24 and two real Codex processes, without credentials or model calls
 - Codex's infrastructure executable stayed outside the project tool installations;
   its npm launcher uses the fixed `/usr/local/bin/node` runtime.
 - Plain SSH and login-shell commands selected the correct project versions.
-- Actual Neovim processes, launched through Jag's editor helper, invoked each
+- Actual Neovim processes, launched through Jara's editor helper, invoked each
   project's selected Node and Go versions in the optional-editor image.
 - Both Go programs compiled and ran over SSH and in the actual Codex sandbox.
 - An invalid mise configuration failed before starting a third session.
 - Both installed toolchains survived recreation and executed in mise offline mode.
 
 This test exposed two non-version-selection details: Go/npm build caches need a
-sandbox-writable location (now `/tmp/jag-cache`), and Codex 0.166.0 creates an empty
+sandbox-writable location (now `/tmp/jara-cache`), and Codex 0.166.0 creates an empty
 protected `.git` directory for a non-Git sandbox workspace. The latter can confuse
 Go's VCS stamping; the test covers the explicit `-buildvcs=false` workaround for
-copied non-Git folders and normal `go build` in actual Git repositories. Jag does
+copied non-Git folders and normal `go build` in actual Git repositories. Jara does
 not globally disable stamping or automatically initialize repositories.
 
 Installed toolchains and mise download caches persist in the agent home. Build
@@ -165,12 +165,12 @@ The optional rootless Docker deployment was exercised with Docker 29.9.2 using
 - A nested Compose service, named volume, localhost publication and SSH forwarding.
 - Recreating only the agent while retaining the daemon identity, running service,
   nested volume data and SSH host identity.
-- Jag diagnostics and the updater's rejection of a missing Docker overlay;
+- Jara diagnostics and the updater's rejection of a missing Docker overlay;
   an update check using the overlay succeeded. Unit tests cover retaining the
   overlay for replacement commands and refusing edits during a build.
 - Independent daemon identities and image stores in two Compose projects.
 
-The tests found that OpenSSH honors only the first `SetEnv` directive; Jag now
+The tests found that OpenSSH honors only the first `SetEnv` directive; Jara now
 emits all session variables together. They also established that Codex 0.166.0
 requires workspace sandbox networking for Docker Unix-socket access. Docker-enabled
 launches supply that setting while preserving filesystem sandboxing. An explicit
@@ -184,14 +184,14 @@ workload isolation or behavior on other host kernels/storage drivers.
 
 ## Plain SSH and phone entry point
 
-`jag connect` exposes the environment's existing workspace/session browser directly
+`jara connect` exposes the environment's existing workspace/session browser directly
 on the server. `scripts/e2e.py` passed menu selection, direct workspace attachment,
 reuse without duplicate terminals, detach, plain resume, and ordinary shell
-execution through standard SSH without a local Jag client process for those steps.
+execution through standard SSH without a local Jara client process for those steps.
 
-A fresh `jag-agent:phone-validation` image built from the updated source passed
+A fresh `jara-agent:phone-validation` image built from the updated source passed
 `scripts/real_codex_e2e.py`. After an abrupt laptop SSH disconnect, standard
-`ssh -tt ... jag connect WORKSPACE_ID` reattached to the same actual Codex terminal
+`ssh -tt ... jara connect WORKSPACE_ID` reattached to the same actual Codex terminal
 and sign-in UI. No credentials were imported and no model calls were made. Real
 sandbox boundary checks and Compose persistence checks also passed. Disposable
 containers and volumes were removed. Native Termius/iOS/Android behavior remains
@@ -200,7 +200,7 @@ unverified on-device; see [connection instructions](plain-ssh.md).
 ## Responsive terminal browser
 
 The responsive browser was tested on 2026-10-30 with a fresh
-`jag-agent:responsive-validation` image. `scripts/menu_e2e.py` uses actual OpenSSH
+`jara-agent:responsive-validation` image. `scripts/menu_e2e.py` uses actual OpenSSH
 PTYs and 35 browser entries to check:
 
 - 32-, 40- and 80-column layouts, bounded rows and columns, pagination, arrow-key
@@ -212,13 +212,13 @@ PTYs and 35 browser entries to check:
 
 Unit tests additionally cover 16–120 columns, 7–40 rows, all positions in a long
 list, wide characters, combining marks, emoji grapheme clusters, terminal-control
-sanitization, legacy workspace names, and keeping session numbers, shortcuts and
+sanitization, long workspace names, and keeping session numbers, shortcuts and
 the selected workspace ID visible on a 32-column screen. The general transport
 integration suite passed, including persistence of the copied folder's readable
 name. Go race tests and vet passed; Windows amd64 and macOS arm64 clients compiled.
 
-This optimizes Jag's browser. Codex owns its attached terminal interface, and
+This optimizes Jara's browser. Codex owns its attached terminal interface, and
 Termius/iOS/Android behavior still requires native-device validation. The tests
 imported no credentials and made no model calls. Disposable test containers and
-volumes were removed. Set `JAG_MENU_SNAPSHOT_DIR` when running the menu suite to
+volumes were removed. Set `JARA_MENU_SNAPSHOT_DIR` when running the menu suite to
 save plain-text captures of the actual narrow and wide SSH layouts.

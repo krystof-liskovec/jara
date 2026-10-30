@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"os"
@@ -13,7 +13,7 @@ func TestTokenUsesStdinAndRepeatedSetupIsIdempotent(t *testing.T) {
 		t.Skip("shell fixture")
 	}
 	dir := t.TempDir()
-	t.Setenv("JAG_DATA", filepath.Join(dir, "data"))
+	t.Setenv("JARA_DATA", filepath.Join(dir, "data"))
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("CAPTURE", filepath.Join(dir, "capture"))
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$CAPTURE.args\"\ncat > \"$CAPTURE.token\"\nprintf called >> \"$CAPTURE.calls\"\n"

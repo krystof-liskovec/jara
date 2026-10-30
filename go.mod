@@ -1,4 +1,4 @@
-module krystof.liskovec/jag-cli
+module krystof.liskovec/jara
 
 go 1.27.3
 

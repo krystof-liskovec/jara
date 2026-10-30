@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bytes"
@@ -30,7 +30,8 @@ func decode(s string, v any) error {
 }
 func sshArgs(r Remote, tty bool) []string {
 	a := []string{"-o", "StrictHostKeyChecking=ask", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"}
-	if config := os.Getenv("JAG_SSH_CONFIG"); config != "" {
+	config := os.Getenv("JARA_SSH_CONFIG")
+	if config != "" {
 		a = append(a, "-F", config)
 	}
 	if tty {
@@ -76,7 +77,7 @@ type Request struct {
 }
 
 func rpc(r Remote, q Request, input io.Reader, v any) error {
-	cmd := sshCommand(r, false, shellArgs("jag", "_rpc", token(q)))
+	cmd := sshCommand(r, false, shellArgs("jara", "_rpc", token(q)))
 	cmd.Stdin = input
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
@@ -86,11 +87,11 @@ func rpc(r Remote, q Request, input io.Reader, v any) error {
 	}
 	if v != nil {
 		if err := json.Unmarshal(out.Bytes(), v); err != nil {
-			return fmt.Errorf("invalid Jag response (check remote shell startup output): %w", err)
+			return fmt.Errorf("invalid Jara response (check remote shell startup output): %w", err)
 		}
 	}
 	return nil
 }
 func openRemote(r Remote, q Request) error {
-	return interactive(sshCommand(r, true, shellArgs("jag", "_open", token(q))))
+	return interactive(sshCommand(r, true, shellArgs("jara", "_open", token(q))))
 }

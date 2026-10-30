@@ -9,6 +9,6 @@ RUN apk add --no-cache su-exec \
  && chown -R 1001:1001 /home/rootless /run/user/1001 \
  && chmod 700 /run/user/1001 /home/rootless/docker-run
 ENV XDG_RUNTIME_DIR=/run/user/1001 DOCKER_TLS_CERTDIR=""
-COPY deploy/dind-entrypoint.sh /usr/local/bin/jag-dind-entrypoint
-RUN chmod 755 /usr/local/bin/jag-dind-entrypoint
-ENTRYPOINT ["/usr/local/bin/jag-dind-entrypoint"]
+COPY deploy/dind-entrypoint.sh /usr/local/bin/jara-dind-entrypoint
+RUN chmod 755 /usr/local/bin/jara-dind-entrypoint
+ENTRYPOINT ["/usr/local/bin/jara-dind-entrypoint"]

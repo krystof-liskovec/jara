@@ -7,11 +7,11 @@ services:
       docker:
         condition: service_healthy
     environment:
-      JAG_DOCKER: "1"
-      DOCKER_HOST: unix:///run/jag-docker/docker.sock
-      BUILDX_CONFIG: /tmp/jag-cache/docker-buildx
+      JARA_DOCKER: "1"
+      DOCKER_HOST: unix:///run/jara-docker/docker.sock
+      BUILDX_CONFIG: /tmp/jara-cache/docker-buildx
     volumes:
-      - docker-socket:/run/jag-docker:ro
+      - docker-socket:/run/jara-docker:ro
   docker:
     build:
       context: ..
@@ -21,7 +21,7 @@ services:
     privileged: true
     restart: unless-stopped
     ports:
-      - "${JAG_SSH_BIND:-127.0.0.1}:${JAG_SSH_PORT:-2222}:22"
+      - "${JARA_SSH_BIND:-127.0.0.1}:${JARA_SSH_PORT:-2222}:22"
     volumes:
       - docker-data:/home/rootless/.local/share/docker
       - docker-socket:/home/rootless/docker-run
