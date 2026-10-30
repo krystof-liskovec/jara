@@ -1,0 +1,37 @@
+# Optional rootless Docker-in-Docker. Requires Compose 2.24+ (!reset).
+services:
+  agent:
+    network_mode: service:docker
+    ports: !reset []
+    depends_on:
+      docker:
+        condition: service_healthy
+    environment:
+      JAG_DOCKER: "1"
+      DOCKER_HOST: unix:///run/jag-docker/docker.sock
+      BUILDX_CONFIG: /tmp/jag-cache/docker-buildx
+    volumes:
+      - docker-socket:/run/jag-docker:ro
+  docker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dind
+      args:
+        DOCKER_VERSION: ${DOCKER_VERSION:-29.9.2}
+    privileged: true
+    restart: unless-stopped
+    ports:
+      - "${JAG_SSH_BIND:-127.0.0.1}:${JAG_SSH_PORT:-2222}:22"
+    volumes:
+      - docker-data:/home/rootless/.local/share/docker
+      - docker-socket:/home/rootless/docker-run
+      - agent-home:/home/agent
+    healthcheck:
+      test: ["CMD", "docker", "--host=unix:///home/rootless/docker-run/docker.sock", "info"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+volumes:
+  docker-data:
+  docker-socket:

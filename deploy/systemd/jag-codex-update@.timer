@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for a stable Codex update hourly for Jag environment %i
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

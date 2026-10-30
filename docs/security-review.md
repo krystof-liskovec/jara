@@ -1,0 +1,104 @@
+# Security review — 2026-10-30
+
+Status: the confirmed startup privilege escalation is fixed and reproduced as a
+passing regression test against the rebuilt container. Workspace transfers now
+use Go's `os.Root` APIs and reject static symlink parents and links into `.git`.
+This remains a development prototype, not an independently audited isolation
+boundary. The review and fixes cover the findings below; they do not establish
+security against hostile workloads or a compromised Docker host.
+
+## Resolved: agent-controlled paths in root startup
+
+Before the fix, root startup copied authorized keys and changed ownership under
+the agent-writable `/home/agent/.ssh` path. Two disposable Docker tests confirmed
+that an agent-created symlink could redirect those operations, change ownership
+of a root executable directory, and then cause a replacement startup script to
+run as UID 0 after another restart. The payload only wrote a container-local UID
+marker. No unauthenticated attack or host escape was demonstrated.
+
+The fix stores keys under root-owned `/etc/ssh/authorized_keys` and atomically
+replaces the per-user key file there. Startup no longer creates, repairs, copies
+through, or changes ownership under `.ssh`. It creates `/tmp/jag-cache` through a
+root-owned temporary directory and rejects symlinks or unexpected owners on
+later starts instead of running privileged `chmod` or `chown` through that path.
+
+`python3 scripts/security_e2e.py` rebuilds no image itself; build
+`jag-agent:security-validation` first. The script confirms that a `.ssh` symlink
+cannot change executable ownership, and that a cache symlink makes startup exit
+without changing the root-owned target. It uses a generated key and disposable
+container, with no real credentials or model calls.
+
+## High-risk design: optional privileged Docker sidecar
+
+`deploy/compose.docker.yaml` uses `privileged: true` for the outer rootless DinD
+container. The normal agent remains unprivileged, there is no host Docker socket,
+and nested daemons have independent storage. Those properties do not establish
+hostile-workload isolation. Docker documents that privileged mode is required for
+this rootless DinD setup:
+[Docker rootless DinD](https://docs.docker.com/engine/security/rootless/tips/#rootless-docker-in-docker).
+
+The nested API can mount the shared agent home and change files outside the
+current Codex workspace. Docker-enabled Codex launches also enable workspace
+sandbox networking. Do not treat the Codex filesystem sandbox as constraining
+Docker-side effects. Use a separate VM per trust boundary for untrusted workloads;
+review resource limits, network isolation and the privileged bootstrap separately.
+No host escape was attempted or established in this assessment.
+
+## Workspace transfer boundary
+
+`internal/jag/sync.go` now validates transfer paths, bounds workspace and ignore
+file reads, and performs reads and mutations through `os.Root`. Existing symlink
+parents are rejected; transferred symbolic links that resolve into `.git` are
+rejected. This prevents ordinary path traversal outside the workspace and blocks
+the tested static symlink paths. Regression coverage includes an outside-root
+sentinel and a `.git/config` sentinel.
+
+There are still limits. Go documents that `os.Root` follows symbolic links that
+stay within its root and does not prevent traversal across mount points. A process
+with the same account can also mutate the workspace concurrently with Jag, so the
+current preflight checks do not make a hostile same-UID process safe to share.
+Treat the agent account and selected workspace as one trust boundary. Avoid
+mounting untrusted filesystems inside workspaces. A stronger boundary requires
+separate OS users or VMs, plus platform-specific no-follow and mount controls.
+See [Go's `os.Root` behavior](https://go.dev/blog/osroot).
+
+## Shared authority and exposure
+
+- All SSH keys for one environment enter the same `agent` account. Sessions,
+  workspace files, provider credentials and Codex login state share that account.
+  There is no per-repository user/secret boundary. File mode 0600 does not protect
+  credentials from another process running as the same user.
+- TCP and Unix-socket forwarding are enabled. `GatewayPorts clientspecified`
+  permits authenticated clients to request non-loopback reverse listeners.
+  The CLI defaults to loopback, but that is not a server-enforced restriction.
+  See [OpenSSH GatewayPorts](https://man.openbsd.org/sshd_config#GatewayPorts).
+- Publishing SSH alone is not a constrained agent execution service:
+  authorized keys grant ordinary shell/SFTP and network access by design.
+- The seccomp profile relaxes namespace/mount-related syscall filters for Codex's
+  nested sandbox. Kernel capability checks remain, but the host kernel and Docker
+  runtime are still part of the security boundary.
+
+## Checks and existing protections
+
+Observed protections include key-only SSH, disabled root/password SSH login,
+SSH host-key checking in the client, loopback-only host publication by default,
+no host Docker socket mount, an unprivileged agent account, token input outside
+command arguments, bounded transfers, rooted filesystem operations, explicit
+destructive sync flags and terminal-control sanitization in the browser.
+
+The Go vulnerability scan reported no reachable Go package vulnerabilities for
+the scanned tree. This does not cover application logic, container OS packages,
+Node/Codex, mise-installed toolchains, provider CLIs or the host Docker/kernel.
+A complete image vulnerability/SBOM assessment and independent penetration test
+have not been performed.
+
+## Before wider deployment
+
+1. Keep the optional privileged Docker sidecar limited to trusted workloads.
+2. Decide and enforce the intended forwarding, credential and workload boundaries.
+3. Scan built images and host components; use scoped credentials and independent
+   backups. Pin artifacts/digests and define security update ownership.
+4. Obtain an independent review if this will host untrusted users or workloads.
+
+Until those boundaries are addressed, avoid sensitive credentials and untrusted
+workloads in this prototype.

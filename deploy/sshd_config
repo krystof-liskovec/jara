@@ -1,0 +1,19 @@
+Port 22
+HostKey /var/lib/jag/ssh/ssh_host_ed25519_key
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+UsePAM no
+AllowUsers agent
+AuthorizedKeysFile /etc/ssh/authorized_keys/%u
+AllowTcpForwarding yes
+AllowStreamLocalForwarding yes
+GatewayPorts clientspecified
+X11Forwarding no
+AllowAgentForwarding no
+PermitUserEnvironment no
+Subsystem sftp internal-sftp
+PrintMotd no
+Include /run/jag/sshd-env.conf

@@ -1,0 +1,7 @@
+/bin/
+/deploy/authorized_keys
+/deploy/.env
+*.test
+*.update.lock
+/deploy/.jag-update-*.json
+__pycache__/
