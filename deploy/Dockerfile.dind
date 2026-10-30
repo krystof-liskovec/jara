@@ -1,0 +1,14 @@
+ARG DOCKER_VERSION=29.9.2
+FROM docker:${DOCKER_VERSION}-dind-rootless
+USER root
+# Match the SSH account so private workspace bind mounts and the API socket work.
+RUN apk add --no-cache su-exec \
+ && sed -i 's/rootless:x:1000:1000:/rootless:x:1001:1001:/' /etc/passwd \
+ && sed -i 's/rootless:x:1000:/rootless:x:1001:/' /etc/group \
+ && mkdir -p /run/user/1001 /home/rootless/docker-run \
+ && chown -R 1001:1001 /home/rootless /run/user/1001 \
+ && chmod 700 /run/user/1001 /home/rootless/docker-run
+ENV XDG_RUNTIME_DIR=/run/user/1001 DOCKER_TLS_CERTDIR=""
+COPY deploy/dind-entrypoint.sh /usr/local/bin/jag-dind-entrypoint
+RUN chmod 755 /usr/local/bin/jag-dind-entrypoint
+ENTRYPOINT ["/usr/local/bin/jag-dind-entrypoint"]

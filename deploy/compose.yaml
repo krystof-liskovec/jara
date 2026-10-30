@@ -1,0 +1,38 @@
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args:
+        CODEX_VERSION: ${CODEX_VERSION:?Set an exact CODEX_VERSION in .env}
+        NODE_VERSION: ${NODE_VERSION:-22.22.0}
+        GO_VERSION: ${GO_VERSION:-}
+        EDITOR_PACKAGES: ${EDITOR_PACKAGES:-}
+        GLAB_VERSION: ${GLAB_VERSION:-}
+        TEA_VERSION: ${TEA_VERSION:-}
+        DOCKER_VERSION: ${DOCKER_VERSION:-29.9.2}
+        MISE_VERSION: ${MISE_VERSION:-2026.10.24}
+    init: true
+    security_opt:
+      - seccomp=./seccomp/codex.json
+    restart: unless-stopped
+    ports:
+      - "${JAG_SSH_BIND:-127.0.0.1}:${JAG_SSH_PORT:-2222}:22"
+    volumes:
+      - agent-home:/home/agent
+      - host-keys:/var/lib/jag/ssh
+      - ${AUTHORIZED_KEYS_FILE:-./authorized_keys}:/run/jag/authorized_keys:ro
+      - ${GITLAB_TOKEN_FILE:-/dev/null}:/run/secrets/gitlab_token:ro
+      - ${GITEA_TOKEN_FILE:-/dev/null}:/run/secrets/gitea_token:ro
+    environment:
+      JAG_DOCKER: ${JAG_DOCKER:-0}
+      GITLAB_HOST: ${GITLAB_HOST:-gitlab.com}
+      GITEA_URL: ${GITEA_URL:-}
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/sbin/sshd -t && test -r /etc/ssh/authorized_keys/agent"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  agent-home:
+  host-keys:
