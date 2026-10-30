@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bytes"
@@ -30,7 +30,7 @@ type hostUpdater struct {
 
 func hostCommand(args []string) error {
 	if len(args) == 0 || args[0] != "update" {
-		return fmt.Errorf("use jag host update --project NAME [--compose FILE] [--env-file FILE] [--check]")
+		return fmt.Errorf("use jara host update --project NAME [--compose FILE] [--env-file FILE] [--check]")
 	}
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("run host update on the Linux Docker host")
@@ -120,13 +120,13 @@ func (u hostUpdater) container() (string, error) {
 }
 func (u hostUpdater) maintenance(container, action, lease string) (maintenanceStatus, error) {
 	var s maintenanceStatus
-	a := []string{"docker", "exec", "--user", "agent", container, "jag", "_maintenance", action}
+	a := []string{"docker", "exec", "--user", "agent", container, "jara", "_maintenance", action}
 	if lease != "" {
 		a = append(a, lease)
 	}
 	b, err := u.run(20*time.Second, a, false)
 	if err != nil {
-		return s, fmt.Errorf("maintenance gate failed; deploy the current Jag image before enabling updates: %w", err)
+		return s, fmt.Errorf("maintenance gate failed; deploy the current Jara image before enabling updates: %w", err)
 	}
 	if action != "end" {
 		err = json.Unmarshal(b, &s)
@@ -236,7 +236,7 @@ func writeEnvPin(p string, original, newData []byte) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(p), ".jag-env-*")
+	f, err := os.CreateTemp(filepath.Dir(p), ".jara-env-*")
 	if err != nil {
 		return err
 	}
@@ -295,7 +295,7 @@ func (u hostUpdater) update(target string, check bool) error {
 			return fmt.Errorf("inspect deployment environment: %w", e)
 		}
 		for _, value := range values {
-			if value == "JAG_DOCKER=1" {
+			if value == "JARA_DOCKER=1" {
 				return fmt.Errorf("Docker-enabled deployment requires --compose-extra deploy/compose.docker.yaml so updates retain its daemon configuration")
 			}
 		}
@@ -358,8 +358,8 @@ func (u hostUpdater) update(target string, check bool) error {
 		return err
 	}
 	lease := "update-" + hex.EncodeToString(raw)
-	tag := "jag-update-" + u.Project + ":" + target + "-" + hex.EncodeToString(raw[:4])
-	override, err := os.CreateTemp(filepath.Dir(u.Compose), ".jag-update-*.json")
+	tag := "jara-update-" + u.Project + ":" + target + "-" + hex.EncodeToString(raw[:4])
+	override, err := os.CreateTemp(filepath.Dir(u.Compose), ".jara-update-*.json")
 	if err != nil {
 		return err
 	}
@@ -387,7 +387,7 @@ func (u hostUpdater) update(target string, check bool) error {
 		smoke = append(smoke, "--security-opt", opt)
 	}
 	// No credentials, live mounts, provider tokens, or inference in this container.
-	smoke = append(smoke, "--entrypoint", "/bin/sh", tag, "-ec", `test "$(codex --version)" = "codex-cli `+target+`"; jag version; mkdir -p /home/agent/update-check; cd /home/agent/update-check; codex sandbox -c 'sandbox_mode="workspace-write"' -- /bin/sh -c 'printf update-ok > inside; if (printf forbidden > /home/agent/outside) 2>/dev/null; then exit 73; fi'; test "$(cat inside)" = update-ok; test ! -e /home/agent/outside`)
+	smoke = append(smoke, "--entrypoint", "/bin/sh", tag, "-ec", `test "$(codex --version)" = "codex-cli `+target+`"; jara version; mkdir -p /home/agent/update-check; cd /home/agent/update-check; codex sandbox -c 'sandbox_mode="workspace-write"' -- /bin/sh -c 'printf update-ok > inside; if (printf forbidden > /home/agent/outside) 2>/dev/null; then exit 73; fi'; test "$(cat inside)" = update-ok; test ! -e /home/agent/outside`)
 	if _, err = u.run(60*time.Second, smoke, true); err != nil {
 		return fmt.Errorf("candidate smoke test failed; live environment unchanged: %w", err)
 	}
@@ -445,7 +445,7 @@ func (u hostUpdater) update(target string, check bool) error {
 	if !regexp.MustCompile(`^sha256:[a-f0-9]{64}$`).MatchString(oldImage) {
 		return fmt.Errorf("cannot determine rollback image")
 	}
-	rollbackTag := "jag-update-" + u.Project + ":previous-" + hex.EncodeToString(raw[:4])
+	rollbackTag := "jara-update-" + u.Project + ":previous-" + hex.EncodeToString(raw[:4])
 	if _, err = u.run(20*time.Second, []string{"docker", "tag", oldImage, rollbackTag}, false); err != nil {
 		return err
 	}
@@ -465,7 +465,7 @@ func (u hostUpdater) update(target string, check bool) error {
 			return fmt.Errorf("deployed version does not match candidate")
 		}
 		var d Diagnosis
-		out, e := u.run(30*time.Second, []string{"docker", "exec", "--user", "agent", id, "jag", "_rpc", token(Request{Op: "doctor"})}, false)
+		out, e := u.run(30*time.Second, []string{"docker", "exec", "--user", "agent", id, "jara", "_rpc", token(Request{Op: "doctor"})}, false)
 		if e != nil {
 			return e
 		}
@@ -473,7 +473,7 @@ func (u hostUpdater) update(target string, check bool) error {
 			return e
 		}
 		if !d.OK || d.Protocol != Protocol {
-			return fmt.Errorf("deployed candidate failed Jag diagnostics")
+			return fmt.Errorf("deployed candidate failed Jara diagnostics")
 		}
 		return nil
 	}

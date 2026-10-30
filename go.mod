@@ -1,4 +1,4 @@
-module gitea.liskovec.dev/krystof.liskovec/jag-cli
+module gitea.liskovec.dev/krystof.liskovec/jara
 
 go 1.27.3
 

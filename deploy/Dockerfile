@@ -21,7 +21,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -o /out/bin/jag ./cmd/jag
+RUN CGO_ENABLED=0 go build -trimpath -o /out/bin/jara ./cmd/jara
 COPY --from=mise /usr/local/bin/mise /out/bin/mise
 COPY --from=dockercli /usr/local/bin/docker /out/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/ /out/cli-plugins/
@@ -36,30 +36,30 @@ RUN test -n "$CODEX_VERSION" \
  && npm install --global "@openai/codex@${CODEX_VERSION}" \
  && useradd --uid 1001 --create-home --shell /bin/bash agent \
  && passwd -d agent \
- && mkdir -p /run/sshd /var/lib/jag/ssh /home/agent/.ssh \
+ && mkdir -p /run/sshd /var/lib/jara/ssh /home/agent/.ssh \
  && chown -R agent:agent /home/agent
-COPY --from=build /out/ /opt/jag/
-ENV PATH="/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jag/bin:/opt/jag/go/bin:${PATH}" \
+COPY --from=build /out/ /opt/jara/
+ENV PATH="/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:${PATH}" \
     GOTOOLCHAIN=local \
-    GOCACHE=/tmp/jag-cache/go-build \
-    GOMODCACHE=/tmp/jag-cache/go-mod \
-    NPM_CONFIG_CACHE=/tmp/jag-cache/npm
-RUN for binary in /opt/jag/bin/*; do ln -s "$binary" "/usr/local/bin/$(basename "$binary")"; done \
- && if [ -x /opt/jag/go/bin/go ]; then \
-      ln -s /opt/jag/go/bin/go /usr/local/bin/go \
-      && ln -s /opt/jag/go/bin/gofmt /usr/local/bin/gofmt; \
+    GOCACHE=/tmp/jara-cache/go-build \
+    GOMODCACHE=/tmp/jara-cache/go-mod \
+    NPM_CONFIG_CACHE=/tmp/jara-cache/npm
+RUN for binary in /opt/jara/bin/*; do ln -s "$binary" "/usr/local/bin/$(basename "$binary")"; done \
+ && if [ -x /opt/jara/go/bin/go ]; then \
+      ln -s /opt/jara/go/bin/go /usr/local/bin/go \
+      && ln -s /opt/jara/go/bin/gofmt /usr/local/bin/gofmt; \
     fi
-COPY deploy/codex-launcher.sh /opt/jag/codex-launcher
+COPY deploy/codex-launcher.sh /opt/jara/codex-launcher
 COPY deploy/mise.toml /etc/mise/config.toml
-COPY deploy/profile.sh /etc/profile.d/jag-tools.sh
+COPY deploy/profile.sh /etc/profile.d/jara-tools.sh
 RUN rm /usr/local/bin/codex \
- && ln -s /opt/jag/codex-launcher /usr/local/bin/codex \
- && chmod 755 /opt/jag/codex-launcher \
+ && ln -s /opt/jara/codex-launcher /usr/local/bin/codex \
+ && chmod 755 /opt/jara/codex-launcher \
  && mkdir -p /usr/local/share/mise/shims \
  && for tool in node npm npx corepack go gofmt; do ln -s /usr/local/bin/mise "/usr/local/share/mise/shims/$tool"; done
-RUN mkdir -p /usr/local/libexec/docker && ln -s /opt/jag/cli-plugins /usr/local/libexec/docker/cli-plugins
+RUN mkdir -p /usr/local/libexec/docker && ln -s /opt/jara/cli-plugins /usr/local/libexec/docker/cli-plugins
 COPY deploy/sshd_config /etc/ssh/sshd_config
-COPY deploy/entrypoint.sh /usr/local/bin/jag-entrypoint
-RUN chmod 755 /usr/local/bin/jag-entrypoint
+COPY deploy/entrypoint.sh /usr/local/bin/jara-entrypoint
+RUN chmod 755 /usr/local/bin/jara-entrypoint
 EXPOSE 22
-ENTRYPOINT ["/usr/local/bin/jag-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/jara-entrypoint"]

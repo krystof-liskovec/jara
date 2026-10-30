@@ -1,13 +1,13 @@
 # Concurrent project toolchains
 
-Jag supports multiple installed Node and Go versions in the same container.
+Jara supports multiple installed Node and Go versions in the same container.
 Each project selects its tools independently; opening one project never runs a
 global `mise use` or changes another project's selection.
 
 The container includes mise 2026.10.24. No mise installation is required on the
 laptop. Installed versions and download caches live in the persistent agent home,
 so recreating or updating the container does not discard them.
-Go compiler/module caches and npm's package cache default to `/tmp/jag-cache`,
+Go compiler/module caches and npm's package cache default to `/tmp/jara-cache`,
 which Codex's sandbox can write without additional permissions. These build and
 package caches are regenerated after container recreation; installed Node/Go
 versions remain persistent.
@@ -30,17 +30,17 @@ node = "22.22.0"
 go = "1.27.3"
 ```
 
-Jag installs missing tools before creating a Codex terminal. It then launches the
+Jara installs missing tools before creating a Codex terminal. It then launches the
 actual Codex executable through `mise exec`, with that project's resolved PATH
 and tool environment. Both sessions can run at once. Existing running sessions
 are reattached without replacing their environment.
 
 Use exact versions or a committed `mise.lock` for reproducibility. Floating
-requests such as `node = "22"` or `latest` follow mise's resolution rules; Jag
+requests such as `node = "22"` or `latest` follow mise's resolution rules; Jara
 does not rewrite repository configuration or automatically generate a lockfile.
 
 Version configuration must reach the remote workspace. Commit it before using
-`jag --clone`, use `jag --copy` for an initial working-directory copy, or transfer
+`jara --clone`, use `jara --copy` for an initial working-directory copy, or transfer
 it to an existing workspace with the explicit sync commands.
 
 ## Existing version files
@@ -66,13 +66,13 @@ go 1.27.3
 Go itself interprets module/toolchain directives as minimum requirements. Mise's
 reader can select an exact patch release from them; a bare `go 1.27` is not an
 exact release pin. Use a patch-level directive or explicit mise configuration.
-Jag defaults `GOTOOLCHAIN=local` so Go uses the selected installed toolchain and
+Jara defaults `GOTOOLCHAIN=local` so Go uses the selected installed toolchain and
 reports a mismatch instead of silently downloading a different one. A deliberate
 project environment override can change that behavior.
 
 Full mise configuration retains native mise behavior, including its environment,
 trust and hook semantics. For straightforward version selection, plain `[tools]`
-entries are sufficient. Jag does not enable blanket trusted paths or globally
+entries are sufficient. Jara does not enable blanket trusted paths or globally
 answer yes to mise prompts.
 
 ## Inspect and install
@@ -80,18 +80,18 @@ answer yes to mise prompts.
 From an associated local workspace:
 
 ```sh
-jag tools           # Show selected remote project versions
-jag tools current
-jag tools install   # Install missing configured versions without starting Codex
+jara tools           # Show selected remote project versions
+jara tools current
+jara tools install   # Install missing configured versions without starting Codex
 ```
 
 These commands accept the normal `--remote` and `--source` workspace options.
 An invalid configuration or failed installation produces a visible setup error;
-Jag does not create a replacement terminal or silently change the requested pin.
+Jara does not create a replacement terminal or silently change the requested pin.
 
 After changing versions, close/restart the relevant Codex or editor process so
 its inherited environment is refreshed. The process environment resolved at
-startup stays with that process. For a different nested project, start Jag from
+startup stays with that process. For a different nested project, start Jara from
 that subdirectory or explicitly use `mise exec` there.
 
 ## SSH and editors
@@ -101,8 +101,8 @@ command such as `cd /path/to/project && node --version` uses that project's
 selection. First use can install a missing configured version. Projects without
 a matching selection fall back to available image defaults.
 
-`jag edit` prepares the selected project tools before opening the editor. Vim and
-Neovim started through Jag receive the project's environment. VS Code Remote SSH
+`jara edit` prepares the selected project tools before opening the editor. Vim and
+Neovim started through Jara receive the project's environment. VS Code Remote SSH
 can discover the shims through SSH's PATH and invoke tools with the project's
 working directory. Individual extensions that cache absolute executable paths
 may need workspace-level settings or a restart. Native VS Code GUI behavior was
@@ -121,7 +121,7 @@ Rebuild the container once from the current source. Thereafter, adding another
 project Node/Go version does not require an image rebuild or another container.
 
 ```sh
-docker compose -p jag-personal --env-file deploy/.env \
+docker compose -p jara-personal --env-file deploy/.env \
   -f deploy/compose.yaml up -d --build
 ```
 
@@ -131,7 +131,7 @@ shell behavior, and verifies toolchain persistence after container recreation:
 
 ```sh
 docker build -f deploy/Dockerfile --build-arg CODEX_VERSION=0.166.0 \
-  -t jag-agent:toolchains-validation .
+  -t jara-agent:toolchains-validation .
 python3 scripts/toolchains_e2e.py
 ```
 
@@ -140,14 +140,14 @@ To also check actual Neovim processes and image-default Go fallback:
 ```sh
 docker build -f deploy/Dockerfile --build-arg CODEX_VERSION=0.166.0 \
   --build-arg GO_VERSION=1.27.3 --build-arg 'EDITOR_PACKAGES=vim neovim' \
-  -t jag-agent:toolchains-editors-validation .
-JAG_TEST_IMAGE=jag-agent:toolchains-editors-validation python3 scripts/toolchains_e2e.py
+  -t jara-agent:toolchains-editors-validation .
+JARA_TEST_IMAGE=jara-agent:toolchains-editors-validation python3 scripts/toolchains_e2e.py
 ```
 
 With Codex 0.166.0, the sandbox places an empty protected `.git` directory in a
 non-Git workspace. Go can mistake it for VCS metadata when stamping a build. In a
 copied non-Git folder, use `go build -buildvcs=false` if this occurs. Normal Git
-repositories can use plain `go build`. Jag does not globally disable VCS stamping
+repositories can use plain `go build`. Jara does not globally disable VCS stamping
 or initialize Git repositories automatically. The integration test covers both
 forms inside the actual Codex sandbox.
 

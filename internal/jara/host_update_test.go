@@ -1,6 +1,6 @@
 //go:build linux
 
-package jag
+package jara
 
 import (
 	"bytes"
@@ -119,7 +119,7 @@ func newUpdateFixture(t *testing.T) *updateFixture {
 				x.version = "0.165.0"
 			}
 			return nil, nil
-		case strings.Contains(cmd, "jag _rpc"):
+		case strings.Contains(cmd, "jara _rpc"):
 			return json.Marshal(Diagnosis{Protocol: Protocol, OK: true})
 		default:
 			return nil, fmt.Errorf("unexpected command %s", cmd)
@@ -240,7 +240,7 @@ func TestUpdateRefusesLostDockerOverlay(t *testing.T) {
 	run := x.u.run
 	x.u.run = func(timeout time.Duration, args []string, stream bool) ([]byte, error) {
 		if strings.Contains(strings.Join(args, " "), "{{json .Config.Env}}") {
-			return []byte(`["JAG_DOCKER=1"]`), nil
+			return []byte(`["JARA_DOCKER=1"]`), nil
 		}
 		return run(timeout, args, stream)
 	}

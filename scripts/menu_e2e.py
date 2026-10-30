@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Responsive browser over real SSH PTYs; no credentials or model calls.
-Build jag-agent:responsive-validation first, or set JAG_TEST_IMAGE.
+Build jara-agent:responsive-validation first, or set JARA_TEST_IMAGE.
 """
 import fcntl
 import json
@@ -19,18 +19,18 @@ ESC = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def main():
-    project = "jag-menu-" + uuid.uuid4().hex[:8]
-    with tempfile.TemporaryDirectory(prefix="jag-menu-") as directory:
+    project = "jara-menu-" + uuid.uuid4().hex[:8]
+    with tempfile.TemporaryDirectory(prefix="jara-menu-") as directory:
         temp = Path(directory)
         run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(temp / "key"))
-        image = os.environ.get("JAG_TEST_IMAGE", "jag-agent:responsive-validation")
+        image = os.environ.get("JARA_TEST_IMAGE", "jara-agent:responsive-validation")
         terminal = None
         try:
-            container = run("docker", "run", "-d", "--name", project, "-p", "127.0.0.1::22", "--security-opt", f"seccomp={ROOT/'deploy/seccomp/codex.json'}", "-v", f"{temp}/key.pub:/run/jag/authorized_keys:ro", image)
+            container = run("docker", "run", "-d", "--name", project, "-p", "127.0.0.1::22", "--security-opt", f"seccomp={ROOT/'deploy/seccomp/codex.json'}", "-v", f"{temp}/key.pub:/run/jara/authorized_keys:ro", image)
             port = run("docker", "port", container, "22/tcp").rsplit(":", 1)[1]
             for attempt in range(50):
                 try:
-                    public = run("docker", "exec", container, "cat", "/var/lib/jag/ssh/ssh_host_ed25519_key.pub")
+                    public = run("docker", "exec", container, "cat", "/var/lib/jara/ssh/ssh_host_ed25519_key.pub")
                     break
                 except RuntimeError:
                     if attempt == 49: raise
@@ -42,17 +42,17 @@ def main():
             fixture.mkdir()
             for i in range(16):
                 workspace = f"w-{i:02d}"
-                path = f"/home/agent/.local/share/jag/workspaces/{workspace}"
+                path = f"/home/agent/.local/share/jara/workspaces/{workspace}"
                 (fixture / workspace).mkdir()
                 (fixture / f"{workspace}.json").write_text(json.dumps(dict(id=workspace, name=f"project-{i:02d}-with-a-long-descriptive-name", path=path, branch="feature/long-branch-name", ready=True)))
-            run("docker", "exec", "-u", "agent", container, "mkdir", "-p", "/home/agent/.local/share/jag")
-            run("docker", "cp", str(fixture), f"{container}:/home/agent/.local/share/jag/workspaces")
-            run("docker", "exec", container, "chown", "-R", "agent:agent", "/home/agent/.local/share/jag")
+            run("docker", "exec", "-u", "agent", container, "mkdir", "-p", "/home/agent/.local/share/jara")
+            run("docker", "cp", str(fixture), f"{container}:/home/agent/.local/share/jara/workspaces")
+            run("docker", "exec", container, "chown", "-R", "agent:agent", "/home/agent/.local/share/jara")
             for i in range(2):
-                run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jag", "new-session", "-d", "-s", f"fixture-{i}", "sleep", "3600")
-                run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jag", "set-option", "-t", f"fixture-{i}", "@jag_workspace", f"w-{i:02d}")
+                run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jara", "new-session", "-d", "-s", f"fixture-{i}", "sleep", "3600")
+                run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jara", "set-option", "-t", f"fixture-{i}", "@jara_workspace", f"w-{i:02d}")
             env = dict(os.environ, TERM="xterm-256color")
-            wrapper = 'before=$(stty -g); jag connect; after=$(stty -g); test "$before" = "$after" && echo MENU-RESTORED'
+            wrapper = 'before=$(stty -g); jara connect; after=$(stty -g); test "$before" = "$after" && echo MENU-RESTORED'
 
             def resize(cols, rows):
                 fcntl.ioctl(terminal.master, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
@@ -78,8 +78,8 @@ def main():
                 assert all(len(line) <= cols - 1 for line in lines), (cols, rows, lines)
 
             def snapshot(name):
-                if os.environ.get("JAG_MENU_SNAPSHOT_DIR"):
-                    target = Path(os.environ["JAG_MENU_SNAPSHOT_DIR"])
+                if os.environ.get("JARA_MENU_SNAPSHOT_DIR"):
+                    target = Path(os.environ["JARA_MENU_SNAPSHOT_DIR"])
                     target.mkdir(parents=True, exist_ok=True)
                     (target / (name + ".txt")).write_text(frame())
 
@@ -121,7 +121,7 @@ def main():
             terminal.close(); terminal = None
             print("PASS: Ctrl-C exits the browser and restores the shell terminal", flush=True)
 
-            terminal = Terminal(ssh + ["jag connect"], temp, env)
+            terminal = Terminal(ssh + ["jara connect"], temp, env)
             resize(40, 18)
             wait("1–6 of 35")
             os.write(terminal.master, b"n")
@@ -130,21 +130,21 @@ def main():
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 terminal.drain()
-                inventory = run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jag", "list-sessions", "-F", "#{session_name}|#{@jag_workspace}")
+                inventory = run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jara", "list-sessions", "-F", "#{session_name}|#{@jara_workspace}")
                 target = next((line.split("|")[0] for line in inventory.splitlines() if line.endswith("|w-02")), None)
                 if target:
-                    screen = run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jag", "capture-pane", "-p", "-t", target)
+                    screen = run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jara", "capture-pane", "-p", "-t", target)
                     if "Codex" in screen: break
                 time.sleep(.1)
             else: raise AssertionError(terminal.output.decode(errors="replace"))
             assert len(inventory.splitlines()) == 3, inventory
             terminal.close(abrupt=True); terminal = None
-            terminal = Terminal(ssh + ["jag connect w-02"], temp, env)
+            terminal = Terminal(ssh + ["jara connect w-02"], temp, env)
             resize(40, 18)
             deadline = time.monotonic() + 10
             while time.monotonic() < deadline:
                 terminal.drain()
-                attached = run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jag", "list-sessions", "-F", "#{@jag_workspace}|#{session_attached}")
+                attached = run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jara", "list-sessions", "-F", "#{@jara_workspace}|#{session_attached}")
                 if "w-02|1" in attached: break
                 time.sleep(.1)
             assert "w-02|1" in attached, attached

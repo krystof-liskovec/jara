@@ -7,7 +7,7 @@ version-pinned official protocol source.
 
 No verified, supported public CLI interface imports an existing local Codex
 conversation into a different remote environment as a native resumable thread.
-This required feature is blocked by the verified upstream interface. Jag's
+This required feature is blocked by the verified upstream interface. Jara's
 `migrate` command fails explicitly, without moving or editing session files.
 
 Checked `codex --help`, `codex resume --help`, `codex app-server --help`, and
@@ -28,7 +28,7 @@ Sources: [version-pinned protocol](https://github.com/openai/codex/blob/rust-v0.
 
 The desktop application documents host handoff with conversation and Git-state
 transfer between matching projects. That does not establish a supported CLI API
-for Jag. [Remote handoff documentation](https://learn.chatgpt.com/docs/remote-connections).
+for Jara. [Remote handoff documentation](https://learn.chatgpt.com/docs/remote-connections).
 
 ## Acceptance criteria for a future implementation
 

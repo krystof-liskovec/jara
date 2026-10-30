@@ -1,3 +1,5 @@
+name: jara
+
 services:
   agent:
     build:
@@ -17,15 +19,15 @@ services:
       - seccomp=./seccomp/codex.json
     restart: unless-stopped
     ports:
-      - "${JAG_SSH_BIND:-127.0.0.1}:${JAG_SSH_PORT:-2222}:22"
+      - "${JARA_SSH_BIND:-127.0.0.1}:${JARA_SSH_PORT:-2222}:22"
     volumes:
       - agent-home:/home/agent
-      - host-keys:/var/lib/jag/ssh
-      - ${AUTHORIZED_KEYS_FILE:-./authorized_keys}:/run/jag/authorized_keys:ro
+      - host-keys:/var/lib/jara/ssh
+      - ${AUTHORIZED_KEYS_FILE:-./authorized_keys}:/run/jara/authorized_keys:ro
       - ${GITLAB_TOKEN_FILE:-/dev/null}:/run/secrets/gitlab_token:ro
       - ${GITEA_TOKEN_FILE:-/dev/null}:/run/secrets/gitea_token:ro
     environment:
-      JAG_DOCKER: ${JAG_DOCKER:-0}
+      JARA_DOCKER: ${JARA_DOCKER:-0}
       GITLAB_HOST: ${GITLAB_HOST:-gitlab.com}
       GITEA_URL: ${GITEA_URL:-}
     healthcheck:

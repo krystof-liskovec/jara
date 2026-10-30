@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestConfigRefusesConcurrentLostUpdates(t *testing.T) {
-	t.Setenv("JAG_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("JARA_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	a, err := readConfig()
 	if err != nil {
 		t.Fatal(err)

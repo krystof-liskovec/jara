@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bytes"
@@ -185,13 +185,13 @@ func snapshotWithIgnored(root string, includeIgnored bool) (Snapshot, error) {
 				return nil, err
 			}
 			if !validLink(name, f.Link) {
-				return nil, fmt.Errorf("link %s points outside workspace; exclude it in .jagignore", name)
+				return nil, fmt.Errorf("link %s points outside workspace; exclude it in .jaraignore", name)
 			}
 			f.Mode = 0
 		case info.Mode().IsRegular():
 			total += info.Size()
 			if total > maxTransfer {
-				return nil, fmt.Errorf("workspace exceeds the 64 MiB transfer limit; exclude generated/large files in .jagignore")
+				return nil, fmt.Errorf("workspace exceeds the 64 MiB transfer limit; exclude generated/large files in .jaraignore")
 			}
 			f.Data, err = rootReadFile(rootFS, rel, maxTransfer-total)
 			if err != nil {
@@ -223,7 +223,7 @@ func readIgnore(root string) ([]ignoreRule, error) {
 		return nil, err
 	}
 	defer rootFS.Close()
-	info, err := rootFS.Lstat(".jagignore")
+	info, err := rootFS.Lstat(".jaraignore")
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -231,9 +231,9 @@ func readIgnore(root string) ([]ignoreRule, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf(".jagignore must be a regular file")
+		return nil, fmt.Errorf(".jaraignore must be a regular file")
 	}
-	b, err := rootReadFile(rootFS, ".jagignore", maxIgnoreFile)
+	b, err := rootReadFile(rootFS, ".jaraignore", maxIgnoreFile)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +503,7 @@ func rootTempName(dir string) (string, error) {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, fmt.Sprintf(".jag-transfer-%x", nonce[:])), nil
+	return filepath.Join(dir, fmt.Sprintf(".jara-transfer-%x", nonce[:])), nil
 }
 func rootWriteAtomic(root *os.Root, name string, data []byte, mode os.FileMode) error {
 	dir := filepath.Dir(name)
@@ -634,7 +634,7 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 			delete(remote, p)
 		}
 	} else {
-		// Pull is also prohibited while Jag-managed agents are active remotely.
+		// Pull is also prohibited while Jara-managed agents are active remotely.
 		if err = rpc(r, Request{Op: "guard", ID: b.Workspace, Force: force}, nil, nil); err != nil {
 			return err
 		}
@@ -720,7 +720,7 @@ func existingPaths(root string, paths []string) (map[string]bool, error) {
 	return present, nil
 }
 func repositoryBundle(root string) (io.Reader, func(), error) {
-	f, err := os.CreateTemp("", "jag-bundle-*")
+	f, err := os.CreateTemp("", "jara-bundle-*")
 	if err != nil {
 		return nil, func() {}, err
 	}

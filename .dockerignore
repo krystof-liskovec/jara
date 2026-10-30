@@ -3,4 +3,4 @@ bin
 deploy/authorized_keys
 deploy/.env
 **/*_test.go
-deploy/.jag-update-*.json
+deploy/.jara-update-*.json

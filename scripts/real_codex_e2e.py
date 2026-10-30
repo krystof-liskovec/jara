@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compose + real Codex terminal test. Never imports personal credentials.
 
-Build jag-agent:real-validation from the current tree before running.
+Build jara-agent:real-validation from the current tree before running.
 """
 import fcntl
 import argparse
@@ -80,18 +80,18 @@ def main():
     parser.add_argument("--live-auth",type=Path,help="Explicitly authorized login cache to copy into this disposable container")
     args=parser.parse_args()
     auth=args.live_auth.resolve() if args.live_auth else None
-    run("go", "build", "-o", str(ROOT / "bin/jag"), "./cmd/jag", cwd=ROOT)
-    with tempfile.TemporaryDirectory(prefix="jag-real-") as directory:
+    run("go", "build", "-o", str(ROOT / "bin/jara"), "./cmd/jara", cwd=ROOT)
+    with tempfile.TemporaryDirectory(prefix="jara-real-") as directory:
         temp = Path(directory)
         run("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(temp / "key"))
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
-        project = "jag-real-" + uuid.uuid4().hex[:10]
+        project = "jara-real-" + uuid.uuid4().hex[:10]
         override = temp / "compose.yaml"
-        override.write_text(json.dumps({"services": {"agent": {"image": os.environ.get("JAG_TEST_IMAGE", "jag-agent:real-validation")}}}))
-        env = dict(os.environ, CODEX_VERSION="0.166.0", JAG_SSH_BIND="127.0.0.1",
-                   JAG_SSH_PORT=str(port), AUTHORIZED_KEYS_FILE=str(temp / "key.pub"),
+        override.write_text(json.dumps({"services": {"agent": {"image": os.environ.get("JARA_TEST_IMAGE", "jara-agent:real-validation")}}}))
+        env = dict(os.environ, CODEX_VERSION="0.166.0", JARA_SSH_BIND="127.0.0.1",
+                   JARA_SSH_PORT=str(port), AUTHORIZED_KEYS_FILE=str(temp / "key.pub"),
                    GITLAB_TOKEN_FILE="/dev/null", GITEA_TOKEN_FILE="/dev/null")
         compose = ["docker", "compose", "-p", project, "-f", str(ROOT / "deploy/compose.yaml"), "-f", str(override)]
         terminal = None
@@ -101,7 +101,7 @@ def main():
             deadline = time.monotonic() + 20
             while True:
                 try:
-                    public = run("docker", "exec", container, "cat", "/var/lib/jag/ssh/ssh_host_ed25519_key.pub")
+                    public = run("docker", "exec", container, "cat", "/var/lib/jara/ssh/ssh_host_ed25519_key.pub")
                     break
                 except RuntimeError:
                     if time.monotonic() > deadline:
@@ -109,23 +109,23 @@ def main():
                     time.sleep(0.1)
             (temp / "known_hosts").write_text(f"[127.0.0.1]:{port} {public}\n")
             (temp / "ssh_config").write_text(f"Host real\n HostName 127.0.0.1\n Port {port}\n User agent\n IdentityFile {temp}/key\n IdentitiesOnly yes\n UserKnownHostsFile {temp}/known_hosts\n")
-            client_env = dict(env, HOME=str(temp), JAG_CONFIG=str(temp / "config.json"),
-                              JAG_SSH_CONFIG=str(temp / "ssh_config"), TERM="xterm-256color")
+            client_env = dict(env, HOME=str(temp), JARA_CONFIG=str(temp / "config.json"),
+                              JARA_SSH_CONFIG=str(temp / "ssh_config"), TERM="xterm-256color")
             # These are intentionally not passed to the container.
             for name in ("OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL", "CODEX_HOME"):
                 client_env.pop(name, None)
-            jag = str(ROOT / "bin/jag")
-            print(run(jag, "remote", "add", "real", "--host", "real", env=client_env), flush=True)
+            jara = str(ROOT / "bin/jara")
+            print(run(jara, "remote", "add", "real", "--host", "real", env=client_env), flush=True)
             workspace = temp / "workspace"
             workspace.mkdir()
             (workspace / "hello.txt").write_text("persistent workspace\n")
-            terminal = Terminal([jag, "--copy"], workspace, client_env)
+            terminal = Terminal([jara, "--copy"], workspace, client_env)
 
             def inventory():
-                return run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jag", "list-sessions", "-F", "#{session_name}|#{session_id}|#{session_attached}")
+                return run("docker", "exec", "-u", "agent", container, "tmux", "-L", "jara", "list-sessions", "-F", "#{session_name}|#{session_id}|#{session_attached}")
 
             def screen():
-                result=subprocess.run(["docker", "exec", "-u", "agent", container, "tmux", "-L", "jag", "capture-pane", "-p", "-S", "-100"],text=True,capture_output=True,timeout=10)
+                result=subprocess.run(["docker", "exec", "-u", "agent", container, "tmux", "-L", "jara", "capture-pane", "-p", "-S", "-100"],text=True,capture_output=True,timeout=10)
                 if result.returncode and "no server running" not in result.stderr and "No such file" not in result.stderr:
                     raise RuntimeError(result.stderr)
                 return result.stdout.strip()
@@ -145,13 +145,13 @@ def main():
             else:
                 raise AssertionError("Real Codex UI did not start: " + terminal.output.decode(errors="replace"))
             assert "Choose how you want to use Codex" in text,text
-            print("PASS: real Codex sign-in UI over Compose/OpenSSH/Jag/tmux",flush=True)
+            print("PASS: real Codex sign-in UI over Compose/OpenSSH/Jara/tmux",flush=True)
             initial=inventory().split("|")[:2]
             terminal.close(abrupt=True)
             terminal=None
             assert inventory().split("|")[:2]==initial
             binding=json.loads((temp/"config.json").read_text())["bindings"][str(workspace)]
-            terminal=Terminal(["ssh", "-tt", "-F", str(temp/"ssh_config"), "real", "jag connect " + binding["workspace"]],workspace,client_env)
+            terminal=Terminal(["ssh", "-tt", "-F", str(temp/"ssh_config"), "real", "jara connect " + binding["workspace"]],workspace,client_env)
             deadline=time.monotonic()+10
             while time.monotonic()<deadline:
                 terminal.drain()
@@ -162,10 +162,10 @@ def main():
             assert "Choose how you want to use Codex" in screen()
             terminal.close()
             terminal=None
-            print("PASS: abrupt SSH loss and plain SSH jag connect reattach preserve the real Codex terminal",flush=True)
+            print("PASS: abrupt SSH loss and plain SSH jara connect reattach preserve the real Codex terminal",flush=True)
 
             binding=json.loads((temp/"config.json").read_text())["bindings"][str(workspace)]
-            remote_path="/home/agent/.local/share/jag/workspaces/"+binding["workspace"]
+            remote_path="/home/agent/.local/share/jara/workspaces/"+binding["workspace"]
             # Exercise the real Codex sandbox without a model call, including its boundary.
             sandbox_script="printf sandbox-ok > sandbox-check.txt; if printf forbidden > /home/agent/outside-sandbox.txt 2>/dev/null; then exit 73; fi"
             run("docker","exec","-u","agent","-w",remote_path,container,"codex","sandbox","-c","sandbox_mode=\"workspace-write\"","--","/bin/sh","-c",sandbox_script)
@@ -175,7 +175,7 @@ def main():
 
             def recreate():
                 nonlocal container
-                before=run("docker","exec",container,"cat","/var/lib/jag/ssh/ssh_host_ed25519_key.pub")
+                before=run("docker","exec",container,"cat","/var/lib/jara/ssh/ssh_host_ed25519_key.pub")
                 run(*compose,"up","-d","--no-build","--force-recreate",env=env)
                 container=run(*compose,"ps","-q","agent",env=env)
                 deadline=time.monotonic()+15
@@ -185,7 +185,7 @@ def main():
                         break
                     time.sleep(0.1)
                 assert check.returncode==0,"SSH did not become ready after recreation"
-                assert run("docker","exec",container,"cat","/var/lib/jag/ssh/ssh_host_ed25519_key.pub")==before
+                assert run("docker","exec",container,"cat","/var/lib/jara/ssh/ssh_host_ed25519_key.pub")==before
                 assert run("docker","exec",container,"cat",remote_path+"/hello.txt")=="persistent workspace"
 
             recreate()
@@ -197,12 +197,12 @@ def main():
                 run("docker","exec",container,"chmod","600","/home/agent/.codex/auth.json")
                 status=run("docker","exec","-u","agent",container,"codex","login","status")
                 print("PASS: authorized login cache accepted by real remote Codex",flush=True)
-                probe=subprocess.run(["docker","exec","-u","agent",container,"tmux","-L","jag","has-session"],capture_output=True)
+                probe=subprocess.run(["docker","exec","-u","agent",container,"tmux","-L","jara","has-session"],capture_output=True)
                 if probe.returncode==0:
-                    run("docker","exec","-u","agent",container,"tmux","-L","jag","kill-server")
+                    run("docker","exec","-u","agent",container,"tmux","-L","jara","kill-server")
                 config='[projects.'+json.dumps(remote_path)+']\ntrust_level = "trusted"\n'
                 run("docker","exec","-i","-u","agent",container,"sh","-c","cat > /home/agent/.codex/config.toml",input=config)
-                terminal=Terminal([jag],workspace,client_env)
+                terminal=Terminal([jara],workspace,client_env)
                 deadline=time.monotonic()+30
                 while time.monotonic()<deadline:
                     terminal.drain()
@@ -215,7 +215,7 @@ def main():
                 else:
                     raise AssertionError("Signed-in Codex did not reach prompt:\n"+text)
                 print("PASS: signed-in real Codex reached its interactive prompt",flush=True)
-                prompt="Create a file named jag-live-check.txt containing exactly jag-live-ok followed by a newline. Do not modify any other files. Then reply JAG_LIVE_OK."
+                prompt="Create a file named jara-live-check.txt containing exactly jara-live-ok followed by a newline. Do not modify any other files. Then reply JARA_LIVE_OK."
                 terminal.send(b"\x1b[200~"+prompt.encode()+b"\x1b[201~")
                 time.sleep(0.3)
                 terminal.send(b"\r")
@@ -224,10 +224,10 @@ def main():
                     terminal.drain()
                     text=screen()
                     # Tool approval is allowed only for the requested fixture file.
-                    if "Would you like to" in text and "jag-live-check.txt" in text:
+                    if "Would you like to" in text and "jara-live-check.txt" in text:
                         terminal.send(b"\r")
-                    result=subprocess.run(["docker","exec",container,"cat",remote_path+"/jag-live-check.txt"],text=True,capture_output=True)
-                    if result.returncode==0 and result.stdout=="jag-live-ok\n" and "JAG_LIVE_OK" in text and "esc to interrupt" not in text:
+                    result=subprocess.run(["docker","exec",container,"cat",remote_path+"/jara-live-check.txt"],text=True,capture_output=True)
+                    if result.returncode==0 and result.stdout=="jara-live-ok\n" and "JARA_LIVE_OK" in text and "esc to interrupt" not in text:
                         break
                     if "Reconnecting" in text or "error" in text.lower():
                         pass
@@ -238,22 +238,22 @@ def main():
                 live_session=inventory().split("|")[:2]
                 terminal.close()
                 terminal=None
-                terminal=Terminal([jag],workspace,client_env)
+                terminal=Terminal([jara],workspace,client_env)
                 deadline=time.monotonic()+10
                 while time.monotonic()<deadline:
                     terminal.drain()
-                    if "JAG_LIVE_OK" in screen() and inventory().endswith("|1"):
+                    if "JARA_LIVE_OK" in screen() and inventory().endswith("|1"):
                         break
                     time.sleep(0.1)
                 assert inventory().split("|")[:2]==live_session
-                assert "JAG_LIVE_OK" in screen()
+                assert "JARA_LIVE_OK" in screen()
                 terminal.close()
                 terminal=None
                 print("PASS: completed live conversation remains visible after reattachment",flush=True)
 
                 recreate()
-                assert run("docker","exec",container,"cat",remote_path+"/jag-live-check.txt")=="jag-live-ok"
-                terminal=Terminal([jag,"resume"],workspace,client_env)
+                assert run("docker","exec",container,"cat",remote_path+"/jara-live-check.txt")=="jara-live-ok"
+                terminal=Terminal([jara,"resume"],workspace,client_env)
                 deadline=time.monotonic()+20
                 while time.monotonic()<deadline:
                     terminal.drain()
@@ -269,10 +269,10 @@ def main():
                 deadline=time.monotonic()+15
                 while time.monotonic()<deadline:
                     terminal.drain()
-                    if "JAG_LIVE_OK" in screen():
+                    if "JARA_LIVE_OK" in screen():
                         break
                     time.sleep(0.1)
-                assert "JAG_LIVE_OK" in screen(),"Selected saved conversation did not reopen"
+                assert "JARA_LIVE_OK" in screen(),"Selected saved conversation did not reopen"
                 print("PASS: Compose recreation preserves host identity, workspace, and real Codex resume picker",flush=True)
         finally:
             try:

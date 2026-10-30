@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bufio"
@@ -68,7 +68,7 @@ func menuLines(title string, items []menuItem, selected, width, height int) []st
 	size := menuPageSize(width+1, height)
 	start := selected / size * size
 	end := min(start+size, len(items))
-	lines := []string{fitMenu("Jag · "+title, width), fitMenu(fmt.Sprintf("%d–%d of %d", start+1, end, len(items)), width)}
+	lines := []string{fitMenu("Jara · "+title, width), fitMenu(fmt.Sprintf("%d–%d of %d", start+1, end, len(items)), width)}
 	for i := start; i < end; i++ {
 		mark := "  "
 		if i == selected {

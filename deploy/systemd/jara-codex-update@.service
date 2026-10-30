@@ -1,0 +1,15 @@
+[Unit]
+Description=Update Codex in Jara Compose environment %i when unused
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=JARA_COMPOSE_FILE=/srv/jara/deploy/compose.yaml
+Environment=JARA_ENV_FILE=/srv/jara/deploy/.env
+Environment=JARA_COMPOSE_EXTRA=
+EnvironmentFile=-/etc/jara/%i.env
+ExecStart=/usr/local/bin/jara host update --project %i --compose ${JARA_COMPOSE_FILE} --env-file ${JARA_ENV_FILE} --compose-extra ${JARA_COMPOSE_EXTRA}
+TimeoutStartSec=55min
+UMask=0077

@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"encoding/json"
@@ -47,7 +47,7 @@ func admitWorkspace() error {
 }
 
 func updateBusy() (maintenanceStatus, error) {
-	// Count every session on Jag's socket, including sessions without Jag metadata.
+	// Count every session on Jara's socket, including sessions without metadata.
 	b, err := tmux("list-sessions", "-F", "#{session_name}").Output()
 	if err != nil {
 		if _, e := sessions(); e != nil {

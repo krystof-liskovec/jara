@@ -3,12 +3,12 @@
 Automatic updates are **opt-in and managed on the Linux Docker host**. The agent
 container never receives the host Docker socket. Optional DinD deployments use
 a separate nested daemon and must pass `--compose-extra deploy/compose.docker.yaml`
-to the updater (or set `JAG_COMPOSE_EXTRA` in the timer configuration). The local laptop client does not
+to the updater (or set `JARA_COMPOSE_EXTRA` in the timer configuration). The local laptop client does not
 administer the host or install updates.
 
 ## Behavior
 
-`jag host update` checks the npm `latest` release of `@openai/codex`, requires an
+`jara host update` checks the npm `latest` release of `@openai/codex`, requires an
 exact stable `x.y.z` version, and only upgrades to a newer version. It does not
 select prereleases or downgrade an environment.
 
@@ -20,8 +20,8 @@ Before changing the running environment it:
    container with no network, credentials or live data mounts. The sandbox must
    permit workspace writes and refuse writes outside its workspace.
 4. Rechecks for active use after the build and takes a maintenance lease. New
-   Jag workspace operations are then blocked while the container is replaced.
-5. Recreates the agent, waits for Docker health and runs Jag diagnostics.
+   Jara workspace operations are then blocked while the container is replaced.
+5. Recreates the agent, waits for Docker health and runs Jara diagnostics.
 6. Records the exact successfully installed version in the deployment env file.
 
 An open Codex terminal counts as active even when detached or waiting for input.
@@ -42,27 +42,27 @@ image retention/pruning is currently manual.
 
 ## First install
 
-The deployed Jag binary must include the maintenance gate. If upgrading from an
-earlier Jag build, first deploy the current source using the usual Compose rebuild
+The deployed Jara binary must include the maintenance gate. If upgrading from an
+earlier Jara build, first deploy the current source using the usual Compose rebuild
 when sessions have been closed. The updater refuses to replace a container that
 does not support its gate.
 
-Install the Linux Jag binary on the Docker host. Either build it with Go, or copy
+Install the Linux Jara binary on the Docker host. Either build it with Go, or copy
 the compiled binary from the running container (no host Go installation needed):
 
 ```sh
-cd /path/to/jag-cli
+cd /path/to/jara
 mkdir -p bin
-JAG_AGENT_ID=$(docker compose -p jag-personal --env-file deploy/.env \
+JARA_AGENT_ID=$(docker compose -p jara-personal --env-file deploy/.env \
   -f deploy/compose.yaml ps -q agent)
-docker cp "$JAG_AGENT_ID:/opt/jag/bin/jag" bin/jag-host
-sudo install -m 755 bin/jag-host /usr/local/bin/jag
+docker cp "$JARA_AGENT_ID:/opt/jara/bin/jara" bin/jara-host
+sudo install -m 755 bin/jara-host /usr/local/bin/jara
 ```
 
 Use the **same project name** as the existing deployment. Run a read-only check:
 
 ```sh
-jag host update --project jag-personal \
+jara host update --project jara-personal \
   --compose deploy/compose.yaml --env-file deploy/.env --check
 ```
 
@@ -74,17 +74,17 @@ release, add `--version 0.166.0`. The updater still refuses downgrades.
 From the checkout on the Docker host:
 
 ```sh
-sudo install -m 644 deploy/systemd/jag-codex-update@.service /etc/systemd/system/
-sudo install -m 644 deploy/systemd/jag-codex-update@.timer /etc/systemd/system/
-sudo install -d -m 755 /etc/jag
+sudo install -m 644 deploy/systemd/jara-codex-update@.service /etc/systemd/system/
+sudo install -m 644 deploy/systemd/jara-codex-update@.timer /etc/systemd/system/
+sudo install -d -m 755 /etc/jara
 
-sudo tee /etc/jag/jag-personal.env >/dev/null <<EOF
-JAG_COMPOSE_FILE="$PWD/deploy/compose.yaml"
-JAG_ENV_FILE="$PWD/deploy/.env"
+sudo tee /etc/jara/jara-personal.env >/dev/null <<EOF
+JARA_COMPOSE_FILE="$PWD/deploy/compose.yaml"
+JARA_ENV_FILE="$PWD/deploy/.env"
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now jag-codex-update@jag-personal.timer
+sudo systemctl enable --now jara-codex-update@jara-personal.timer
 ```
 
 Checks run hourly with up to five minutes of randomized delay. If the environment
@@ -94,20 +94,20 @@ scheduler is enabled merely by building or starting the agent container.
 The supplied service runs as root to access Docker. For a deployment owned by a
 different Docker-authorized user, use a systemd drop-in to set `User=` so updated
 env files retain that user's ownership. The service uses the saved host checkout;
-it does not pull Jag source or change other tool version selections. Local source
+it does not pull Jara source or change other tool version selections. Local source
 changes present in that checkout are included in candidate builds.
 
-For another Compose project, install a corresponding `/etc/jag/PROJECT.env` and
-enable `jag-codex-update@PROJECT.timer`. Different projects should have separate
+For another Compose project, install a corresponding `/etc/jara/PROJECT.env` and
+enable `jara-codex-update@PROJECT.timer`. Different projects should have separate
 env files, Compose project names and published ports.
 
 ## Inspect or disable
 
 ```sh
-systemctl list-timers 'jag-codex-update@*'
-journalctl -u jag-codex-update@jag-personal.service
-sudo systemctl start jag-codex-update@jag-personal.service
-sudo systemctl disable --now jag-codex-update@jag-personal.timer
+systemctl list-timers 'jara-codex-update@*'
+journalctl -u jara-codex-update@jara-personal.service
+sudo systemctl start jara-codex-update@jara-personal.service
+sudo systemctl disable --now jara-codex-update@jara-personal.timer
 ```
 
 The host needs Docker Engine, Docker Compose and network access for the stable

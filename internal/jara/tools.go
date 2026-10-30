@@ -1,4 +1,4 @@
-package jag
+package jara
 
 import (
 	"bytes"
@@ -9,7 +9,7 @@ import (
 
 func prepareTools(dir string) error {
 	if _, err := exec.LookPath("mise"); err != nil {
-		return fmt.Errorf("project toolchains require mise; rebuild the environment from the current Jag source")
+		return fmt.Errorf("project toolchains require mise; rebuild the environment from the current Jara source")
 	}
 	cmd := exec.Command("mise", "install")
 	cmd.Dir = dir

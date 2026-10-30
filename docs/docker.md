@@ -1,7 +1,7 @@
 # Optional Docker inside an environment
 
-Jag can provide Docker CLI, Buildx and Compose backed by a separate rootless
-Docker daemon for each Compose project. The laptop still only needs Jag and SSH.
+Jara can provide Docker CLI, Buildx and Compose backed by a separate rootless
+Docker daemon for each Compose project. The laptop still only needs Jara and SSH.
 No host Docker socket is mounted. Docker CLI/plugins are bundled in the agent
 image; the daemon and socket access are opt-in.
 
@@ -10,20 +10,20 @@ image; the daemon and socket access are opt-in.
 On the Linux Docker host (Compose 2.24 or newer):
 
 ```sh
-./bin/jag environment --codex-version 0.166.0 --docker --out deploy/.env
+./bin/jara environment --codex-version 0.166.0 --docker --out deploy/.env
 # Add your PUBLIC key(s) to deploy/authorized_keys.
-docker compose -p jag-personal --env-file deploy/.env \
+docker compose -p jara-personal --env-file deploy/.env \
   -f deploy/compose.yaml -f deploy/compose.docker.yaml up -d --build --wait
 ```
 
-For an existing deployment, close sessions first, add `JAG_DOCKER=1` and
+For an existing deployment, close sessions first, add `JARA_DOCKER=1` and
 `DOCKER_VERSION=29.9.2` to its env file, then run the command with its existing
 project name. Keep including **both Compose files** in all deployment commands.
-As with ordinary Jag deployments, SSH binds to host loopback by default; adjust
-`JAG_SSH_BIND` or use your existing SSH jump host. Use a different project name
+As with ordinary Jara deployments, SSH binds to host loopback by default; adjust
+`JARA_SSH_BIND` or use your existing SSH jump host. Use a different project name
 and SSH port for each independent environment.
 
-`jag doctor` checks the enabled daemon. In an SSH shell, editor terminal or Codex:
+`jara doctor` checks the enabled daemon. In an SSH shell, editor terminal or Codex:
 
 ```sh
 docker info
@@ -51,10 +51,10 @@ separate persistent daemon volume; workspace files remain in `agent-home`.
 
 The agent shares the daemon sidecar's network namespace. A nested service published
 with `127.0.0.1:8080:8080` is reachable at `localhost:8080` in the agent. Forward it
-from your laptop using the existing Jag command:
+from your laptop using the existing Jara command:
 
 ```sh
-jag forward 8080
+jara forward 8080
 ```
 
 Nested published ports are not automatically exposed on the Docker host. Use SSH
@@ -64,7 +64,7 @@ rootless configuration; prefer ports such as 8080.
 Recreating only the agent preserves the daemon and its running nested containers:
 
 ```sh
-docker compose -p jag-personal --env-file deploy/.env \
+docker compose -p jara-personal --env-file deploy/.env \
   -f deploy/compose.yaml -f deploy/compose.docker.yaml \
   up -d --no-deps --no-build --force-recreate --wait agent
 ```
@@ -76,13 +76,13 @@ A full `down` stops both services; `down -v` deletes their persistent data.
 Automatic Codex updates must retain the overlay:
 
 ```sh
-jag host update --project jag-personal --compose deploy/compose.yaml \
+jara host update --project jara-personal --compose deploy/compose.yaml \
   --compose-extra deploy/compose.docker.yaml --env-file deploy/.env
 ```
 
 For the systemd timer, add
-`JAG_COMPOSE_EXTRA=/absolute/path/to/jag-cli/deploy/compose.docker.yaml` to
-`/etc/jag/jag-personal.env`. Codex updates recreate only the agent. Docker updates
+`JARA_COMPOSE_EXTRA=/absolute/path/to/jara/deploy/compose.docker.yaml` to
+`/etc/jara/jara-personal.env`. Codex updates recreate only the agent. Docker updates
 are manual: change the exact `DOCKER_VERSION` pin, rebuild both services in a
 maintenance window, and recreate the agent alongside the daemon.
 
@@ -105,7 +105,7 @@ The host must allow unprivileged user namespaces and privileged containers.
 Rootless networking/storage and cgroup limits depend on the Linux host; cgroup
 resource controls may be unavailable without systemd delegation. See
 [Docker's rootless limitations](https://docs.docker.com/engine/security/rootless/tips/#limiting-resources).
-Jag stores Buildx state in its writable temporary cache so sandboxed builds work;
+Jara stores Buildx state in its writable temporary cache so sandboxed builds work;
 registry login configuration stays in the persistent home. Run `docker login`
 from your SSH shell when needed.
 
@@ -115,5 +115,5 @@ from your SSH shell when needed.
 Buildx build, private bind mounts, nested Compose service and named volume,
 localhost and SSH forwarding, and agent recreation. It makes no model calls and
 imports no credentials. Build images with the Compose command above under the
-project name `jag-dind-validation`, or supply `JAG_TEST_IMAGE` and
-`JAG_DIND_TEST_IMAGE`. The test uses disposable projects and removes their volumes.
+project name `jara-dind-validation`, or supply `JARA_TEST_IMAGE` and
+`JARA_DIND_TEST_IMAGE`. The test uses disposable projects and removes their volumes.
