@@ -60,7 +60,19 @@ def main():
             doctor = run(jara, "remote", "add", "fixture", "--host", "fixture", env=env)
             assert "protocol 1" in doctor
             mock = temp / "codex"
-            mock.write_text('#!/bin/sh\nif [ "$1" = login ]; then exit 1; fi\nif [ "$1" = sandbox ]; then exit 0; fi\nprintf "JARA_TEST_CODEX: %s\\n" "$*"\nexec sleep 3600\n')
+            mock.write_text("""#!/bin/sh
+if [ "$1" = login ]; then exit 1; fi
+if [ "$1" = sandbox ]; then exit 0; fi
+utf8=none
+for attempt in $(seq 1 30); do
+  utf8=$(tmux -L jara list-clients -F '#{client_utf8}' | sed -n '1p')
+  [ -n "$utf8" ] && break
+  sleep 0.1
+done
+printf "JARA_TEST_LOCALE:%s:%s:%s\\n" "${LANG:-unset}" "$(locale charmap)" "${utf8:-none}"
+printf "JARA_TEST_CODEX: %s\\n" "$*"
+exec sleep 3600
+""")
             mock.chmod(0o755)
             run("docker", "cp", str(mock), f"{container}:/usr/local/bin/codex")
 
@@ -97,7 +109,7 @@ def main():
             workspace = temp / "workspace"
             workspace.mkdir()
             (workspace / "hello").write_text("original\n")
-            attach(["--copy"], workspace)
+            attach(["--copy"], workspace, expected="JARA_TEST_LOCALE:C.UTF-8:UTF-8:1")
             config = json.loads((temp / "config.json").read_text())
             binding = config["bindings"][str(workspace)]
             remote_path = f"/home/agent/.local/share/jara/workspaces/{binding['workspace']}"

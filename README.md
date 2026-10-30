@@ -9,6 +9,10 @@ Jara launches the actual Codex terminal interface inside tmux. It is not an agen
 harness. Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain
 available to the environment owner.
 
+Codex startup arguments are configurable through `JARA_CODEX_ARGS` in the
+container and arguments forwarded by the local Jara client. No extra Codex flags
+are enabled by default.
+
 **Security status:** a focused review found a startup privilege escalation,
 which has been fixed and regression tested. Treat this as a development prototype
 until remaining items in the [security review](docs/security-review.md) are
@@ -50,6 +54,13 @@ The generated configuration binds SSH to host loopback on port 2222. To connect
 directly from another machine, set `JARA_SSH_BIND` to the host's reachable interface
 address and allow that port, or use an existing SSH jump host/tunnel.
 
+Before starting a managed session, Jara asks the connected terminal for its
+background color and passes it to tmux and Codex's PTY relay. This restores
+Codex's shaded composer while matching the user's terminal theme, including for
+plain SSH clients that support OSC 11. If the terminal does not answer, Jara uses
+`#262626`; `JARA_TMUX_BACKGROUND` remains available as an optional override.
+Running Codex sessions need to be restarted to pick up a new color.
+
 Print the host fingerprint through your trusted host access:
 
 ```sh
@@ -68,9 +79,10 @@ Agents run as `agent`, without sudo or access to the host Docker socket.
 Optional [Docker-in-Docker support](docs/docker.md) adds a separate rootless
 daemon per environment, Docker Compose and Buildx. Enable it with
 `jara environment --docker` and the documented Compose overlay.
-The Compose deployment includes a scoped seccomp profile so Codex can create its
-nested bubblewrap sandbox. It retains the other Moby syscall filters and adds no
-host capabilities. See [verification and sandbox details](docs/verification.md).
+The Compose deployment includes a scoped seccomp profile for sandbox diagnostics
+and direct sandboxed Codex commands. Codex permissions follow its configuration
+and any explicitly supplied startup arguments. See [verification and sandbox
+details](docs/verification.md).
 
 ## Plain SSH and phones
 
@@ -127,6 +139,63 @@ Detach using **Ctrl-b d**. Disconnecting SSH also leaves the tmux terminal runni
 Opening it again attaches rather than starting a duplicate. Several matches show
 a selector. Multiple clients can share the terminal; `--takeover` detaches others.
 `jara new` explicitly starts another session in the same files, after a notice.
+
+## Additional Codex arguments
+
+Set `JARA_CODEX_ARGS` in the host deployment env file to a JSON array of literal
+arguments. For example, to explicitly enable YOLO mode:
+
+```dotenv
+JARA_CODEX_ARGS='["--dangerously-bypass-approvals-and-sandbox"]'
+```
+
+The default is `[]`. Recreate the agent container after changing its environment.
+The array is validated at startup and is available to both client connections
+and plain SSH `jara connect`. Values are never evaluated as shell commands.
+
+The client can also forward arguments for the current invocation:
+
+```sh
+jara -- --dangerously-bypass-approvals-and-sandbox
+jara --codex-arg=--model --codex-arg=gpt-6.1-sol
+jara resume -- --all
+jara new -- --model gpt-6.1-sol -c 'model_reasoning_effort="high"'
+```
+
+Environment arguments come first, followed by repeatable `--codex-arg` values,
+then tokens after `--`. Codex handles validation and any duplicate options.
+For `resume`, these arguments follow the `resume` subcommand. They apply only
+when a new Codex process starts; attaching to an existing session keeps that
+process's arguments. Use `jara new` for another session or exit Codex and reopen.
+Plain SSH also supports `jara connect WORKSPACE_ID -- CODEX_ARGS...`.
+
+Opting into `--dangerously-bypass-approvals-and-sandbox` removes Codex's approval
+prompts and workspace sandbox. Codex can then access other workspaces and
+credentials available to the container's `agent` account. See the
+[security review](docs/security-review.md).
+
+## Paste clipboard images
+
+With the local Jara client on Linux or macOS, copy an image and press **Ctrl+V**
+in Codex's composer. Jara reads the local clipboard, uploads the image over SSH,
+and attaches it to the draft without pressing Enter. Existing text stays in the
+composer. Use the terminal's normal text paste shortcut for text.
+
+Linux needs `wl-paste` from `wl-clipboard` on Wayland or `xclip` on X11, installed
+on the client machine. macOS uses its built-in `osascript`. Only PNG/JPEG images
+up to 20 MiB and 40 million pixels are accepted. The upload uses a second SSH
+connection; encrypted keys must be available through `ssh-agent` or another
+noninteractive SSH authentication method.
+
+Attachments stay in the remote `~/.local/share/jara/attachments` directory so
+saved Codex conversations can retain their image paths. They are not synchronized
+back into the local repository or removed automatically. Clipboard capture runs
+only when you press the shortcut. Set `JARA_IMAGE_PASTE=0` locally to disable it.
+
+Native Windows and plain SSH/Termius connections do not have this local clipboard
+bridge. Upload an image file with SFTP/SCP and paste its remote path there.
+The macOS clipboard backend needs native validation; automated coverage currently
+exercises Linux and the actual Codex composer with a fixture clipboard provider.
 
 ## Multiple Node and Go versions
 

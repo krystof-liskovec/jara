@@ -37,6 +37,7 @@ class Terminal:
                                         stdout=slave, stderr=slave, start_new_session=True)
         os.close(slave)
         self.output = b""
+        self.color_answered = False
 
     def drain(self):
         while select.select([self.master], [], [], 0)[0]:
@@ -47,6 +48,9 @@ class Terminal:
             if not data:
                 break
             self.output += data
+            if not self.color_answered and b"\x1b]11;?\x1b\\" in self.output:
+                os.write(self.master, b"\x1b]11;rgb:1212/3434/5656\x1b\\")
+                self.color_answered = True
             if b"\x1b[6n" in data:
                 os.write(self.master, b"\x1b[1;1R")
             if b"\x1b[c" in data:

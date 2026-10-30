@@ -39,7 +39,10 @@ through a menu. This permits VS Code Remote SSH and other editors to operate.
   a worktree option provides a separate Git worktree and branch. Copied folders
   need a separate copy for file isolation.
 
-tmux is the first terminal supervisor. Detach and network loss leave processes
+tmux is the terminal supervisor. Before creating a managed session, Jara queries
+the connected terminal for its background color and passes that value into tmux
+and a small PTY relay. The relay answers Codex's color queries and forwards
+keyboard input, output and resize events. Detach and network loss leave processes
 running. Container stop/replacement and host reboot do not preserve processes;
 durable workspaces, Codex history and Jara metadata remain available afterwards.
 Attached clients, running terminals and saved conversations are separate concepts.
@@ -112,7 +115,9 @@ Unix socket and the agent home are shared with the sidecar; the host Docker sock
 is never mounted. The agent joins the daemon's network namespace, keeping nested
 published services reachable through SSH forwarding while permitting independent
 agent recreation. The outer sidecar requires privileged mode, and Docker API access
-can alter the shared agent home beyond the Codex workspace sandbox. See
+can alter the shared agent home outside any one workspace. Jara-managed Codex
+sessions use configured Codex permissions; the host or client can explicitly
+opt into full access through additional Codex arguments. See
 [deployment, networking and isolation scope](docker.md).
 
 ## Current implementation boundaries

@@ -7,10 +7,12 @@ global `mise use` or changes another project's selection.
 The container includes mise 2026.10.24. No mise installation is required on the
 laptop. Installed versions and download caches live in the persistent agent home,
 so recreating or updating the container does not discard them.
-Go compiler/module caches and npm's package cache default to `/tmp/jara-cache`,
-which Codex's sandbox can write without additional permissions. These build and
-package caches are regenerated after container recreation; installed Node/Go
-versions remain persistent.
+Go compiler/module caches and npm's package cache default to `/tmp/jara-cache`.
+They remain writable for sandboxed Codex commands. Jara-managed Codex
+sessions use Codex permissions selected by configuration and explicit startup
+arguments; see the [security review](security-review.md).
+These build and package caches are regenerated after container recreation;
+installed Node/Go versions remain persistent.
 
 ## Configure a project
 

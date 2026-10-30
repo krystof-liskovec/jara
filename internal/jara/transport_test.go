@@ -2,6 +2,7 @@ package jara
 
 import (
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -25,7 +26,7 @@ func TestRequestRoundTrip(t *testing.T) {
 	if err := decode(token(want), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatal("request changed")
 	}
 }
