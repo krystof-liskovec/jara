@@ -14,6 +14,8 @@ import (
 
 func remoteRPC(q Request) error {
 	switch q.Op {
+	case "image-upload":
+		return receiveClipboardImage(os.Stdin, os.Stdout)
 	case "editor-snapshot", "editor-apply":
 		gate, err := lockLifecycle()
 		if err != nil {

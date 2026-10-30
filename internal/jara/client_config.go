@@ -54,7 +54,7 @@ func remoteCommand(c *Config, args []string) error {
 		if err := validateRemote(r); err != nil {
 			return err
 		}
-		if err := doctor(r); err != nil {
+		if err := doctor(args[1], r); err != nil {
 			return err
 		}
 		c.Remotes[args[1]] = r

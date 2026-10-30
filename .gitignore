@@ -5,3 +5,5 @@
 *.update.lock
 /deploy/.jara-update-*.json
 __pycache__/
+/deploy/.env*
+/deploy/authorized_keys*

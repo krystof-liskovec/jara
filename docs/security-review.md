@@ -7,6 +7,19 @@ This remains a development prototype, not an independently audited isolation
 boundary. The review and fixes cover the findings below; they do not establish
 security against hostile workloads or a compromised Docker host.
 
+## Configurable session authority
+
+Jara adds no Codex permission flags by default. The host can set
+`JARA_CODEX_ARGS` or a client can forward arguments to a new session. Explicitly
+passing `--dangerously-bypass-approvals-and-sandbox` disables Codex approvals and
+its workspace sandbox. Codex runs as the unprivileged `agent` account inside Docker,
+but can read and modify every file available to that account, including other
+workspaces and credentials in its home, and can use the container network. The
+container is the remaining execution boundary; it does not isolate workspaces or
+credentials from Codex. Use only with trusted users and repositories. OpenAI's
+[Codex CLI reference](https://learn.chatgpt.com/docs/cli/reference) describes this
+flag as suitable only inside an externally hardened environment.
+
 ## Resolved: agent-controlled paths in root startup
 
 Before the fix, root startup copied authorized keys and changed ownership under

@@ -5,6 +5,13 @@ case "$gateway_ports" in
   no|clientspecified) ;;
   *) echo 'JARA_GATEWAY_PORTS must be no or clientspecified.' >&2; exit 1 ;;
 esac
+tmux_background=${JARA_TMUX_BACKGROUND:-}
+if [ -n "$tmux_background" ]; then
+  case "$tmux_background" in
+    \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
+    *) echo 'JARA_TMUX_BACKGROUND must be a six-digit RGB color such as #262626.' >&2; exit 1 ;;
+  esac
+fi
 if [ ! -s /run/jara/authorized_keys ] || [ ! -f /run/jara/authorized_keys ]; then
   echo 'Supply a nonempty deploy/authorized_keys file containing your public SSH key(s).' >&2
   exit 1
@@ -49,8 +56,17 @@ if [ -s /run/secrets/gitea_token ]; then
   runuser -u agent -- jara _auth gitea "$GITEA_URL" < /run/secrets/gitea_token
 fi
 mkdir -p /run/jara
+# SSH sessions do not inherit arbitrary Docker environment variables. Store the
+# validated array outside the writable agent home for each Jara session launch.
+printf '%s' "${JARA_CODEX_ARGS:-[]}" > /run/jara/codex-args.json
+jara _validate-codex-args < /run/jara/codex-args.json
+chmod 644 /run/jara/codex-args.json
+if [ -n "$tmux_background" ]; then
+  printf '%s' "$tmux_background" > /run/jara/tmux-background
+  chmod 644 /run/jara/tmux-background
+fi
 printf 'GatewayPorts %s\n' "$gateway_ports" > /run/jara/sshd-env.conf
-printf '%s' 'SetEnv PATH=/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin GOTOOLCHAIN=local GOCACHE=/tmp/jara-cache/go-build GOMODCACHE=/tmp/jara-cache/go-mod NPM_CONFIG_CACHE=/tmp/jara-cache/npm' >> /run/jara/sshd-env.conf
+printf '%s' 'SetEnv PATH=/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin LANG=C.UTF-8 LC_CTYPE=C.UTF-8 GOTOOLCHAIN=local GOCACHE=/tmp/jara-cache/go-build GOMODCACHE=/tmp/jara-cache/go-mod NPM_CONFIG_CACHE=/tmp/jara-cache/npm' >> /run/jara/sshd-env.conf
 : > /run/jara/docker.env
 if [ "${JARA_DOCKER:-0}" = 1 ]; then
   if [ ! -S /run/jara-docker/docker.sock ]; then

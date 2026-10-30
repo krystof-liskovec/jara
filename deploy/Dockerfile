@@ -39,7 +39,9 @@ RUN test -n "$CODEX_VERSION" \
  && mkdir -p /run/sshd /var/lib/jara/ssh /home/agent/.ssh \
  && chown -R agent:agent /home/agent
 COPY --from=build /out/ /opt/jara/
-ENV PATH="/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:${PATH}" \
+ENV LANG=C.UTF-8 \
+    LC_CTYPE=C.UTF-8 \
+    PATH="/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:${PATH}" \
     GOTOOLCHAIN=local \
     GOCACHE=/tmp/jara-cache/go-build \
     GOMODCACHE=/tmp/jara-cache/go-mod \

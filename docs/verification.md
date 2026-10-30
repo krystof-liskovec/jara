@@ -7,7 +7,19 @@ OpenSSH, tmux 3.3a in the container, and the real Codex CLI 0.166.0.
 
 The first transport suite (`scripts/e2e.py`) uses a fake Codex process so file
 transfer, terminal inventory, editors, remote selection and networking can be
-tested deterministically without credentials or inference.
+tested deterministically without credentials or inference. It also verifies
+that a Codex pane receives a UTF-8 locale and its attached tmux client detects
+UTF-8. `scripts/codex_args_e2e.py` checks literal environment and client argument
+forwarding for normal and resumed sessions, including plain SSH connections.
+
+`scripts/clipboard_e2e.py` exercises a local fixture clipboard through Jara's PTY
+proxy and SSH upload into the real Codex composer. It checks `[Image #1]`, exact
+transferred PNG bytes, preservation of an unsubmitted draft, terminal resizing,
+and tmux detach. It also checks that the Codex composer has a background color
+inside tmux and verifies the terminal's detected RGB value reaches its pane and
+Codex process. It uses a dummy API key and an unreachable container-local API
+endpoint, with no personal credentials or model calls. It does not establish
+native macOS clipboard behavior or Windows clipboard forwarding.
 
 The second suite (`scripts/real_codex_e2e.py`) uses the actual Compose deployment,
 named persistent volumes, OpenSSH, Jara, tmux and the installed **real Codex binary**.
@@ -172,9 +184,12 @@ The optional rootless Docker deployment was exercised with Docker 29.9.2 using
 
 The tests found that OpenSSH honors only the first `SetEnv` directive; Jara now
 emits all session variables together. They also established that Codex 0.166.0
-requires workspace sandbox networking for Docker Unix-socket access. Docker-enabled
-launches supply that setting while preserving filesystem sandboxing. An explicit
-user override disabling networking was separately verified to block socket access.
+requires workspace sandbox networking for Docker Unix-socket access when running
+direct sandboxed commands. Jara-managed interactive sessions use permissions
+selected by Codex configuration and explicit arguments, as described in the
+[security review](security-review.md). An
+explicit user override disabling networking was separately verified to block
+socket access for sandboxed commands.
 
 The regular transport integration suite also passed against this agent image,
 covering copy/clone, sync, sessions, editors, multiple remotes and both forwarding

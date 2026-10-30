@@ -51,7 +51,10 @@ func sessions() ([]Session, error) {
 
 // connectCommand runs inside the environment, without client configuration or SSH.
 func connectCommand(args []string) error {
+	args, tail := splitCodexArgs(args)
 	f := flag.NewFlagSet("connect", flag.ContinueOnError)
+	var codexArgs codexArgList
+	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
 	resume := f.Bool("resume", false, "use plain codex resume when starting a terminal")
 	fresh := f.Bool("new", false, "start another Codex terminal")
 	worktree := f.Bool("worktree", false, "start a new terminal in a Git worktree")
@@ -69,10 +72,14 @@ func connectCommand(args []string) error {
 			return fmt.Errorf("invalid workspace ID")
 		}
 	}
-	return remoteOpen(Request{ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover})
+	return remoteOpen(Request{ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
 }
 
 func remoteOpen(q Request) error {
+	codexArgs, err := configuredCodexArgs(q.CodexArgs)
+	if err != nil {
+		return err
+	}
 	if q.ID == "" {
 		ss, err := sessions()
 		if err != nil {
@@ -130,6 +137,7 @@ func remoteOpen(q Request) error {
 			return err
 		}
 		if n < len(ss) {
+			warnRunningCodexArgs(q.CodexArgs)
 			return attach(ss[n], q.Takeover)
 		}
 		if n == len(items)-1 {
@@ -183,6 +191,7 @@ func remoteOpen(q Request) error {
 				return err
 			}
 		}
+		warnRunningCodexArgs(q.CodexArgs)
 		return attach(matches[i], q.Takeover)
 	}
 	path := w.Path
@@ -216,19 +225,36 @@ func remoteOpen(q Request) error {
 	if err = prepareTools(path); err != nil {
 		return err
 	}
-	args := []string{"new-session", "-d", "-s", name, "-c", path, "mise", "exec", "--", "/usr/local/bin/codex"}
-	if q.Resume {
-		args = append(args, "resume")
+	background, err := detectTerminalBackground()
+	if err != nil {
+		return err
 	}
+	if err = runTmux("new-session", "-d", "-s", name, "-c", path, "/bin/sleep", "infinity"); err != nil {
+		return fmt.Errorf("prepare terminal: %w", err)
+	}
+	if err = configureTmuxBackground(name, background); err != nil {
+		_ = tmux("kill-session", "-t", name).Run()
+		return err
+	}
+	args := []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_terminal", token(codexCommand(q.Resume, codexArgs))}
 	if err = runTmux(args...); err != nil {
+		_ = tmux("kill-session", "-t", name).Run()
 		return fmt.Errorf("start terminal: %w", err)
 	}
 	if err = runTmux("set-option", "-t", name, "@jara_workspace", q.ID); err != nil {
+		_ = tmux("kill-session", "-t", name).Run()
 		return err
 	}
 	unlock()
 	locked = false
 	return attach(Session{Name: name, Workspace: q.ID}, q.Takeover)
+}
+
+func configureTmuxBackground(session string, background terminalRGB) error {
+	if err := runTmux("set-window-option", "-t", session, "window-style", "bg="+background.hex()); err != nil {
+		return err
+	}
+	return runTmux("set-environment", "-t", session, "JARA_TMUX_BACKGROUND", background.hex())
 }
 
 func runTmux(args ...string) error { cmd := tmux(args...); cmd.Stderr = os.Stderr; return cmd.Run() }

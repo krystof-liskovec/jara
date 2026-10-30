@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,7 @@ const help = `Jara — Just Another Remote Agent
   jara [--remote NAME] [--clone | --copy] [--source DIR]
   jara resume [workspace options]      Run codex resume, without --last
   jara new [--worktree] [workspace options]
+  Session commands accept --codex-arg=VALUE (repeatable), or -- CODEX_ARGS...
   jara connect [--resume] [--new] [--worktree] [--takeover] [WORKSPACE]
                                        Open sessions directly on the SSH server
   jara sessions [--remote NAME]         Remote workspace and session browser
@@ -63,6 +65,15 @@ func Run(args []string) error {
 				return remoteRPC(q)
 			}
 			return remoteOpen(q)
+		case "_terminal":
+			if len(args) != 2 {
+				return fmt.Errorf("invalid internal invocation")
+			}
+			var codexArgs []string
+			if err := decode(args[1], &codexArgs); err != nil {
+				return err
+			}
+			return runCodexTerminal(codexArgs)
 		case "help", "--help", "-h":
 			fmt.Print(help)
 			return nil
@@ -86,6 +97,13 @@ func Run(args []string) error {
 				return fmt.Errorf("invalid auth invocation")
 			}
 			return remoteAuth(args[1], args[2])
+		case "_validate-codex-args":
+			raw, err := io.ReadAll(io.LimitReader(os.Stdin, 65537))
+			if err != nil {
+				return err
+			}
+			_, err = parseCodexArgs(raw)
+			return err
 		case "migrate":
 			return fmt.Errorf("native conversation migration is unavailable: Codex 0.166.0 has no verified supported CLI import interface; source conversation was not changed (see docs/migration.md)")
 		}
@@ -136,6 +154,9 @@ func Run(args []string) error {
 		args = args[1:]
 	}
 	f := flag.NewFlagSet(action, flag.ContinueOnError)
+	args, tail := splitCodexArgs(args)
+	var codexArgs codexArgList
+	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
 	remoteName := f.String("remote", "", "named remote")
 	clone := f.Bool("clone", false, "clone without confirmation")
 	copyMode := f.Bool("copy", false, "copy current directory")
@@ -166,6 +187,13 @@ func Run(args []string) error {
 	}
 	if f.NArg() != 0 {
 		return fmt.Errorf("unexpected argument %q", f.Arg(0))
+	}
+	codexArgs = append(codexArgs, tail...)
+	if err = validateCodexArgs(codexArgs); err != nil {
+		return err
+	}
+	if len(codexArgs) > 0 && action != "open" && action != "new" && action != "resume" && action != "sessions" {
+		return fmt.Errorf("Codex arguments require open, new, resume, or sessions")
 	}
 	switch action {
 	case "open", "resume", "new", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tunnel", "tools":
@@ -212,8 +240,9 @@ func Run(args []string) error {
 	if err = validateRemote(r); err != nil {
 		return err
 	}
+	openSession := func(q Request) error { q.CodexArgs = codexArgs; return openRemote(r, q) }
 	if action == "doctor" {
-		return doctor(r)
+		return doctor(chosen, r)
 	}
 	if action == "forward" || action == "reverse" {
 		return forward(r, action, port, *target, *bind)
@@ -230,7 +259,7 @@ func Run(args []string) error {
 		return openTunnel(r, forwards, reverses, *forwardTarget, *reverseTarget, *localBind, *remoteBind)
 	}
 	if action == "sessions" {
-		return openRemote(r, Request{})
+		return openSession(Request{})
 	}
 	key := chosen + "\n" + root
 	b, exists := c.Associations[key]
@@ -238,7 +267,7 @@ func Run(args []string) error {
 		if action != "open" && action != "resume" {
 			return fmt.Errorf("no workspace association; first use jara --copy or open a Git repository")
 		}
-		return openRemote(r, Request{Resume: action == "resume"})
+		return openSession(Request{Resume: action == "resume"})
 	}
 	if !exists {
 		if action == "sync" || action == "edit" || action == "tools" {
@@ -250,7 +279,7 @@ func Run(args []string) error {
 				return e
 			}
 			if !yes {
-				return openRemote(r, Request{})
+				return openSession(Request{})
 			}
 		}
 		sum := sha256.Sum256([]byte(root))
@@ -361,5 +390,5 @@ func Run(args []string) error {
 		}
 		return interactive(exec.Command("code", "--remote", "ssh-remote+"+alias, remotePath))
 	}
-	return openRemote(r, q)
+	return openSession(q)
 }

@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-func doctor(r Remote) error {
+func doctor(remoteName string, r Remote) error {
 	if _, err := exec.LookPath("ssh"); err != nil {
 		return fmt.Errorf("install the OpenSSH client: %w", err)
 	}
@@ -24,6 +24,13 @@ func doctor(r Remote) error {
 	}
 	fmt.Printf("Jara %s; protocol %d; storage %s\n", d.Version, d.Protocol, d.Root)
 	for _, s := range d.Checks {
+		if strings.HasPrefix(s, "SETUP Codex authentication:") {
+			command := os.Args[0]
+			if strings.ContainsAny(command, " \t\r\n'\"`$;\\&|()<>") {
+				command = quote(command)
+			}
+			s = fmt.Sprintf("SETUP Codex authentication: run %s auth codex --remote %s", command, remoteName)
+		}
 		fmt.Println(s)
 	}
 	if !d.OK {

@@ -61,19 +61,20 @@ func interactive(cmd *exec.Cmd) error {
 }
 
 type Request struct {
-	Op             string `json:"op"`
-	Name           string `json:"name,omitempty"`
-	ID             string `json:"id,omitempty"`
-	URL            string `json:"url,omitempty"`
-	Branch         string `json:"branch,omitempty"`
-	Commit         string `json:"commit,omitempty"`
-	Subdir         string `json:"subdir,omitempty"`
-	Resume         bool   `json:"resume,omitempty"`
-	New            bool   `json:"new,omitempty"`
-	Takeover       bool   `json:"takeover,omitempty"`
-	Worktree       bool   `json:"worktree,omitempty"`
-	Force          bool   `json:"force,omitempty"`
-	IncludeIgnored bool   `json:"include_ignored,omitempty"`
+	Op             string   `json:"op"`
+	Name           string   `json:"name,omitempty"`
+	ID             string   `json:"id,omitempty"`
+	URL            string   `json:"url,omitempty"`
+	Branch         string   `json:"branch,omitempty"`
+	Commit         string   `json:"commit,omitempty"`
+	Subdir         string   `json:"subdir,omitempty"`
+	Resume         bool     `json:"resume,omitempty"`
+	New            bool     `json:"new,omitempty"`
+	Takeover       bool     `json:"takeover,omitempty"`
+	Worktree       bool     `json:"worktree,omitempty"`
+	Force          bool     `json:"force,omitempty"`
+	IncludeIgnored bool     `json:"include_ignored,omitempty"`
+	CodexArgs      []string `json:"codex_args,omitempty"`
 }
 
 func rpc(r Remote, q Request, input io.Reader, v any) error {
@@ -93,5 +94,5 @@ func rpc(r Remote, q Request, input io.Reader, v any) error {
 	return nil
 }
 func openRemote(r Remote, q Request) error {
-	return interactive(sshCommand(r, true, shellArgs("jara", "_open", token(q))))
+	return clipboardTerminal(r, sshCommand(r, true, shellArgs("jara", "_open", token(q))))
 }

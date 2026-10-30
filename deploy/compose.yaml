@@ -29,6 +29,8 @@ services:
     environment:
       JARA_DOCKER: ${JARA_DOCKER:-0}
       JARA_GATEWAY_PORTS: ${JARA_GATEWAY_PORTS:-no}
+      JARA_CODEX_ARGS: ${JARA_CODEX_ARGS:-[]}
+      JARA_TMUX_BACKGROUND: ${JARA_TMUX_BACKGROUND:-}
       GITLAB_HOST: ${GITLAB_HOST:-gitlab.com}
       GITEA_URL: ${GITEA_URL:-}
     healthcheck:
