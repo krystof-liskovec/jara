@@ -35,10 +35,16 @@ those platforms needs validation; cross-compilation alone does not establish it.
 Check out this repository on the host, then:
 
 ```sh
-~/.local/bin/jara environment --codex-version 0.166.0 --out deploy/.env
+~/.local/bin/jara environment --out deploy/.env
 # Put your PUBLIC SSH key(s) in deploy/authorized_keys.
 docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build
 ```
+
+Without `--codex-version`, Jara resolves npm's latest stable Codex release and
+records that exact version in `deploy/.env`. Rebuilds stay pinned to that version;
+use the host updater to select a newer one.
+Pass `--codex-version VERSION` when you want a specific release. Resolving latest
+requires network access to the npm registry.
 
 The generated configuration binds SSH to host loopback on port 2222. To connect
 directly from another machine, set `JARA_SSH_BIND` to the host's reachable interface
@@ -203,19 +209,28 @@ jara config set editor custom
 ## Port forwarding
 
 ```sh
-jara forward 3000
-jara reverse 5432
+jara forward 3000,8000-8002
+jara reverse 5432,7000-7002
+jara tunnel --forward 3000,8000-8002 --reverse 5432,7000-7002
 jara forward 8080 --target 127.0.0.1:3000
 ```
 
-Forward listens on the laptop and reaches the container. Reverse listens inside
-the container and reaches the laptop. Listeners use loopback unless `--bind` is
-explicitly supplied. Ctrl-C ends the tunnel, without stopping Codex sessions.
+Each port forwards to the same port on `127.0.0.1` at the other end by default.
+Comma lists and inclusive ranges work on `forward` and `reverse`; `tunnel` starts
+both directions in one SSH connection. Repeat `--forward` or `--reverse` as
+needed. `--forward-target` and `--reverse-target` set a common destination for
+that direction; `--target` does the same for `jara forward` or `jara reverse`.
+Each direction accepts at most 256 ports. Jara defaults listeners
+to loopback, and the SSH server enforces loopback for reverse listeners too. To
+allow other hosts to reach reverse listeners, set
+`JARA_GATEWAY_PORTS=clientspecified` in the host environment file and recreate
+the container; then pass `--remote-bind` explicitly. `--local-bind` controls
+laptop-side forward listeners. Ctrl-C closes all tunnels without stopping Codex.
 
 ## Optional tools and provider tokens
 
 ```sh
-jara environment --codex-version 0.166.0 --go-version 1.27.3 \
+jara environment --go-version 1.27.3 \
   --node-version 22.22.0 --vim --nvim --glab-version 1.126.0 \
   --tea-version 0.16.0 --out deploy/.env
 ```

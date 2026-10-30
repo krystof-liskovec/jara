@@ -1,5 +1,10 @@
 #!/bin/sh
 set -eu
+gateway_ports=${JARA_GATEWAY_PORTS:-no}
+case "$gateway_ports" in
+  no|clientspecified) ;;
+  *) echo 'JARA_GATEWAY_PORTS must be no or clientspecified.' >&2; exit 1 ;;
+esac
 if [ ! -s /run/jara/authorized_keys ] || [ ! -f /run/jara/authorized_keys ]; then
   echo 'Supply a nonempty deploy/authorized_keys file containing your public SSH key(s).' >&2
   exit 1
@@ -44,7 +49,8 @@ if [ -s /run/secrets/gitea_token ]; then
   runuser -u agent -- jara _auth gitea "$GITEA_URL" < /run/secrets/gitea_token
 fi
 mkdir -p /run/jara
-printf '%s' 'SetEnv PATH=/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin GOTOOLCHAIN=local GOCACHE=/tmp/jara-cache/go-build GOMODCACHE=/tmp/jara-cache/go-mod NPM_CONFIG_CACHE=/tmp/jara-cache/npm' > /run/jara/sshd-env.conf
+printf 'GatewayPorts %s\n' "$gateway_ports" > /run/jara/sshd-env.conf
+printf '%s' 'SetEnv PATH=/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin GOTOOLCHAIN=local GOCACHE=/tmp/jara-cache/go-build GOMODCACHE=/tmp/jara-cache/go-mod NPM_CONFIG_CACHE=/tmp/jara-cache/npm' >> /run/jara/sshd-env.conf
 : > /run/jara/docker.env
 if [ "${JARA_DOCKER:-0}" = 1 ]; then
   if [ ! -S /run/jara-docker/docker.sock ]; then

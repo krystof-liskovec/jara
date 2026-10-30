@@ -39,6 +39,7 @@ def main():
             result = subprocess.run(["docker", "exec", "-u", "agent", container, "touch", "/usr/local/bin/jara-attack"], capture_output=True)
             assert result.returncode != 0, "agent gained write access to root-owned executables"
             assert run("docker", "exec", container, "sshd", "-T").find("authorizedkeysfile /etc/ssh/authorized_keys/%u") >= 0
+            assert run("docker", "exec", container, "sshd", "-T").find("gatewayports no") >= 0
             print("PASS .ssh symlink cannot change root executable ownership; sshd reads root-owned authorized keys", flush=True)
 
             run("docker", "exec", container, "sh", "-ec", "printf protected > /var/tmp/root-sentinel; chmod 600 /var/tmp/root-sentinel")

@@ -10,7 +10,6 @@ AllowUsers agent
 AuthorizedKeysFile /etc/ssh/authorized_keys/%u
 AllowTcpForwarding yes
 AllowStreamLocalForwarding yes
-GatewayPorts clientspecified
 X11Forwarding no
 AllowAgentForwarding no
 PermitUserEnvironment no

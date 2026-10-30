@@ -32,8 +32,10 @@ const help = `Jara — Just Another Remote Agent
   jara auth codex|gitlab|gitea          Guided auth; provider tokens use --token-stdin
   jara editor import vim|nvim --source DIR [--remote NAME] [--force]
   jara doctor [--remote NAME]
-  jara forward|reverse PORT [--target HOST:PORT] [--bind ADDRESS] [--remote NAME]
-  jara environment --codex-version VERSION [--node-version VERSION]
+  jara forward|reverse PORTS [--target HOST:PORT] [--bind ADDRESS] [--remote NAME]
+  jara tunnel [--forward PORTS] [--reverse PORTS] [--local-bind ADDRESS]
+             [--remote-bind ADDRESS] [--remote NAME]
+  jara environment [--codex-version VERSION] [--node-version VERSION]
                   [--go-version VERSION] [--vim] [--nvim]
                   [--glab-version VERSION] [--tea-version VERSION]
                   [--mise-version VERSION] [--docker] [--docker-version VERSION]
@@ -41,6 +43,7 @@ const help = `Jara — Just Another Remote Agent
   jara host update --project NAME [--compose deploy/compose.yaml]
                   [--compose-extra FILE] [--env-file deploy/.env] [--check] [--version VERSION]
 
+PORTS accepts comma-separated ports and inclusive ranges; each direction is limited to 256.
 OpenSSH must be installed locally. See README.md for Compose deployment.
 Transfers support --include-ignored and explicit --delete on sync.
 `
@@ -127,7 +130,7 @@ func Run(args []string) error {
 	port := ""
 	if action == "forward" || action == "reverse" {
 		if len(args) == 0 {
-			return fmt.Errorf("port is required")
+			return fmt.Errorf("port or port range is required")
 		}
 		port = args[0]
 		args = args[1:]
@@ -143,8 +146,21 @@ func Run(args []string) error {
 	force := f.Bool("force", false, "overwrite conflicts / permit transfer with running agents")
 	includeIgnored := f.Bool("include-ignored", false, "explicitly include Git-ignored files; .jaraignore still applies")
 	deleteMissing := f.Bool("delete", false, "propagate deletions of previously synchronized files")
-	target := f.String("target", "", "forward destination host:port")
-	bind := f.String("bind", "127.0.0.1", "listener address")
+	var target, bind *string
+	var tunnelForwards, tunnelReverses portSpecs
+	var forwardTarget, reverseTarget, localBind, remoteBind *string
+	if action == "forward" || action == "reverse" {
+		target = f.String("target", "", "forward destination host:port")
+		bind = f.String("bind", "127.0.0.1", "listener address")
+	}
+	if action == "tunnel" {
+		f.Var(&tunnelForwards, "forward", "local forward ports/ranges, e.g. 3000,8000-8002 (repeatable)")
+		f.Var(&tunnelReverses, "reverse", "reverse forward ports/ranges, e.g. 5432,9000-9002 (repeatable)")
+		forwardTarget = f.String("forward-target", "", "destination for every local forward; default: same localhost port")
+		reverseTarget = f.String("reverse-target", "", "destination for every reverse forward; default: same localhost port")
+		localBind = f.String("local-bind", "127.0.0.1", "laptop listener address for local forwards")
+		remoteBind = f.String("remote-bind", "127.0.0.1", "container listener address for reverse forwards")
+	}
 	if err = f.Parse(args); err != nil {
 		return err
 	}
@@ -152,7 +168,7 @@ func Run(args []string) error {
 		return fmt.Errorf("unexpected argument %q", f.Arg(0))
 	}
 	switch action {
-	case "open", "resume", "new", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tools":
+	case "open", "resume", "new", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tunnel", "tools":
 	default:
 		return fmt.Errorf("unknown command %q; see jara --help", action)
 	}
@@ -201,6 +217,17 @@ func Run(args []string) error {
 	}
 	if action == "forward" || action == "reverse" {
 		return forward(r, action, port, *target, *bind)
+	}
+	if action == "tunnel" {
+		forwards, e := parsePortSpecs(tunnelForwards)
+		if e != nil {
+			return fmt.Errorf("--forward: %w", e)
+		}
+		reverses, e := parsePortSpecs(tunnelReverses)
+		if e != nil {
+			return fmt.Errorf("--reverse: %w", e)
+		}
+		return openTunnel(r, forwards, reverses, *forwardTarget, *reverseTarget, *localBind, *remoteBind)
 	}
 	if action == "sessions" {
 		return openRemote(r, Request{})

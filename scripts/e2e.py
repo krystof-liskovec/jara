@@ -219,11 +219,16 @@ def main():
                     process.wait(timeout=5)
 
             run("docker","exec","-d","-u","agent",container,"node","-e","require('http').createServer((q,s)=>s.end('container')).listen(8888,'127.0.0.1')")
-            local_port=free_port()
+            local_ports=[]
+            while len(local_ports)<2:
+                candidate=free_port()
+                if candidate not in local_ports:
+                    local_ports.append(candidate)
             def check_forward():
-                with urllib.request.urlopen(f"http://127.0.0.1:{local_port}",timeout=1) as response:
-                    assert response.read()==b"container"
-            tunnel(["forward",str(local_port),"--target","127.0.0.1:8888"],check_forward)
+                for local_port in local_ports:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{local_port}",timeout=1) as response:
+                        assert response.read()==b"container"
+            tunnel(["forward", ",".join(map(str, local_ports)), "--target", "127.0.0.1:8888"], check_forward)
 
             class Handler(BaseHTTPRequestHandler):
                 def do_GET(self):
@@ -238,6 +243,14 @@ def main():
                 def check_reverse():
                     assert run("docker","exec",container,"node","-e","fetch('http://127.0.0.1:8889').then(r=>r.text()).then(console.log)")=="laptop"
                 tunnel(["reverse","8889","--target",f"127.0.0.1:{server.server_port}"],check_reverse)
+
+                combined_port=free_port()
+                def check_combined():
+                    with urllib.request.urlopen(f"http://127.0.0.1:{combined_port}",timeout=1) as response:
+                        assert response.read()==b"container"
+                    assert run("docker","exec",container,"node","-e","fetch('http://127.0.0.1:8890').then(r=>r.text()).then(console.log)")=="laptop"
+                tunnel(["tunnel", "--forward", str(combined_port), "--forward-target", "127.0.0.1:8888",
+                        "--reverse", "8890", "--reverse-target", f"127.0.0.1:{server.server_port}"], check_combined)
             finally:
                 server.shutdown()
                 server.server_close()

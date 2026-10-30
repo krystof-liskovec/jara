@@ -88,9 +88,11 @@ lists use named adapters with literal argument arrays.
 ## Networking
 
 Forwarding supports both laptop → container and container → laptop services.
-Listeners default to loopback on their receiving side. Exposing to other hosts
-or containers requires an explicit bind address. Tunnels last only while the
-local forwarding connection exists, independently of persistent agent terminals.
+Listeners default to loopback on their receiving side. The SSH server enforces
+loopback for reverse listeners unless the host owner sets
+`JARA_GATEWAY_PORTS=clientspecified`; public reverse binds then also require an
+explicit bind address. Tunnels last only while the local forwarding connection
+exists, independently of persistent agent terminals.
 
 ## Conversation migration
 
