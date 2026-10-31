@@ -54,6 +54,9 @@ func guidedSetup(c Config) error {
 			return err
 		}
 	}
+	if err = setupHostCodexArgs(r, name, reader); err != nil {
+		return err
+	}
 
 	fmt.Println("Codex sign-in is saved in the remote Jara environment's persistent home.")
 	yes, err := askYes(reader, "Sign in to Codex on the remote now?", true)
@@ -103,6 +106,42 @@ func guidedSetup(c Config) error {
 	default:
 		return fmt.Errorf("choose clone, copy, or skip")
 	}
+}
+
+func setupHostCodexArgs(remote Remote, name string, reader *bufio.Reader) error {
+	configure, err := askYes(reader, "Set default Codex arguments for this host?", false)
+	if err != nil || !configure {
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "Enter one argument per prompt; leave it blank when finished.")
+	var args []string
+	for {
+		arg, e := askSetup(reader, "Codex argument", "")
+		if e != nil {
+			return e
+		}
+		if arg == "" {
+			break
+		}
+		args = append(args, arg)
+		if e = validateCodexArgs(args); e != nil {
+			return e
+		}
+	}
+	if len(args) == 0 {
+		err = clearRemoteCodexArgs(remote)
+	} else {
+		err = setRemoteCodexArgs(remote, args)
+	}
+	if err != nil {
+		return fmt.Errorf("configure Codex arguments on %s; update Jara on that host if needed: %w", name, err)
+	}
+	if len(args) == 0 {
+		fmt.Printf("Using deployment Codex argument defaults on %s.\n", name)
+		return nil
+	}
+	fmt.Printf("Saved %d default Codex argument(s) on %s.\n", len(args), name)
+	return nil
 }
 
 func waitForJaraSSH(r Remote, timeout time.Duration) error {

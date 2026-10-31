@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
@@ -123,9 +124,9 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	if err != nil {
 		return err
 	}
-	apparmor, err := nativeAppArmorEnabled(runDocker, container)
+	apparmorProfile, err := nativeAppArmorOption(runDocker, container)
 	if err != nil {
-		return fmt.Errorf("inspect Docker AppArmor policy: %w", err)
+		return fmt.Errorf("inspect Docker security options: %w", err)
 	}
 	label, err := runDocker(20*time.Second, []string{"docker", "inspect", "--format", `{{index .Config.Labels "io.jara.project"}}`, container}, false)
 	if err != nil || strings.TrimSpace(string(label)) != spec.Project {
@@ -152,7 +153,8 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return nil
 	}
 	fmt.Fprintf(log, "Upgrade Jara on %s from %s to this CLI's source bundle (%s)? Codex remains pinned at %s.\n", saved.Admin.Host, oldJaraVersion, desiredVersion, codexVersion)
-	confirmed, err := askYesFromStdin("Continue?", true)
+	promptReader := bufio.NewReader(os.Stdin)
+	confirmed, err := askYes(promptReader, "Continue?", true)
 	if err != nil {
 		return err
 	}
@@ -189,7 +191,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return fmt.Errorf("candidate Jara build failed; live container and source unchanged: %w", err)
 	}
 	seccomp := path.Join(stage, "deploy/seccomp/codex.json")
-	if _, err = runner.run(60*time.Second, stage, nativeSmokeArgsWithSeccomp(seccomp, candidate, codexVersion, apparmor), nil, true); err != nil {
+	if _, err = runner.run(60*time.Second, stage, nativeSmokeArgsWithSeccomp(seccomp, candidate, codexVersion, apparmorProfile), nil, true); err != nil {
 		return fmt.Errorf("candidate smoke check failed; live container and source unchanged: %w", err)
 	}
 	builtVersion, err := runDocker(60*time.Second, []string{"docker", "run", "--rm", "--network=none", "--entrypoint", "/opt/jara/bin/jara", candidate, "version"}, false)
@@ -285,7 +287,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	if _, err = runner.shell(30*time.Second, "mv -- "+quote(root)+" "+quote(backup)+" && mv -- "+quote(stage)+" "+quote(root), nil, false); err != nil {
 		return rollbackGuidedUpgrade(runner, runDocker, gate, spec, root, backup, rollbackName, oldJaraVersion, codexVersion, err, &keepLock, lock)
 	}
-	newArgs := nativeRunArgs(spec, settings, candidate, root, apparmor)
+	newArgs := nativeRunArgs(spec, settings, candidate, root, apparmorProfile)
 	if _, err = runDocker(2*time.Minute, newArgs, true); err == nil {
 		err = waitNativeHealth(runDocker, spec.Container)
 	}
@@ -314,7 +316,23 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	} else {
 		fmt.Fprintln(log, "WARNING: previous source tree retained for recovery at", backup)
 	}
-	fmt.Fprintf(log, "Upgraded Jara %s → %s on %s. Codex remains %s; previous image retained as %s.\n", oldJaraVersion, desiredVersion, saved.Admin.Host, codexVersion, rollbackTag)
+	fmt.Fprintf(log, "Upgraded Jara %s → %s on %s. Codex remains %s.\n", oldJaraVersion, desiredVersion, saved.Admin.Host, codexVersion)
+	if previousRemoved {
+		removeImage, promptErr := askYes(promptReader, "Remove previous image "+rollbackTag+"?", false)
+		if promptErr != nil {
+			fmt.Fprintf(log, "Could not read cleanup choice; previous image retained as %s: %v\n", rollbackTag, promptErr)
+			return nil
+		}
+		if removeImage {
+			if _, err = runDocker(20*time.Second, []string{"docker", "image", "rm", rollbackTag}, false); err != nil {
+				fmt.Fprintf(log, "WARNING: could not remove previous image %s: %v\n", rollbackTag, err)
+				return nil
+			}
+			fmt.Fprintf(log, "Removed previous image %s.\n", rollbackTag)
+			return nil
+		}
+	}
+	fmt.Fprintf(log, "Previous image retained as %s.\n", rollbackTag)
 	return nil
 }
 

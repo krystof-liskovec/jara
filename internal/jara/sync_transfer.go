@@ -108,7 +108,7 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 		}
 	}
 	// Preserve each endpoint's previous baseline for unresolved, one-sided differences.
-	next := Baseline{Local: metadata(local), Remote: metadata(remote)}
+	next := Baseline{Local: metadata(local), Remote: metadata(remote), LocalHead: gitHead(root)}
 	all := map[string]bool{}
 	for p := range local {
 		all[p] = true
@@ -146,6 +146,82 @@ func syncStatePath(b Binding, root string) (string, error) {
 	return filepath.Join(filepath.Dir(config), "sync", hex.EncodeToString(sum[:])+".json"), nil
 }
 
+func localPushChangesPending(b Binding, root string, includeIgnored, isGit bool) (pending, deletions bool, err error) {
+	state, err := syncStatePath(b, root)
+	if err != nil {
+		return false, false, err
+	}
+	data, err := os.ReadFile(state)
+	if os.IsNotExist(err) {
+		if !isGit {
+			return false, false, nil
+		}
+		status, statusErr := gitOutput(root, "status", "--porcelain")
+		return status != "", false, statusErr
+	}
+	if err != nil {
+		return false, false, err
+	}
+	var baseline Baseline
+	if err = json.Unmarshal(data, &baseline); err != nil {
+		return false, false, err
+	}
+	var head string
+	if isGit && !includeIgnored {
+		status, statusErr := gitOutput(root, "status", "--porcelain")
+		if statusErr != nil {
+			return false, false, statusErr
+		}
+		head = gitHead(root)
+		if status == "" && head == baseline.LocalHead {
+			return false, false, nil
+		}
+	}
+	local, err := snapshotWithIgnored(root, includeIgnored)
+	if err != nil {
+		return false, false, err
+	}
+	for name := range local {
+		if sig(local, name) != sig(baseline.Local, name) {
+			pending = true
+			break
+		}
+	}
+	var missing []string
+	for name := range baseline.Local {
+		if _, exists := local[name]; !exists {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		present, presentErr := existingPaths(root, missing)
+		if presentErr != nil {
+			return false, false, presentErr
+		}
+		for _, name := range missing {
+			if !present[name] {
+				pending, deletions = true, true
+				break
+			}
+		}
+	}
+	if !pending && head != "" && head != baseline.LocalHead {
+		baseline.LocalHead = head
+		if err = writeJSON(state, baseline); err != nil {
+			return false, false, err
+		}
+	}
+	return pending, deletions, nil
+}
+
+func gitHead(root string) string {
+	output, err := gitOutput(root, "rev-parse", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return output
+}
+
 func seedCloneBaseline(r Remote, b Binding, root string) error {
 	var remote Snapshot
 	if err := rpc(r, Request{Op: "snapshot", ID: b.Workspace}, nil, &remote); err != nil {
@@ -155,7 +231,7 @@ func seedCloneBaseline(r Remote, b Binding, root string) error {
 	if err != nil {
 		return err
 	}
-	return writeJSON(state, Baseline{Local: metadata(remote), Remote: metadata(remote)})
+	return writeJSON(state, Baseline{Local: metadata(remote), Remote: metadata(remote), LocalHead: gitHead(root)})
 }
 
 func existingPaths(root string, paths []string) (map[string]bool, error) {

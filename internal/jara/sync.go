@@ -35,8 +35,9 @@ type Update struct {
 }
 
 type Baseline struct {
-	Local  Snapshot
-	Remote Snapshot
+	Local     Snapshot
+	Remote    Snapshot
+	LocalHead string `json:"local_head,omitempty"`
 }
 
 func signature(f File) string { return fmt.Sprintf("%s:%o:%s", f.Hash, f.Mode, f.Link) }

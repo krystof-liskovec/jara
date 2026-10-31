@@ -222,7 +222,7 @@ func remoteOpen(q Request) error {
 	if info, e := os.Stat(path); e != nil || !info.IsDir() {
 		return fmt.Errorf("remote working directory is missing: %s", path)
 	}
-	if err = prepareTools(path); err != nil {
+	if err = prepareToolsQuiet(path); err != nil {
 		return err
 	}
 	background, err := detectTerminalBackground()
@@ -263,13 +263,9 @@ func attach(s Session, takeover bool) error {
 	if err := configureTmuxStatus(s.Name); err != nil {
 		return err
 	}
-	if s.Attached > 0 {
-		fmt.Fprintf(os.Stderr, "Sharing this terminal with %d attached client(s).\n", s.Attached)
-	}
 	args := []string{"attach-session", "-t", s.Name}
 	if takeover {
 		args = append(args, "-d")
 	}
-	fmt.Fprintln(os.Stderr, "Detach with Ctrl-b d; Codex keeps running.")
 	return interactive(tmux(args...))
 }

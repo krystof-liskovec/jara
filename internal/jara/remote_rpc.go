@@ -14,6 +14,24 @@ import (
 
 func remoteRPC(q Request) error {
 	switch q.Op {
+	case "codex-args-show":
+		args, err := configuredCodexArgs(nil)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(args)
+	case "codex-args-set":
+		raw, err := io.ReadAll(io.LimitReader(os.Stdin, 65537))
+		if err != nil {
+			return err
+		}
+		args, err := parseCodexArgs(raw)
+		if err != nil {
+			return err
+		}
+		return saveCodexArgsOverride(args)
+	case "codex-args-clear":
+		return clearCodexArgsOverride()
 	case "image-upload":
 		return receiveClipboardImage(os.Stdin, os.Stdout)
 	case "editor-snapshot", "editor-apply":
