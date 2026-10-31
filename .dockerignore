@@ -1,6 +1,8 @@
 .git
 bin
-deploy/authorized_keys
-deploy/.env
+deploy/.env*
+deploy/authorized_keys*
 **/*_test.go
 deploy/.jara-update-*.json
+deploy/.jara-native.json
+internal/jara/deploy_bundle.tar.gz

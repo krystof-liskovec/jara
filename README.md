@@ -2,8 +2,9 @@
 
 **Just Another Remote Agent**
 
-Persistent remote Codex workspaces over standard OpenSSH. The host runs Docker
-Compose; the local Go CLI remembers environments and workspace associations.
+Persistent remote Codex workspaces over standard OpenSSH. The host runs Docker;
+Compose remains an option for manual deployments and Docker-in-Docker. The local
+Go CLI remembers environments and workspace associations.
 
 Jara launches the actual Codex terminal interface inside tmux. It is not an agent
 harness. Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain
@@ -30,13 +31,54 @@ No local Docker or rsync is required for everyday use.
 
 This installs `jara` into `~/.local/bin` and does not modify your shell `PATH`.
 If that directory is not already on your `PATH`, run it as `~/.local/bin/jara`.
+The installer refreshes the deployment source bundle embedded in the CLI.
+
+## First connection
+
+Run `jara setup` on your computer to reuse a saved remote or deploy Jara to a new
+Linux Docker host, then check access and sign in to Codex. It detects saved
+remotes automatically; for a running Jara server not in your config, use
+`jara remote add`. New deployments run over SSH when your account can run Docker
+and the host has `tar`. The guide can generate a dedicated service key or use
+an existing SSH key, transfers the source bundled in the CLI, and uses native
+`docker build` and `docker run`; no Git
+checkout or Compose plugin is needed on the host. Docker installation and
+firewall rules remain host-specific; see the detailed
+[host setup](#deploy-on-a-linux-docker-host) if you need to prepare those yourself.
+On Debian or Ubuntu with Docker's default AppArmor profile, guided setup detects
+it and configures the Jara container automatically; no host profile or Docker
+daemon changes are needed for Codex's sandbox. Setup waits for Jara's SSH service
+to answer before running its deployment check.
+For a noninteractive client setup, use:
+
+```sh
+jara remote add work --host my-agent-alias
+jara auth codex --remote work
+```
+
+From a Git repository, run `jara --remote work --clone` to open it remotely.
+For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in
+the same folder reopens the workspace. For a host without an SSH alias, include
+`--port`, `--user`, and `--identity` in `remote add` as needed. The detailed
+steps below cover host keys, direct SSH access, and other setup options.
+
+Remove a host deployed by the guide with `jara deployment uninstall work`. It
+stops the container and removes deployment files while keeping workspace data,
+Codex login, and Git credentials in Docker volumes. Add `--volumes` only when you
+also want to permanently delete that data, for example
+`jara deployment uninstall work --volumes`. This also removes the server host
+key, so verify the new fingerprint after a later reinstall. Uninstall asks
+separately whether to remove a Jara-generated local
+SSH key pair; user-provided keys are kept. `jara remote remove NAME` only
+forgets a manually configured remote.
 
 The client also builds for Windows and macOS. Native terminal/editor behavior on
 those platforms needs validation; cross-compilation alone does not establish it.
 
 ## Deploy on a Linux Docker host
 
-Check out this repository on the host, then:
+For manual deployments, check out this repository on the host and use Docker
+Compose. The guided `jara setup` path uses native Docker commands instead.
 
 ```sh
 ~/.local/bin/jara environment --out deploy/.env
@@ -52,7 +94,9 @@ requires network access to the npm registry.
 
 The generated configuration binds SSH to host loopback on port 2222. To connect
 directly from another machine, set `JARA_SSH_BIND` to the host's reachable interface
-address and allow that port, or use an existing SSH jump host/tunnel.
+address and allow that port, or use an existing SSH jump host/tunnel. Guided host
+deployment defaults to `0.0.0.0` so the service can be reached remotely; restrict
+port 2222 with the host firewall to the networks you trust.
 
 Before starting a managed session, Jara asks the connected terminal for its
 background color and passes it to tmux and Codex's PTY relay. This restores
@@ -79,10 +123,10 @@ Agents run as `agent`, without sudo or access to the host Docker socket.
 Optional [Docker-in-Docker support](docs/docker.md) adds a separate rootless
 daemon per environment, Docker Compose and Buildx. Enable it with
 `jara environment --docker` and the documented Compose overlay.
-The Compose deployment includes a scoped seccomp profile for sandbox diagnostics
-and direct sandboxed Codex commands. Codex permissions follow its configuration
-and any explicitly supplied startup arguments. See [verification and sandbox
-details](docs/verification.md).
+The Docker deployment uses a scoped seccomp profile and permits the nested mount
+namespace setup Codex needs for its workspace sandbox. Codex permissions follow
+its configuration and any explicitly supplied startup arguments. See
+[verification and sandbox details](docs/verification.md).
 
 ## Plain SSH and phones
 
@@ -124,8 +168,10 @@ jara new --worktree  # Additional session in a separate Git worktree
 ```
 
 Cloning reproduces the local branch and commit, including unpublished history via
-a Git bundle. The remote needs access to origin. Local working edits are not part
-of clone. Launching from a repository subdirectory preserves that relative path.
+a Git bundle. Private repositories need remote Git credentials; run
+`jara auth git --remote NAME` before cloning to import or enter them. Local
+working edits are not part of clone. Launching from a repository subdirectory
+preserves that relative path.
 
 From another folder:
 
@@ -136,6 +182,9 @@ jara sessions        # Remote workspace and running-terminal browser
 ```
 
 Detach using **Ctrl-b d**. Disconnecting SSH also leaves the tmux terminal running.
+The bottom status bar shows the workspace, window tabs, and detach shortcut in a
+theme that matches the terminal background, with contrasting text and teal accents.
+Reconnecting applies the theme to existing sessions too.
 Opening it again attaches rather than starting a duplicate. Several matches show
 a selector. Multiple clients can share the terminal; `--takeover` detaches others.
 `jara new` explicitly starts another session in the same files, after a notice.
@@ -308,7 +357,16 @@ Existing output files are never overwritten. Host owners update the saved file
 and rebuild. Application/tool versions are recorded; Debian package repositories
 are not snapshot-pinned, so builds are not byte-for-byte reproducible.
 
-Optional automatic Codex updates run on the Docker host:
+Optional automatic Codex updates run on the Docker host. Guided deployments use
+native Docker and need no Compose plugin; run the command from the bundled
+deployment directory:
+
+```sh
+cd ~/jara-deploy-personal
+jara host update --project jara-personal --check
+```
+
+Existing Compose deployments can continue to use:
 
 ```sh
 jara host update --project jara-personal --compose deploy/compose.yaml \
@@ -321,7 +379,42 @@ operations during replacement, and records the successful exact version in the
 env file. [Enable the optional hourly timer](docs/automatic-updates.md) to automate
 this. No timer is enabled by default.
 
-Configure tokens explicitly through stdin, not command arguments:
+To update Jara itself on a host created by guided setup, run this from the local
+client after installing the newer CLI:
+
+```sh
+jara deployment upgrade work
+```
+
+It transfers the source embedded in the CLI, builds and validates a replacement
+with Docker on the host, defers while the environment is in use, and rolls back
+if the new container fails. The host needs no Git, Compose, or Jara installation.
+Workspace data and the Codex version pin are preserved.
+
+To clone a private repository and push from the remote container, run this from
+the checkout before cloning:
+
+```sh
+jara auth git --remote work
+```
+
+Jara imports the current checkout's local Git credential when available, or asks
+for a username and hidden token. Guided setup offers this before an initial
+clone. HTTPS and standard SSH origins are supported; SSH origins are converted
+to HTTPS for the remote workspace, leaving the local origin unchanged. Custom SSH
+aliases or ports need an HTTPS origin.
+The token is stored in the remote's persistent home with mode `0600` and is shared
+by repositories on that Git instance. Its provider permissions determine which
+repositories it can access, and processes running as the container's `agent`
+account can use it. Use a least-privilege token. To supply it from a secure file
+instead of the prompt, use:
+
+```sh
+jara auth git --remote work --username USER --token-stdin < /secure/git-token
+```
+
+Provider CLI tokens can also be configured explicitly through stdin rather than
+command arguments:
 
 ```sh
 jara auth gitlab --host gitlab.example.org --token-stdin < /secure/gitlab-token

@@ -24,14 +24,20 @@ type Binding struct {
 	Remote    string `json:"remote"`
 	Workspace string `json:"workspace"`
 }
+type HostDeployment struct {
+	Admin          Remote `json:"admin"`
+	Directory      string `json:"directory"`
+	ServiceKeyMode string `json:"service_key_mode,omitempty"`
+}
 type Config struct {
-	Default        string              `json:"default,omitempty"`
-	Editor         string              `json:"editor,omitempty"`
-	Remotes        map[string]Remote   `json:"remotes"`
-	Bindings       map[string]Binding  `json:"bindings"`
-	Associations   map[string]Binding  `json:"associations"`
-	EditorCommands map[string][]string `json:"editor_commands,omitempty"`
-	original       [32]byte
+	Default         string                    `json:"default,omitempty"`
+	Editor          string                    `json:"editor,omitempty"`
+	Remotes         map[string]Remote         `json:"remotes"`
+	Bindings        map[string]Binding        `json:"bindings"`
+	Associations    map[string]Binding        `json:"associations"`
+	HostDeployments map[string]HostDeployment `json:"host_deployments,omitempty"`
+	EditorCommands  map[string][]string       `json:"editor_commands,omitempty"`
+	original        [32]byte
 }
 
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -47,7 +53,7 @@ func configPath() (string, error) {
 	return filepath.Join(d, "jara", "config.json"), nil
 }
 func readConfig() (Config, error) {
-	c := Config{Remotes: map[string]Remote{}, Bindings: map[string]Binding{}, Associations: map[string]Binding{}}
+	c := Config{Remotes: map[string]Remote{}, Bindings: map[string]Binding{}, Associations: map[string]Binding{}, HostDeployments: map[string]HostDeployment{}}
 	p, err := configPath()
 	if err != nil {
 		return c, err

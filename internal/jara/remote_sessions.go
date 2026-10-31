@@ -123,12 +123,12 @@ func remoteOpen(q Request) error {
 			}
 			ws = append(ws, w)
 			modes = append(modes, false)
-			items = append(items, menuItem{Title: workspaceTitle(w), Detail: status + " · " + workspaceBadge(w), Workspace: w.ID})
+			items = append(items, menuItem{Title: workspaceTitle(w), Detail: status + " · " + workspaceBadge(w), Workspace: w.ID, Kind: "workspace"})
 			ws = append(ws, w)
 			modes = append(modes, true)
-			items = append(items, menuItem{Title: "New: " + workspaceTitle(w), Detail: "New session · " + workspaceBadge(w), Workspace: w.ID})
+			items = append(items, menuItem{Title: "New: " + workspaceTitle(w), Detail: "New session · " + workspaceBadge(w), Workspace: w.ID, Kind: "new"})
 		}
-		items = append(items, menuItem{Title: "Setup diagnostics", Detail: "Check tools, storage and authentication"})
+		items = append(items, menuItem{Title: "Setup diagnostics", Detail: "Check tools, storage and authentication", Kind: "tools"})
 		n, err := selectMenu("Sessions & workspaces", items)
 		if errors.Is(err, io.EOF) {
 			return nil
@@ -260,6 +260,9 @@ func configureTmuxBackground(session string, background terminalRGB) error {
 func runTmux(args ...string) error { cmd := tmux(args...); cmd.Stderr = os.Stderr; return cmd.Run() }
 
 func attach(s Session, takeover bool) error {
+	if err := configureTmuxStatus(s.Name); err != nil {
+		return err
+	}
 	if s.Attached > 0 {
 		fmt.Fprintf(os.Stderr, "Sharing this terminal with %d attached client(s).\n", s.Attached)
 	}

@@ -5,14 +5,18 @@ Confirmed by the project owner on 2026-10-30 after questions Q1–Q30.
 ## Architecture
 
 Use standard OpenSSH and Go; do not build a custom SSH server. The host owner
-deploys Linux agent containers with Docker Compose. One owner per container;
-separate containers, credentials, persistent home and host keys per environment.
-No cloud provisioning or local Docker dependency in the client.
+deploys Linux agent containers with native Docker commands or Docker Compose. One
+owner per container; separate containers, credentials, persistent home and host
+keys per environment. No cloud provisioning or local Docker dependency in the
+client.
 
 The Go client supports Linux, macOS and Windows. It registers named connections,
-validates them and remembers a default. Every local checkout also remembers its
-last selected remote and its association on each remote. An explicit remote
-argument updates that remembered choice. Local worktrees are distinct checkouts.
+validates them and remembers a default. Guided setup can deploy the bundled Jara
+source to an existing Docker host over SSH using native Docker commands. It does
+not install Docker or manage host firewall rules. Every local checkout also
+remembers its last selected remote and its association on each remote. An
+explicit remote argument updates that remembered choice. Local worktrees are
+distinct checkouts.
 
 Ordinary SSH execution, file transfers and forwarding remain available. Jara
 invokes its remote entry point explicitly rather than forcing all SSH commands
@@ -69,13 +73,18 @@ setup capability. Verify first-connection fingerprints and preserve host keys.
 Never silently accept a changed key.
 
 Guide remote Codex authentication; import credentials only when explicitly
-requested. GitLab and Gitea are optional, including self-hosted instances. Keep
-tokens outside image layers, command arguments and diagnostic logs. Explicit
-mounted token files can configure provider tools on startup.
+requested. Git credentials can be imported for the current Git instance over SSH
+stdin and stored in the persistent agent home for clone and push across its
+repositories. GitLab and Gitea are optional, including self-hosted instances. Keep tokens outside
+image layers, command arguments and diagnostic logs. Explicit mounted token files
+can configure provider tools on startup.
 
 The host owns a recorded, rebuildable environment definition with selected Node,
 Go, provider CLIs and editors. The client diagnoses missing tools and explains
-host updates; it does not independently administer Docker.
+host updates. Guided setup can transfer its embedded deployment bundle and run
+Docker over SSH when Docker is already available to the host account. Guided
+uninstall stops that deployment and removes its staged files while preserving
+Docker volumes by default; volume deletion is explicit.
 
 Project Node/Go versions can coexist inside that environment. Mise installs them
 in the persistent agent home; each Codex process receives its project's selected

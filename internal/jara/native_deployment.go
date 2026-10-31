@@ -1,0 +1,101 @@
+package jara
+
+import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"path"
+	"strings"
+	"time"
+)
+
+const nativeDeployDirToken = "@JARA_DEPLOY_DIR@"
+
+type nativeDeployment struct {
+	Version   int    `json:"version"`
+	Name      string `json:"name"`
+	Project   string `json:"project"`
+	Container string `json:"container"`
+	Image     string `json:"image"`
+	Bind      string `json:"bind"`
+	Port      int    `json:"port"`
+}
+
+func newNativeDeployment(name, bind string, port int) nativeDeployment {
+	lower := strings.ToLower(name)
+	return nativeDeployment{Version: 1, Name: name, Project: "jara-" + lower,
+		Container: "jara-agent-" + lower, Image: "jara-agent-" + lower, Bind: bind, Port: port}
+}
+
+func (d nativeDeployment) validate(project string) error {
+	if d.Version != 1 || !nameRE.MatchString(d.Name) || d.Project != "jara-"+strings.ToLower(d.Name) ||
+		d.Container != "jara-agent-"+strings.ToLower(d.Name) || d.Image != d.Container ||
+		project != "" && project != d.Project || d.Port < 1 || d.Port > 65535 {
+		return fmt.Errorf("invalid native deployment manifest")
+	}
+	bind := net.ParseIP(d.Bind)
+	if bind == nil || bind.To4() == nil {
+		return fmt.Errorf("native deployment manifest has an invalid IPv4 bind address")
+	}
+	return nil
+}
+
+func nativeManifestBytes(d nativeDeployment) ([]byte, error) {
+	return json.MarshalIndent(d, "", "  ")
+}
+
+func nativeBuildArgs(settings map[string]string, image, codexVersion string) []string {
+	args := []string{"docker", "build", "--tag", image, "--file", "deploy/Dockerfile"}
+	for _, key := range []string{"CODEX_VERSION", "NODE_VERSION", "GO_VERSION", "EDITOR_PACKAGES", "GLAB_VERSION", "TEA_VERSION", "DOCKER_VERSION", "MISE_VERSION"} {
+		value := settings[key]
+		if key == "CODEX_VERSION" && codexVersion != "" {
+			value = codexVersion
+		}
+		args = append(args, "--build-arg", key+"="+value)
+	}
+	return append(args, ".")
+}
+
+func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deployDir string, apparmor bool) []string {
+	args := []string{"docker", "run", "--detach", "--name", d.Container,
+		"--restart", "unless-stopped", "--init", "--security-opt",
+		"seccomp=" + path.Join(deployDir, "deploy/seccomp/codex.json"),
+		"--publish", fmt.Sprintf("%s:%d:22", d.Bind, d.Port),
+		"--volume", d.Project + "-agent-home:/home/agent",
+		"--volume", d.Project + "-host-keys:/var/lib/jara/ssh",
+		"--volume", path.Join(deployDir, "deploy/authorized_keys") + ":/run/jara/authorized_keys:ro",
+		"--volume", "/dev/null:/run/secrets/gitlab_token:ro",
+		"--volume", "/dev/null:/run/secrets/gitea_token:ro",
+		"--label", "io.jara.managed=true", "--label", "io.jara.name=" + d.Name,
+		"--label", "io.jara.project=" + d.Project,
+		"--health-cmd", "/usr/sbin/sshd -t && test -r /etc/ssh/authorized_keys/agent",
+		"--health-interval", "30s", "--health-timeout", "5s", "--health-retries", "3"}
+	if apparmor {
+		args = append(args, "--security-opt", "apparmor=unconfined")
+	}
+	for _, key := range []string{"JARA_DOCKER", "JARA_GATEWAY_PORTS", "JARA_CODEX_ARGS", "JARA_TMUX_BACKGROUND", "GITLAB_HOST", "GITEA_URL"} {
+		args = append(args, "--env", key+"="+settings[key])
+	}
+	return append(args, image)
+}
+
+func nativeAppArmorEnabled(run func(time.Duration, []string, bool) ([]byte, error), container string) (bool, error) {
+	b, err := run(20*time.Second, []string{"docker", "inspect", "--format", "{{.AppArmorProfile}}", container}, false)
+	if err != nil {
+		return false, err
+	}
+	profile := strings.TrimSpace(string(b))
+	return profile != "" && profile != "unconfined", nil
+}
+
+func renderNativeShellArgs(args []string) string {
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		if before, after, ok := strings.Cut(arg, nativeDeployDirToken); ok {
+			quoted[i] = quote(before) + `"$PWD"` + quote(after)
+		} else {
+			quoted[i] = quote(arg)
+		}
+	}
+	return strings.Join(quoted, " ")
+}

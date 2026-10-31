@@ -35,6 +35,19 @@ func remoteCommand(c *Config, args []string) error {
 		}
 		c.Default = args[1]
 		return saveConfig(*c)
+	case "remove":
+		if len(args) != 2 || !nameRE.MatchString(args[1]) {
+			return fmt.Errorf("use remote remove NAME")
+		}
+		name := args[1]
+		if _, ok := c.Remotes[name]; !ok {
+			return fmt.Errorf("unknown remote %q", name)
+		}
+		if _, managed := c.HostDeployments[name]; managed {
+			return fmt.Errorf("%q was deployed by Jara; use jara deployment uninstall %s", name, name)
+		}
+		forgetRemote(c, name)
+		return saveConfig(*c)
 	case "add":
 		if len(args) < 2 || !nameRE.MatchString(args[1]) {
 			return fmt.Errorf("a name containing letters, digits, underscores or hyphens is required")
@@ -50,6 +63,9 @@ func remoteCommand(c *Config, args []string) error {
 		}
 		if f.NArg() != 0 {
 			return fmt.Errorf("unexpected argument")
+		}
+		if _, managed := c.HostDeployments[args[1]]; managed {
+			return fmt.Errorf("%q was deployed by Jara; use jara deployment uninstall %s", args[1], args[1])
 		}
 		if err := validateRemote(r); err != nil {
 			return err

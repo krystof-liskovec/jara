@@ -21,7 +21,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=0 go build -trimpath -o /out/bin/jara ./cmd/jara
+RUN CGO_ENABLED=0 go build -tags jara_server -trimpath -o /out/bin/jara ./cmd/jara
 COPY --from=mise /usr/local/bin/mise /out/bin/mise
 COPY --from=dockercli /usr/local/bin/docker /out/bin/docker
 COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/ /out/cli-plugins/
