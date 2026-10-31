@@ -18,7 +18,7 @@ func clientMenu(c Config) error {
 			return err
 		}
 		if items[selected].Action == "help" {
-			fmt.Print(help)
+			printHelpEntry("root", commandHelp["root"])
 			return nil
 		}
 		if err = runClientMenuAction(c, items[selected].Action); err != nil && !errors.Is(err, io.EOF) {
