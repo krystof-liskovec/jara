@@ -3,6 +3,7 @@ package jara
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -21,13 +22,50 @@ func validateOrigin(origin string) error {
 }
 
 func confirm(prompt string) (bool, error) {
+	return confirmWithReader(bufio.NewReader(os.Stdin), prompt)
+}
+
+func confirmWithReader(reader *bufio.Reader, prompt string) (bool, error) {
 	fmt.Fprint(os.Stderr, prompt+" [y/N] ")
-	s, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
+	s, err := reader.ReadString('\n')
+	if err != nil && (err != io.EOF || s == "") {
 		return false, err
 	}
 	s = strings.ToLower(strings.TrimSpace(s))
 	return s == "y" || s == "yes", nil
+}
+
+func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string, includeIgnored, isGit bool, reader *bufio.Reader) error {
+	pending, deletions, err := localPushChangesPending(b, root, includeIgnored, isGit)
+	if err != nil {
+		return fmt.Errorf("local changes could not be checked: %w; run `jara sync push` if needed", err)
+	}
+	if !pending {
+		return nil
+	}
+	if reader == nil {
+		reader = bufio.NewReader(os.Stdin)
+	}
+	prompt := "Local changes are not synced. Sync them to " + remoteName + " before starting?"
+	if deletions {
+		prompt = "Local changes are not synced. Sync them to " + remoteName + " before starting? This will also remove files deleted locally from the remote."
+	}
+	pushChanges, err := confirmWithReader(reader, prompt)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("local changes were left here: %w; run `jara sync push` when ready", err)
+	}
+	if err == io.EOF || !pushChanges {
+		message := "Local changes were left on this machine; run `jara sync push` to transfer them later."
+		if err == io.EOF {
+			message = "No response; local changes were left on this machine. Run `jara sync push` to transfer them later."
+		}
+		fmt.Fprintln(os.Stderr, message)
+		return nil
+	}
+	if err = syncWorkspace(r, b, root, "push", false, includeIgnored, deletions); err != nil {
+		return fmt.Errorf("local changes could not be synced: %w; retry with `jara sync push`", err)
+	}
+	return nil
 }
 
 func gitOutput(dir string, args ...string) (string, error) {

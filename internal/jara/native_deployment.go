@@ -56,7 +56,7 @@ func nativeBuildArgs(settings map[string]string, image, codexVersion string) []s
 	return append(args, ".")
 }
 
-func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deployDir string, apparmor bool) []string {
+func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deployDir, apparmorProfile string) []string {
 	args := []string{"docker", "run", "--detach", "--name", d.Container,
 		"--restart", "unless-stopped", "--init", "--security-opt",
 		"seccomp=" + path.Join(deployDir, "deploy/seccomp/codex.json"),
@@ -70,8 +70,8 @@ func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deploy
 		"--label", "io.jara.project=" + d.Project,
 		"--health-cmd", "/usr/sbin/sshd -t && test -r /etc/ssh/authorized_keys/agent",
 		"--health-interval", "30s", "--health-timeout", "5s", "--health-retries", "3"}
-	if apparmor {
-		args = append(args, "--security-opt", "apparmor=unconfined")
+	if apparmorProfile != "" {
+		args = append(args, "--security-opt", "apparmor="+apparmorProfile)
 	}
 	for _, key := range []string{"JARA_DOCKER", "JARA_GATEWAY_PORTS", "JARA_CODEX_ARGS", "JARA_TMUX_BACKGROUND", "GITLAB_HOST", "GITEA_URL"} {
 		args = append(args, "--env", key+"="+settings[key])
@@ -79,13 +79,27 @@ func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deploy
 	return append(args, image)
 }
 
-func nativeAppArmorEnabled(run func(time.Duration, []string, bool) ([]byte, error), container string) (bool, error) {
-	b, err := run(20*time.Second, []string{"docker", "inspect", "--format", "{{.AppArmorProfile}}", container}, false)
+func nativeAppArmorOption(run func(time.Duration, []string, bool) ([]byte, error), container string) (string, error) {
+	b, err := run(20*time.Second, []string{"docker", "inspect", "--format", "{{json .HostConfig.SecurityOpt}}", container}, false)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	profile := strings.TrimSpace(string(b))
-	return profile != "" && profile != "unconfined", nil
+	var options []string
+	if err := json.Unmarshal(b, &options); err != nil {
+		return "", fmt.Errorf("decode Docker security options: %w", err)
+	}
+	profile := ""
+	for _, option := range options {
+		name, value, ok := strings.Cut(option, "=")
+		if !ok || name != "apparmor" || value == "" {
+			continue
+		}
+		if profile != "" && profile != value {
+			return "", fmt.Errorf("container has conflicting AppArmor profiles")
+		}
+		profile = value
+	}
+	return profile, nil
 }
 
 func renderNativeShellArgs(args []string) string {

@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"flag"
@@ -28,6 +29,9 @@ Sessions and workspaces:
   jara sync push|pull [--force] [workspace options]
   Session commands accept --codex-arg=VALUE (repeatable), or -- CODEX_ARGS...
 
+Interactive mode:
+  jara menu                                                Interactive client menu
+
 Remote connections:
   jara remote add NAME --host HOST [--port PORT] [--user USER] [--identity FILE]
   jara remote list | use NAME | remove NAME
@@ -45,6 +49,8 @@ Host maintenance:
 Configuration and authentication:
   jara config set editor code|vim|nvim [--remote NAME]
   jara config set editor-command NAME '["command","{ssh_alias}","{remote_path}"]'
+  jara config codex-args show|clear [--remote NAME]
+  jara config codex-args set [--remote NAME] -- CODEX_ARGS...
   jara keygen [--out FILE]                            Generate a key and install its public key
   jara auth codex|gitlab|gitea                        Provider authentication
   jara auth git [--remote NAME] [--token-stdin] [--username USER]
@@ -110,6 +116,12 @@ func Run(args []string) error {
 				return err
 			}
 			return guidedSetup(c)
+		case "menu", "ui":
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return clientMenu(c)
 		case "deployment":
 			c, err := readConfig()
 			if err != nil {
@@ -312,6 +324,7 @@ func Run(args []string) error {
 	}
 	key := chosen + "\n" + root
 	b, exists := c.Associations[key]
+	var clonePromptReader *bufio.Reader
 	if !exists && !isGit && !*copyMode {
 		if action != "open" && action != "resume" {
 			return fmt.Errorf("no workspace association; first use jara --copy or open a Git repository")
@@ -323,7 +336,8 @@ func Run(args []string) error {
 			return fmt.Errorf("workspace is not associated with %s; open it with jara first", chosen)
 		}
 		if !*copyMode && !*clone {
-			yes, e := confirm("Clone this repository to " + chosen + "?")
+			clonePromptReader = bufio.NewReader(os.Stdin)
+			yes, e := confirmWithReader(clonePromptReader, "Clone this repository to "+chosen+"?")
 			if e != nil {
 				return e
 			}
@@ -353,9 +367,6 @@ func Run(args []string) error {
 					return e
 				}
 				q.URL = target.URL
-			}
-			if status, e := gitOutput(root, "status", "--porcelain"); e == nil && status != "" {
-				fmt.Fprintln(os.Stderr, "Local edits are excluded from clone. Transfer them explicitly with jara sync push after initialization.")
 			}
 		}
 		if err = rpc(r, q, nil, nil); err != nil {
@@ -389,6 +400,11 @@ func Run(args []string) error {
 	c.Bindings[root] = b
 	if err = saveConfig(c); err != nil {
 		return err
+	}
+	if action == "open" || action == "new" || action == "resume" {
+		if err = syncLocalChangesBeforeSession(r, b, root, chosen, *includeIgnored, isGit, clonePromptReader); err != nil {
+			return err
+		}
 	}
 	if action == "sync" {
 		return syncWorkspace(r, b, root, direction, *force, *includeIgnored, *deleteMissing)

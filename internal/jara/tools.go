@@ -5,15 +5,37 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 func prepareTools(dir string) error {
+	return prepareToolsWithOutput(dir, true)
+}
+
+func prepareToolsQuiet(dir string) error {
+	return prepareToolsWithOutput(dir, false)
+}
+
+func prepareToolsWithOutput(dir string, showOutput bool) error {
 	if _, err := exec.LookPath("mise"); err != nil {
 		return fmt.Errorf("project toolchains require mise; rebuild the environment from the current Jara source")
 	}
 	cmd := exec.Command("mise", "install")
 	cmd.Dir = dir
-	if err := interactive(cmd); err != nil {
+	if showOutput {
+		if err := interactive(cmd); err != nil {
+			return fmt.Errorf("project tool installation failed in %s; inspect the mise configuration, version requests, trust settings and download connectivity: %w", dir, err)
+		}
+		return nil
+	}
+	cmd.Stdin = os.Stdin
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String() + "\n" + stdout.String())
+		if detail != "" {
+			return fmt.Errorf("project tool installation failed in %s; inspect the mise configuration, version requests, trust settings and download connectivity: %w\n%s", dir, err, detail)
+		}
 		return fmt.Errorf("project tool installation failed in %s; inspect the mise configuration, version requests, trust settings and download connectivity: %w", dir, err)
 	}
 	return nil

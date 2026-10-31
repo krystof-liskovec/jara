@@ -18,6 +18,8 @@ import (
 	"golang.org/x/term"
 )
 
+const clipboardSequenceTimeout = 40 * time.Millisecond
+
 // A real local PTY preserves OpenSSH authentication, raw mode, resize and signals.
 // Only image-paste keystrokes are replaced; terminal output passes through intact.
 func clipboardTerminal(r Remote, cmd *exec.Cmd) error {
@@ -91,7 +93,7 @@ func clipboardTerminal(r Remote, cmd *exec.Cmd) error {
 			}
 		default:
 		}
-		if len(keys.sequence) > 0 && time.Since(lastInput) > 80*time.Millisecond {
+		if len(keys.sequence) > 0 && time.Since(lastInput) > clipboardSequenceTimeout {
 			if err = keys.flush(); err != nil {
 				return err
 			}

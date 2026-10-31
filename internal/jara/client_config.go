@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -83,6 +84,9 @@ func remoteCommand(c *Config, args []string) error {
 }
 
 func configCommand(c *Config, args []string) error {
+	if len(args) > 0 && args[0] == "codex-args" {
+		return codexArgsConfigCommand(*c, args[1:])
+	}
 	if len(args) == 4 && args[0] == "set" && args[1] == "editor-command" {
 		if !nameRE.MatchString(args[2]) {
 			return fmt.Errorf("invalid editor name")
@@ -117,4 +121,95 @@ func configCommand(c *Config, args []string) error {
 		return fmt.Errorf("invalid editor arguments")
 	}
 	return saveConfig(*c)
+}
+
+func codexArgsConfigCommand(c Config, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("use jara config codex-args show|clear [--remote NAME] or set [--remote NAME] -- CODEX_ARGS...")
+	}
+	action := args[0]
+	flags := args[1:]
+	var values []string
+	if action == "set" {
+		flags, values = splitCodexArgs(flags)
+	}
+	set := flag.NewFlagSet("config codex-args "+action, flag.ContinueOnError)
+	remoteName := set.String("remote", c.Default, "named remote")
+	if err := set.Parse(flags); err != nil {
+		return err
+	}
+	if set.NArg() != 0 {
+		return fmt.Errorf("unexpected argument %q; put Codex arguments after --", set.Arg(0))
+	}
+	name, remote, err := resolveConfigRemote(c, *remoteName)
+	if err != nil {
+		return err
+	}
+	switch action {
+	case "show":
+		current, readErr := readRemoteCodexArgs(remote)
+		if readErr != nil {
+			return fmt.Errorf("read Codex arguments from %s: %w", name, readErr)
+		}
+		fmt.Printf("Effective Codex arguments on %s:\n", name)
+		if len(current) == 0 {
+			fmt.Println("  (none)")
+			return nil
+		}
+		for i, arg := range current {
+			fmt.Printf("  %d. %q\n", i+1, arg)
+		}
+		return nil
+	case "set":
+		if err = validateCodexArgs(values); err != nil {
+			return err
+		}
+		if err = setRemoteCodexArgs(remote, values); err != nil {
+			return fmt.Errorf("set Codex arguments on %s; update Jara on that host if needed: %w", name, err)
+		}
+		fmt.Printf("Saved %d default Codex argument(s) on %s. They apply to new Codex processes.\n", len(values), name)
+		return nil
+	case "clear":
+		if err = clearRemoteCodexArgs(remote); err != nil {
+			return fmt.Errorf("clear Codex arguments on %s; update Jara on that host if needed: %w", name, err)
+		}
+		fmt.Printf("Cleared the saved Codex arguments on %s; deployment defaults now apply.\n", name)
+		return nil
+	default:
+		return fmt.Errorf("use jara config codex-args show|clear [--remote NAME] or set [--remote NAME] -- CODEX_ARGS...")
+	}
+}
+
+func resolveConfigRemote(c Config, name string) (string, Remote, error) {
+	if name == "" && len(c.Remotes) == 1 {
+		for only := range c.Remotes {
+			name = only
+		}
+	}
+	r, ok := c.Remotes[name]
+	if !ok {
+		return "", Remote{}, fmt.Errorf("select a configured host with --remote NAME or set a default with `jara remote use NAME`")
+	}
+	return name, r, nil
+}
+
+func readRemoteCodexArgs(remote Remote) ([]string, error) {
+	var args []string
+	err := rpc(remote, Request{Op: "codex-args-show"}, nil, &args)
+	return args, err
+}
+
+func setRemoteCodexArgs(remote Remote, args []string) error {
+	if err := validateCodexArgs(args); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(args)
+	if err != nil {
+		return err
+	}
+	return rpc(remote, Request{Op: "codex-args-set"}, bytes.NewReader(raw), nil)
+}
+
+func clearRemoteCodexArgs(remote Remote) error {
+	return rpc(remote, Request{Op: "codex-args-clear"}, nil, nil)
 }

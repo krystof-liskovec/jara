@@ -61,6 +61,9 @@ For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in
 the same folder reopens the workspace. For a host without an SSH alias, include
 `--port`, `--user`, and `--identity` in `remote add` as needed. The detailed
 steps below cover host keys, direct SSH access, and other setup options.
+Run `jara menu` to open an interactive client menu for workspaces, remotes,
+authentication, diagnostics, and guided deployments. Bare `jara` still opens
+the workspace for the current folder.
 
 Remove a host deployed by the guide with `jara deployment uninstall work`. It
 stops the container and removes deployment files while keeping workspace data,
@@ -170,8 +173,11 @@ jara new --worktree  # Additional session in a separate Git worktree
 Cloning reproduces the local branch and commit, including unpublished history via
 a Git bundle. Private repositories need remote Git credentials; run
 `jara auth git --remote NAME` before cloning to import or enter them. Local
-working edits are not part of clone. Launching from a repository subdirectory
-preserves that relative path.
+working edits are not part of the Git bundle. Before starting a session, Jara
+asks whether to sync local changes that have not already been transferred.
+Ignored files remain excluded. If local deletions are pending, the prompt says
+that accepting will also remove those files remotely. Launching from a
+repository subdirectory preserves that relative path.
 
 From another folder:
 
@@ -191,16 +197,31 @@ a selector. Multiple clients can share the terminal; `--takeover` detaches other
 
 ## Additional Codex arguments
 
-Set `JARA_CODEX_ARGS` in the host deployment env file to a JSON array of literal
-arguments. For example, to explicitly enable YOLO mode:
+Guided setup can save default Codex arguments on the Jara host, one argument per
+prompt. You can inspect, replace, or clear them later. Upgrade existing guided
+deployments once with `jara deployment upgrade NAME` to add this host setting:
+
+```sh
+jara config codex-args show --remote jellyfish
+jara config codex-args set --remote jellyfish -- --model gpt-6.1-sol
+jara config codex-args clear --remote jellyfish
+```
+
+Arguments are stored in the host's persistent Jara data. `set` replaces the
+host's saved defaults; `clear` returns to the deployment default. The settings
+apply when a new Codex process starts. Existing sessions keep their arguments.
+
+For manual deployments, `JARA_CODEX_ARGS` in the host deployment env file
+remains the default source. It accepts a JSON array of literal arguments. For
+example, to explicitly enable YOLO mode:
 
 ```dotenv
 JARA_CODEX_ARGS='["--dangerously-bypass-approvals-and-sandbox"]'
 ```
 
-The default is `[]`. Recreate the agent container after changing its environment.
-The array is validated at startup and is available to both client connections
-and plain SSH `jara connect`. Values are never evaluated as shell commands.
+The default is `[]`. The array is validated at startup and is available to both
+client connections and plain SSH `jara connect`. Values are never evaluated as
+shell commands.
 
 The client can also forward arguments for the current invocation:
 
@@ -211,8 +232,9 @@ jara resume -- --all
 jara new -- --model gpt-6.1-sol -c 'model_reasoning_effort="high"'
 ```
 
-Environment arguments come first, followed by repeatable `--codex-arg` values,
-then tokens after `--`. Codex handles validation and any duplicate options.
+Saved host arguments replace the deployment default, followed by repeatable
+`--codex-arg` values and then tokens after `--`. Codex handles validation and
+duplicate options.
 For `resume`, these arguments follow the `resume` subcommand. They apply only
 when a new Codex process starts; attaching to an existing session keeps that
 process's arguments. Use `jara new` for another session or exit Codex and reopen.
@@ -389,7 +411,8 @@ jara deployment upgrade work
 It transfers the source embedded in the CLI, builds and validates a replacement
 with Docker on the host, defers while the environment is in use, and rolls back
 if the new container fails. The host needs no Git, Compose, or Jara installation.
-Workspace data and the Codex version pin are preserved.
+Workspace data and the Codex version pin are preserved. After a successful
+upgrade, Jara asks whether to remove the previous image used for rollback.
 
 To clone a private repository and push from the remote container, run this from
 the checkout before cloning:

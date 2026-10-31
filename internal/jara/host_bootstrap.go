@@ -263,8 +263,8 @@ func deployJara(admin Remote, name string, port int, bind, publicKey string) err
 	if err = runBootstrapSSH(admin, build, nil); err != nil {
 		return fmt.Errorf("build Jara image: %w", err)
 	}
-	runWithAppArmor := renderNativeShellArgs(nativeRunArgs(deployment, config, deployment.Image, nativeDeployDirToken, true))
-	runWithoutAppArmor := renderNativeShellArgs(nativeRunArgs(deployment, config, deployment.Image, nativeDeployDirToken, false))
+	runWithAppArmor := renderNativeShellArgs(nativeRunArgs(deployment, config, deployment.Image, nativeDeployDirToken, "unconfined"))
+	runWithoutAppArmor := renderNativeShellArgs(nativeRunArgs(deployment, config, deployment.Image, nativeDeployDirToken, ""))
 	run := "cd " + quotedDir + " && security_options=$(docker info --format '{{json .SecurityOptions}}') && case \"$security_options\" in *name=apparmor*) " + runWithAppArmor + " ;; *) " + runWithoutAppArmor + " ;; esac"
 	if err = runBootstrapSSH(admin, run, nil); err != nil {
 		return fmt.Errorf("start Jara container: %w", err)

@@ -35,7 +35,7 @@ func sshArgs(r Remote, tty bool) []string {
 		a = append(a, "-F", config)
 	}
 	if tty {
-		a = append(a, "-tt")
+		a = append(a, "-o", "LogLevel=ERROR", "-tt")
 	} else {
 		a = append(a, "-T")
 	}

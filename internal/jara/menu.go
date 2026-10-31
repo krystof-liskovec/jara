@@ -16,6 +16,7 @@ import (
 type menuItem struct {
 	Title, Detail, Workspace string
 	Kind                     string
+	Action                   string
 }
 
 var terminalEscapes = regexp.MustCompile("\\x1b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\))")
@@ -266,8 +267,10 @@ func selectMenu(title string, items []menuItem) (int, error) {
 	}
 }
 func workspaceTitle(w Workspace) string {
-	if strings.TrimSpace(w.Name) != "" {
-		return menuText(w.Name)
+	name := strings.TrimSpace(w.Name)
+	nameIsID := name == w.ID || isGeneratedWorkspaceID(name)
+	if name != "" && !nameIsID {
+		return menuText(name)
 	}
 	if w.URL != "" {
 		name := strings.SplitN(strings.SplitN(w.URL, "?", 2)[0], "#", 2)[0]
@@ -279,6 +282,23 @@ func workspaceTitle(w Workspace) string {
 	}
 	return "Copied workspace"
 }
+
+func isGeneratedWorkspaceID(value string) bool {
+	if !strings.HasPrefix(value, "w-") {
+		return false
+	}
+	id := strings.TrimPrefix(value, "w-")
+	if len(id) != 24 {
+		return false
+	}
+	for _, char := range id {
+		if !('0' <= char && char <= '9') && !('a' <= char && char <= 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 func workspaceBadge(w Workspace) string {
 	id := strings.TrimPrefix(w.ID, "w-")
 	if len(id) > 8 {

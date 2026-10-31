@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 const codexArgsFile = "/run/jara/codex-args.json"
+const codexArgsOverrideFile = "codex-args.json"
 
 type codexArgList []string
 
@@ -65,8 +67,32 @@ func configuredCodexArgs(extra []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	override, err := os.ReadFile(filepath.Join(dataRoot(), codexArgsOverrideFile))
+	if err == nil {
+		args, err = parseCodexArgs(override)
+		if err != nil {
+			return nil, fmt.Errorf("read saved Codex arguments: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read saved Codex arguments: %w", err)
+	}
 	args = append(args, extra...)
 	return args, validateCodexArgs(args)
+}
+
+func saveCodexArgsOverride(args []string) error {
+	if err := validateCodexArgs(args); err != nil {
+		return err
+	}
+	return writeJSON(filepath.Join(dataRoot(), codexArgsOverrideFile), args)
+}
+
+func clearCodexArgsOverride() error {
+	err := os.Remove(filepath.Join(dataRoot(), codexArgsOverrideFile))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
 
 func codexCommand(resume bool, args []string) []string {

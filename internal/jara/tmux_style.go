@@ -12,24 +12,34 @@ func configureTmuxStatus(session string) error {
 	if err != nil {
 		return err
 	}
+	workspaceName := tmuxWorkspaceName(session)
+	if err := runTmux("set-option", "-t", session, "@jara_workspace_name", workspaceName); err != nil {
+		return fmt.Errorf("set workspace label: %w", err)
+	}
+	if err := runTmux("set-window-option", "-t", session, "remain-on-exit", "off"); err != nil {
+		return fmt.Errorf("close exited terminal panes: %w", err)
+	}
 	bg, fg := background.hex(), background.foreground().hex()
 	accent := "#008080"
 	if fg == "#d0d0d0" {
 		accent = "#5fd7af"
 	}
 	base := "bg=" + bg + ",fg=" + fg
+	if err := runTmux("set-option", "-s", "escape-time", "40"); err != nil {
+		return fmt.Errorf("set terminal Escape delay: %w", err)
+	}
 	options := [][2]string{
 		{"status", "on"},
 		{"status-position", "bottom"},
 		{"status-style", base},
 		{"status-justify", "left"},
 		{"status-left-length", "36"},
-		{"status-left", "#[fg=" + accent + ",bold] JARA #[default] #{=24:@jara_workspace}  "},
+		{"status-left", "#[fg=" + accent + ",bold] JARA #[default] #{=24:@jara_workspace_name}  "},
 		{"status-right-length", "40"},
 		{"status-right", "#{?#{>=:#{client_width},80},%H:%M  ,}Ctrl-b d detach "},
-		{"window-status-format", " #I:#W "},
+		{"window-status-format", ""},
 		{"window-status-style", base},
-		{"window-status-current-format", " #I:#W "},
+		{"window-status-current-format", ""},
 		{"window-status-current-style", "bg=" + bg + ",fg=" + accent + ",bold"},
 		{"window-status-activity-style", base + ",underscore"},
 		{"window-status-separator", " "},
@@ -40,6 +50,25 @@ func configureTmuxStatus(session string) error {
 		}
 	}
 	return nil
+}
+
+func tmuxWorkspaceName(session string) string {
+	value, err := tmux("show-option", "-v", "-t", session, "@jara_workspace").Output()
+	if err != nil {
+		return "workspace"
+	}
+	id := strings.TrimSpace(string(value))
+	if workspace, err := workspaceInfo(id); err == nil {
+		name := workspaceTitle(workspace)
+		if name != "Copied workspace" {
+			return strings.ReplaceAll(name, "#", "＃")
+		}
+	}
+	id = strings.TrimPrefix(id, "w-")
+	if len(id) > 8 {
+		id = id[:8]
+	}
+	return id
 }
 
 func tmuxStatusBackground(session string) (terminalRGB, error) {

@@ -66,9 +66,9 @@ func updateNativeDeployment(project, manifestPath, envPath, target string, check
 	if err != nil {
 		return err
 	}
-	apparmor, err := nativeAppArmorEnabled(run, container)
+	apparmorProfile, err := nativeAppArmorOption(run, container)
 	if err != nil {
-		return fmt.Errorf("inspect Docker AppArmor policy: %w", err)
+		return fmt.Errorf("inspect Docker security options: %w", err)
 	}
 	labelFormat := "{{index .Config.Labels \"io.jara.project\"}}"
 	label, err := run(20*time.Second, []string{"docker", "inspect", "--format", labelFormat, container}, false)
@@ -122,7 +122,7 @@ func updateNativeDeployment(project, manifestPath, envPath, target string, check
 	if _, err = run(45*time.Minute, buildArgs, true); err != nil {
 		return fmt.Errorf("candidate build failed; live container unchanged: %w", err)
 	}
-	smoke := nativeSmokeArgs(root, candidate, target, apparmor)
+	smoke := nativeSmokeArgs(root, candidate, target, apparmorProfile)
 	if _, err = run(60*time.Second, smoke, true); err != nil {
 		return fmt.Errorf("candidate smoke test failed; live container unchanged: %w", err)
 	}
@@ -184,7 +184,7 @@ func updateNativeDeployment(project, manifestPath, envPath, target string, check
 		_, _ = run(2*time.Minute, []string{"docker", "start", deployment.Container}, true)
 		return err
 	}
-	newArgs := nativeRunArgs(deployment, settings, candidate, root, apparmor)
+	newArgs := nativeRunArgs(deployment, settings, candidate, root, apparmorProfile)
 	if _, err = run(2*time.Minute, newArgs, true); err == nil {
 		err = waitNativeHealth(run, deployment.Container)
 	}
@@ -240,15 +240,15 @@ func nativeContainer(run func(time.Duration, []string, bool) ([]byte, error), na
 	return id, nil
 }
 
-func nativeSmokeArgs(root, image, target string, apparmor bool) []string {
+func nativeSmokeArgs(root, image, target, apparmorProfile string) []string {
 	seccomp := filepath.Join(root, "deploy", "seccomp", "codex.json")
-	return nativeSmokeArgsWithSeccomp(seccomp, image, target, apparmor)
+	return nativeSmokeArgsWithSeccomp(seccomp, image, target, apparmorProfile)
 }
 
-func nativeSmokeArgsWithSeccomp(seccomp, image, target string, apparmor bool) []string {
+func nativeSmokeArgsWithSeccomp(seccomp, image, target, apparmorProfile string) []string {
 	args := []string{"docker", "run", "--rm", "--network=none", "--user", "agent", "--security-opt", "seccomp=" + seccomp}
-	if apparmor {
-		args = append(args, "--security-opt", "apparmor=unconfined")
+	if apparmorProfile != "" {
+		args = append(args, "--security-opt", "apparmor="+apparmorProfile)
 	}
 	return append(args,
 		"--entrypoint", "/bin/sh", image, "-ec", `test "$(codex --version)" = "codex-cli `+target+`"; jara version; mkdir -p /home/agent/update-check; cd /home/agent/update-check; codex sandbox -c 'sandbox_mode="workspace-write"' -- /bin/sh -c 'printf update-ok > inside; if (printf forbidden > /home/agent/outside) 2>/dev/null; then exit 73; fi'; test "$(cat inside)" = update-ok; test ! -e /home/agent/outside`)
