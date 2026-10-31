@@ -13,69 +13,10 @@ import (
 	"strings"
 )
 
-const help = `Jara — Just Another Remote Agent
-
-Jara runs persistent remote Codex workspaces over OpenSSH.
-
-Sessions and workspaces:
-  jara [--remote NAME] [--clone | --copy] [--source DIR]  Open Codex
-  jara resume [workspace options]                         Resume a session, without --last
-  jara new [--worktree] [workspace options]                Start a new session
-  jara connect [--resume] [--new] [--worktree] [--takeover] [WORKSPACE]
-                                                          Open directly on the SSH server
-  jara sessions [--remote NAME]                           Browse remote workspaces and sessions
-  jara tools [install] [workspace options]                Show or install project tool versions
-  jara edit [--editor code|vim|nvim] [workspace options]
-  jara sync push|pull [--force] [workspace options]
-  Session commands accept --codex-arg=VALUE (repeatable), or -- CODEX_ARGS...
-
-Interactive mode:
-  jara menu                                                Interactive client menu
-
-Remote connections:
-  jara remote add NAME --host HOST [--port PORT] [--user USER] [--identity FILE]
-  jara remote list | use NAME | remove NAME
-
-Setup and deployments:
-  jara setup                                               Guided connection or Docker deployment
-  jara deployment upgrade [NAME]                          Upgrade Jara on a guided deployment
-  jara deployment uninstall [NAME] [--volumes]            Remove a guided deployment
-
-Host maintenance:
-  jara host update --project NAME [--native] [--compose FILE]
-                  [--compose-extra FILE] [--env-file FILE] [--check] [--version VERSION]
-    Update Codex on the Linux Docker host.
-
-Configuration and authentication:
-  jara config set editor code|vim|nvim [--remote NAME]
-  jara config set editor-command NAME '["command","{ssh_alias}","{remote_path}"]'
-  jara config codex-args show|clear [--remote NAME]
-  jara config codex-args set [--remote NAME] -- CODEX_ARGS...
-  jara keygen [--out FILE]                            Generate a key and install its public key
-  jara auth codex|gitlab|gitea                        Provider authentication
-  jara auth git [--remote NAME] [--token-stdin] [--username USER]
-                                                      Configure Git credentials for this instance
-  jara editor import vim|nvim --source DIR [--remote NAME] [--force]
-
-Networking and diagnostics:
-  jara doctor [--remote NAME]                         Check local or remote setup
-  jara forward|reverse PORTS [--target HOST:PORT] [--bind ADDRESS] [--remote NAME]
-  jara tunnel [--forward PORTS] [--reverse PORTS] [--local-bind ADDRESS]
-             [--remote-bind ADDRESS] [--remote NAME]
-
-Environment:
-  jara environment [--codex-version VERSION] [--node-version VERSION]
-                  [--go-version VERSION] [--vim] [--nvim]
-                  [--glab-version VERSION] [--tea-version VERSION]
-                  [--mise-version VERSION] [--docker] [--docker-version VERSION]
-  jara migrate                        Explain native migration availability
-
-PORTS accepts comma-separated ports and inclusive ranges; each direction is limited to 256.
-OpenSSH must be installed locally. See README.md for Compose deployment.
-Transfers support --include-ignored and explicit --delete on sync.
-`
-
 func Run(args []string) error {
+	if showCommandHelp(args) {
+		return nil
+	}
 	if len(args) > 0 {
 		switch args[0] {
 		case "_rpc", "_open":
@@ -100,7 +41,7 @@ func Run(args []string) error {
 			}
 			return runCodexTerminal(codexArgs)
 		case "help", "--help", "-h":
-			fmt.Print(help)
+			printHelpEntry("root", commandHelp["root"])
 			return nil
 		case "version", "--version":
 			fmt.Println(Version)
