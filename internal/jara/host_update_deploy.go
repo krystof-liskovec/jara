@@ -14,6 +14,10 @@ import (
 )
 
 func (u hostUpdater) update(target string, check bool) error {
+	root := filepath.Dir(filepath.Dir(u.Compose))
+	if err := checkHostUpgradeLock(root); err != nil {
+		return err
+	}
 	// Separate projects/paths get independent locks; never launch two updates of one env file.
 	lock := u.EnvFile + ".update.lock"
 	f, err := os.OpenFile(lock, os.O_CREATE|os.O_RDWR, 0600)
@@ -174,6 +178,9 @@ func (u hostUpdater) update(target string, check bool) error {
 		if !bytes.Equal(extraNow, extraOriginal) {
 			return fmt.Errorf("Compose overlay changed during build; live environment unchanged")
 		}
+	}
+	if err = checkHostUpgradeLock(root); err != nil {
+		return err
 	}
 	active, err := u.container()
 	if err != nil {

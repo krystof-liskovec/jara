@@ -17,6 +17,7 @@ services:
     init: true
     security_opt:
       - seccomp=./seccomp/codex.json
+      - apparmor=unconfined
     restart: unless-stopped
     ports:
       - "${JARA_SSH_BIND:-127.0.0.1}:${JARA_SSH_PORT:-2222}:22"

@@ -51,39 +51,33 @@ title. Codex generated the title “Create JARA live check file” instead; the 
 picker visibly contained the saved conversation. The test now checks picker
 inventory and reopens the selected transcript, rather than assuming its title.
 
-## Issue found and fixed: nested sandbox namespaces
+## Codex sandbox in Docker
 
-Docker's default seccomp profile blocked the namespace creation needed by Codex's
-bubblewrap sandbox. This was a real deployment defect that the fake-process
-transport suite could not detect.
+Codex's Linux workspace sandbox uses bubblewrap, which creates nested user and
+mount namespaces and changes mount propagation. Docker's default seccomp profile
+blocks the required namespace and mount calls. Docker's default AppArmor profile
+also denies mount operations, so allowing those syscalls in seccomp alone is not
+enough.
 
-The minimal reproducer failed with `Operation not permitted`:
+Jara uses a pinned copy of Moby's default seccomp profile with six additional
+allowed calls: `clone`, `unshare`, `setns`, `mount`, `umount2`, and `pivot_root`.
+On AppArmor-enabled hosts, guided deployment detects the active AppArmor support
+and sets `apparmor=unconfined` for the agent container so bubblewrap can set up
+its private mount namespace. This needs no host profile or Docker daemon changes.
+The container remains unprivileged, retains Docker's default capability set, and
+keeps the custom seccomp filter; it does not use privileged mode, `CAP_SYS_ADMIN`,
+host namespaces, or `seccomp=unconfined`.
+Disabling AppArmor removes one layer of defense in depth and broadens the kernel
+surface available to container processes, so Jara is intended for trusted personal
+development environments rather than hostile multi-tenant workloads.
 
-```sh
-docker run --rm --user agent --entrypoint /bin/sh jara-agent:real-validation \
-  -c 'unshare --user --map-root-user true'
-```
+The host must still allow unprivileged user namespaces. `jara doctor` runs a real
+Codex sandbox probe and reports a setup failure if the container or host policy
+blocks it. The exact active restrictions can vary by Docker host.
 
-Testing one restriction at a time isolated seccomp: removing only AppArmor's
-profile did not help; changing seccomp did. The host already allowed unprivileged
-user namespaces. No host sysctls were changed.
-
-The deployment now installs bubblewrap and uses a pinned copy of Moby's default
-seccomp profile with six additional allowed calls: `clone`, `unshare`, `setns`,
-`mount`, `umount2`, and `pivot_root`. These permit nested namespace setup while
-retaining the remaining syscall filter and the container's capability boundary.
-The deployment does not use privileged mode, `CAP_SYS_ADMIN`, host namespaces,
-or `seccomp=unconfined`. Enabling these syscalls does expand the accessible kernel
-surface; the profile is intended for these personal development environments.
-
-See [profile provenance](../deploy/seccomp/SOURCE.md) and its Apache-2.0 license.
-The profile was tested with this Docker Engine; hosts may have additional
-AppArmor, user-namespace or runtime restrictions. `jara doctor` now executes a real
-Codex sandbox probe and reports a setup failure when it cannot run.
-
-Sources: [Docker seccomp documentation](https://docs.docker.com/engine/security/seccomp/),
-[Moby profiles](https://github.com/moby/profiles),
-[Codex approvals and security](https://learn.chatgpt.com/docs/agent-approvals-security).
+See [seccomp profile provenance](../deploy/seccomp/SOURCE.md) and its Apache-2.0
+license. Docker documents the [seccomp](https://docs.docker.com/engine/security/seccomp/)
+and [AppArmor](https://docs.docker.com/engine/security/apparmor/) controls.
 
 ## Repeat the tests
 

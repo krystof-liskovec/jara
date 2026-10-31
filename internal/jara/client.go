@@ -14,36 +14,55 @@ import (
 
 const help = `Jara — Just Another Remote Agent
 
-  jara — persistent remote Codex workspaces over OpenSSH
+Jara runs persistent remote Codex workspaces over OpenSSH.
 
-  jara [--remote NAME] [--clone | --copy] [--source DIR]
-  jara resume [workspace options]      Run codex resume, without --last
-  jara new [--worktree] [workspace options]
-  Session commands accept --codex-arg=VALUE (repeatable), or -- CODEX_ARGS...
+Sessions and workspaces:
+  jara [--remote NAME] [--clone | --copy] [--source DIR]  Open Codex
+  jara resume [workspace options]                         Resume a session, without --last
+  jara new [--worktree] [workspace options]                Start a new session
   jara connect [--resume] [--new] [--worktree] [--takeover] [WORKSPACE]
-                                       Open sessions directly on the SSH server
-  jara sessions [--remote NAME]         Remote workspace and session browser
-  jara tools [install] [workspace options]  Show or install this project's tool versions
+                                                          Open directly on the SSH server
+  jara sessions [--remote NAME]                           Browse remote workspaces and sessions
+  jara tools [install] [workspace options]                Show or install project tool versions
   jara edit [--editor code|vim|nvim] [workspace options]
   jara sync push|pull [--force] [workspace options]
+  Session commands accept --codex-arg=VALUE (repeatable), or -- CODEX_ARGS...
+
+Remote connections:
   jara remote add NAME --host HOST [--port PORT] [--user USER] [--identity FILE]
-  jara remote list | use NAME
+  jara remote list | use NAME | remove NAME
+
+Setup and deployments:
+  jara setup                                               Guided connection or Docker deployment
+  jara deployment upgrade [NAME]                          Upgrade Jara on a guided deployment
+  jara deployment uninstall [NAME] [--volumes]            Remove a guided deployment
+
+Host maintenance:
+  jara host update --project NAME [--native] [--compose FILE]
+                  [--compose-extra FILE] [--env-file FILE] [--check] [--version VERSION]
+    Update Codex on the Linux Docker host.
+
+Configuration and authentication:
   jara config set editor code|vim|nvim [--remote NAME]
   jara config set editor-command NAME '["command","{ssh_alias}","{remote_path}"]'
-  jara keygen [--out FILE]             Generate a key; install its public key on host
-  jara auth codex|gitlab|gitea          Guided auth; provider tokens use --token-stdin
+  jara keygen [--out FILE]                            Generate a key and install its public key
+  jara auth codex|gitlab|gitea                        Provider authentication
+  jara auth git [--remote NAME] [--token-stdin] [--username USER]
+                                                      Configure Git credentials for this instance
   jara editor import vim|nvim --source DIR [--remote NAME] [--force]
-  jara doctor [--remote NAME]
+
+Networking and diagnostics:
+  jara doctor [--remote NAME]                         Check local or remote setup
   jara forward|reverse PORTS [--target HOST:PORT] [--bind ADDRESS] [--remote NAME]
   jara tunnel [--forward PORTS] [--reverse PORTS] [--local-bind ADDRESS]
              [--remote-bind ADDRESS] [--remote NAME]
+
+Environment:
   jara environment [--codex-version VERSION] [--node-version VERSION]
                   [--go-version VERSION] [--vim] [--nvim]
                   [--glab-version VERSION] [--tea-version VERSION]
                   [--mise-version VERSION] [--docker] [--docker-version VERSION]
   jara migrate                        Explain native migration availability
-  jara host update --project NAME [--compose deploy/compose.yaml]
-                  [--compose-extra FILE] [--env-file deploy/.env] [--check] [--version VERSION]
 
 PORTS accepts comma-separated ports and inclusive ranges; each direction is limited to 256.
 OpenSSH must be installed locally. See README.md for Compose deployment.
@@ -82,21 +101,51 @@ func Run(args []string) error {
 			return nil
 		case "connect":
 			return connectCommand(args[1:])
+		case "setup":
+			if len(args) != 1 {
+				return fmt.Errorf("use jara setup")
+			}
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return guidedSetup(c)
+		case "deployment":
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return deploymentCommand(&c, args[1:])
+		case "uninstall":
+			// Keep the original spelling as a compatibility alias.
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return uninstallCommand(&c, args[1:])
 		case "environment":
 			return environment(args[1:])
 		case "keygen":
 			return keygen(args[1:])
 		case "host":
+			if len(args) > 1 && args[1] == "upgrade" {
+				// Keep the original spelling as a compatibility alias.
+				c, err := readConfig()
+				if err != nil {
+					return err
+				}
+				return deploymentUpgradeCommand(c, args[2:])
+			}
 			return hostCommand(args[1:])
 		case "_maintenance":
 			return maintenanceCommand(args[1:])
 		case "_tools":
 			return toolsCommand(args[1:])
 		case "_auth":
-			if len(args) != 3 {
+			if len(args) != 3 && len(args) != 4 {
 				return fmt.Errorf("invalid auth invocation")
 			}
-			return remoteAuth(args[1], args[2])
+			return remoteAuth(args[1], args[2], args[3:]...)
 		case "_validate-codex-args":
 			raw, err := io.ReadAll(io.LimitReader(os.Stdin, 65537))
 			if err != nil {
@@ -298,11 +347,21 @@ func Run(args []string) error {
 			if err = validateOrigin(q.URL); err != nil {
 				return err
 			}
+			if isSSHGitOrigin(q.URL) {
+				target, e := parseGitCredentialTarget(q.URL)
+				if e != nil {
+					return e
+				}
+				q.URL = target.URL
+			}
 			if status, e := gitOutput(root, "status", "--porcelain"); e == nil && status != "" {
 				fmt.Fprintln(os.Stderr, "Local edits are excluded from clone. Transfer them explicitly with jara sync push after initialization.")
 			}
 		}
 		if err = rpc(r, q, nil, nil); err != nil {
+			if q.URL != "" {
+				return fmt.Errorf("%w\nIf this is a private repository, run `jara auth git --remote %s` from the checkout and retry.", err, chosen)
+			}
 			return err
 		}
 		b = Binding{Remote: chosen, Workspace: id}

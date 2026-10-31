@@ -91,6 +91,11 @@ See [Go's `os.Root` behavior](https://go.dev/blog/osroot).
 - The seccomp profile relaxes namespace/mount-related syscall filters for Codex's
   nested sandbox. Kernel capability checks remain, but the host kernel and Docker
   runtime are still part of the security boundary.
+- The agent container sets `apparmor=unconfined` so bubblewrap can change mount
+  propagation. This removes Docker's AppArmor layer for that container; seccomp
+  and Docker's capability restrictions remain. Treat the host kernel and runtime
+  as part of the security boundary, and do not use this configuration for hostile
+  workloads.
 
 ## Checks and existing protections
 

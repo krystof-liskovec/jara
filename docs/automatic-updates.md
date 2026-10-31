@@ -1,10 +1,11 @@
 # Automatic Codex updates
 
 Automatic updates are **opt-in and managed on the Linux Docker host**. The agent
-container never receives the host Docker socket. Optional DinD deployments use
-a separate nested daemon and must pass `--compose-extra deploy/compose.docker.yaml`
-to the updater (or set `JARA_COMPOSE_EXTRA` in the timer configuration). The local laptop client does not
-administer the host or install updates.
+container never receives the host Docker socket. The updater supports guided
+native Docker deployments and existing Compose deployments. A native deployment
+is detected from its manifest, so it does not need Compose. Optional DinD
+deployments use a separate nested daemon and require the Compose overlay flag.
+The local laptop client does not administer the host or install updates.
 
 ## Behavior
 
@@ -15,7 +16,7 @@ select prereleases or downgrade an environment.
 Before changing the running environment it:
 
 1. Checks for tmux sessions, open SSH connections and workspace operations.
-2. Builds a separate candidate image from the host's checkout and tool selections.
+2. Builds a separate candidate image from the host's deployment source and tool selections.
 3. Tests the exact Codex version and real sandbox execution in an isolated
    container with no network, credentials or live data mounts. The sandbox must
    permit workspace writes and refuse writes outside its workspace.
@@ -40,15 +41,42 @@ message instead of silently overwriting that disagreement. Logs identify the
 previous image tag for manual recovery. Candidate and previous images are retained;
 image retention/pruning is currently manual.
 
+## Upgrade Jara itself
+
+After installing a newer local Jara CLI, update a deployment created by guided
+setup from the client:
+
+```sh
+jara deployment upgrade work
+```
+
+This transfers the source bundle embedded in that CLI, builds and validates a
+candidate image with native Docker on the host, defers while the environment is
+in use, and replaces the server container with rollback on failure. The host
+needs no Git, Compose, or Jara installation. Workspace volumes and the
+configured Codex version remain in place. Manual Compose deployments must be
+upgraded from their host checkout.
+
 ## First install
 
 The deployed Jara binary must include the maintenance gate. If upgrading from an
-earlier Jara build, first deploy the current source using the usual Compose rebuild
-when sessions have been closed. The updater refuses to replace a container that
-does not support its gate.
+earlier Jara build, first deploy the current source when sessions have been
+closed. The updater refuses to replace a container that does not support its gate.
 
-Install the Linux Jara binary on the Docker host. Either build it with Go, or copy
-the compiled binary from the running container (no host Go installation needed):
+For a guided native deployment, enter its bundled source directory, copy the
+updater binary from the running container, and run the check. The native manifest
+selects the Docker-only updater automatically:
+
+```sh
+cd ~/jara-deploy-work
+docker cp jara-agent-work:/opt/jara/bin/jara /tmp/jara-host
+sudo install -m 755 /tmp/jara-host /usr/local/bin/jara
+jara host update --project jara-work --check
+```
+
+For a Compose deployment, install the Linux Jara binary on the Docker host. Either
+build it with Go, or copy the compiled binary from the running container (no host
+Go installation needed):
 
 ```sh
 cd /path/to/jara
@@ -71,7 +99,7 @@ release, add `--version 0.166.0`. The updater still refuses downgrades.
 
 ## Enable an hourly systemd timer
 
-From the checkout on the Docker host:
+For a Compose deployment, from the checkout on the Docker host:
 
 ```sh
 sudo install -m 644 deploy/systemd/jara-codex-update@.service /etc/systemd/system/
@@ -86,6 +114,18 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable --now jara-codex-update@jara-personal.timer
 ```
+
+For a guided native deployment, use absolute paths to its bundled settings in
+`/etc/jara/PROJECT.env` (replace `host-user` with the account used during setup):
+
+```dotenv
+JARA_ENV_FILE=/home/host-user/jara-deploy-work/deploy/.env
+JARA_NATIVE_MANIFEST=/home/host-user/jara-deploy-work/deploy/.jara-native.json
+```
+
+Then enable the timer with the same project name, for example
+`jara-codex-update@jara-work.timer`. The native manifest selects Docker commands;
+no Compose plugin is needed.
 
 Checks run hourly with up to five minutes of randomized delay. If the environment
 is in use, the job logs a deferral and checks again on the next timer run. No
@@ -110,7 +150,7 @@ sudo systemctl start jara-codex-update@jara-personal.service
 sudo systemctl disable --now jara-codex-update@jara-personal.timer
 ```
 
-The host needs Docker Engine, Docker Compose and network access for the stable
-release lookup and image build. A normal update briefly recreates the container
-after it is unused; persistent volumes and host identity remain in place. Do not
-delete its volumes when updating.
+The native updater needs Docker Engine and network access for the stable release
+lookup and image build. Compose deployments also need the Compose plugin. An
+update briefly recreates the container after it is unused; persistent volumes
+and host identity remain in place. Do not delete its volumes when updating.

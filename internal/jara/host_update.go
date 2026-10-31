@@ -28,16 +28,18 @@ type hostUpdater struct {
 
 func hostCommand(args []string) error {
 	if len(args) == 0 || args[0] != "update" {
-		return fmt.Errorf("use jara host update --project NAME [--compose FILE] [--env-file FILE] [--check]")
+		return fmt.Errorf("use jara host update --project NAME [--native] [--compose FILE] [--env-file FILE] [--check]")
 	}
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("run host update on the Linux Docker host")
 	}
 	f := flag.NewFlagSet("host update", flag.ContinueOnError)
-	project := f.String("project", "", "existing Compose project name (required)")
-	compose := f.String("compose", "deploy/compose.yaml", "Compose file")
-	extra := f.String("compose-extra", "", "optional Compose overlay (e.g. deploy/compose.docker.yaml)")
-	env := f.String("env-file", "deploy/.env", "deployment env file")
+	project := f.String("project", "", "deployment name (required)")
+	native := f.Bool("native", false, "use the native Docker deployment manifest")
+	compose := f.String("compose", envDefault("JARA_COMPOSE_FILE", "deploy/compose.yaml"), "Compose file")
+	extra := f.String("compose-extra", os.Getenv("JARA_COMPOSE_EXTRA"), "optional Compose overlay (e.g. deploy/compose.docker.yaml)")
+	env := f.String("env-file", envDefault("JARA_ENV_FILE", "deploy/.env"), "deployment env file")
+	manifest := f.String("native-manifest", envDefault("JARA_NATIVE_MANIFEST", "deploy/.jara-native.json"), "native Docker deployment manifest")
 	check := f.Bool("check", false, "report available stable update without building or deploying")
 	version := f.String("version", "", "explicit stable version; default: npm latest")
 	if err := f.Parse(args[1:]); err != nil {
@@ -47,7 +49,7 @@ func hostCommand(args []string) error {
 		return fmt.Errorf("unexpected update argument")
 	}
 	if !regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`).MatchString(*project) {
-		return fmt.Errorf("supply the existing Compose --project name using lowercase letters, digits, underscores or hyphens")
+		return fmt.Errorf("supply the deployment project name using lowercase letters, digits, underscores or hyphens")
 	}
 	cp, err := filepath.Abs(*compose)
 	if err != nil {
@@ -56,6 +58,16 @@ func hostCommand(args []string) error {
 	ep, err := filepath.Abs(*env)
 	if err != nil {
 		return err
+	}
+	mp, err := filepath.Abs(*manifest)
+	if err != nil {
+		return err
+	}
+	if _, statErr := os.Stat(mp); *native || statErr == nil {
+		if statErr != nil {
+			return fmt.Errorf("native deployment manifest not found: %s", mp)
+		}
+		return updateNativeDeployment(*project, mp, ep, *version, *check, runHostCommand, latestCodex, os.Stdout)
 	}
 	if *version != "" {
 		if _, err = parseRelease(*version); err != nil {
@@ -71,6 +83,13 @@ func hostCommand(args []string) error {
 	}
 	u := hostUpdater{ExtraCompose: extraPath, Project: *project, Compose: cp, EnvFile: ep, run: runHostCommand, latest: latestCodex, log: os.Stdout}
 	return u.update(*version, *check)
+}
+
+func envDefault(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func runHostCommand(timeout time.Duration, args []string, stream bool) ([]byte, error) {

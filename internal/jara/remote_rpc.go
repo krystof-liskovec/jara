@@ -88,7 +88,7 @@ func remoteRPC(q Request) error {
 		sandbox.Dir = probe
 		if err = sandbox.Run(); err != nil {
 			d.OK = false
-			d.Checks = append(d.Checks, "SETUP Codex sandbox cannot execute: deploy with Jara's Compose seccomp profile and enable unprivileged user namespaces on the host (see docs/verification.md)")
+			d.Checks = append(d.Checks, "SETUP Codex sandbox failed: check that seccomp permits nested sandboxing, AppArmor permits mount propagation, and the Docker host allows unprivileged user namespaces (see docs/verification.md)")
 		} else {
 			d.Checks = append(d.Checks, "OK real Codex sandbox execution")
 		}
@@ -133,7 +133,7 @@ func remoteRPC(q Request) error {
 			cmd.Stderr = os.Stderr
 			cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 			if err = cmd.Run(); err != nil {
-				return fmt.Errorf("clone failed; configure remote Git authentication: %w", err)
+				return fmt.Errorf("clone failed; configure Git credentials on the remote and retry: %w", err)
 			}
 		} else if err = os.MkdirAll(p, 0700); err != nil {
 			return err
