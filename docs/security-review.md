@@ -60,8 +60,9 @@ No host escape was attempted or established in this assessment.
 
 ## Workspace transfer boundary
 
-`internal/jara/sync.go` now validates transfer paths, bounds workspace and ignore
-file reads, and performs reads and mutations through `os.Root`. Existing symlink
+`internal/jara/sync.go` now validates transfer paths, streams hashes for sync
+manifests, bounds changed-file payloads and ignore-file reads, and performs reads
+and mutations through `os.Root`. Existing symlink
 parents are rejected; transferred symbolic links that resolve into `.git` are
 rejected. This prevents ordinary path traversal outside the workspace and blocks
 the tested static symlink paths. Regression coverage includes an outside-root

@@ -102,18 +102,17 @@ func physicalSignature(root *os.Root, name string) (string, error) {
 		f.Link, err = root.Readlink(name)
 		f.Mode = 0
 	} else if info.Mode().IsRegular() {
-		if info.Size() > maxTransfer {
-			return "", fmt.Errorf("destination file too large: %s", name)
-		}
-		f.Data, err = rootReadFile(root, name, maxTransfer)
+		f.Hash, err = hashRootFile(root, name)
 	} else {
 		return "", fmt.Errorf("destination is not a regular file or link: %s", name)
 	}
 	if err != nil {
 		return "", err
 	}
-	h := sha256.Sum256(f.Data)
-	f.Hash = hex.EncodeToString(h[:])
+	if f.Hash == "" {
+		h := sha256.Sum256(f.Data)
+		f.Hash = hex.EncodeToString(h[:])
+	}
 	return signature(f), nil
 }
 

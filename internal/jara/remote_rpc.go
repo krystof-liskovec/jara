@@ -208,6 +208,30 @@ func remoteRPC(q Request) error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(files)
+	case "manifest":
+		w, err := workspaceInfo(q.ID)
+		if err != nil {
+			return err
+		}
+		files, err := manifestWithIgnored(w.Path, q.IncludeIgnored)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(files)
+	case "read-files":
+		w, err := workspaceInfo(q.ID)
+		if err != nil {
+			return err
+		}
+		var names []string
+		if err = json.NewDecoder(io.LimitReader(os.Stdin, maxTransfer)).Decode(&names); err != nil {
+			return err
+		}
+		files, err := readSnapshotFiles(w.Path, names)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(files)
 	case "exists":
 		w, err := workspaceInfo(q.ID)
 		if err != nil {
