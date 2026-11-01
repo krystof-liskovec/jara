@@ -303,7 +303,12 @@ destination-only changes and files are preserved. Transfers into an active
 Jara-managed workspace require an explicit override. Editor writes are not locked:
 avoid editing the destination during transfer.
 
-Current protocol limits: 64 MiB of file content per snapshot, held in memory;
+Sync hashes a metadata manifest for every eligible file on each side, then sends
+content only for files selected by the sync plan. Scanning still reads every
+eligible file to compute its hash, so disk work grows with the workspace size.
+Older hosts use the previous full-snapshot path until upgraded with
+`jara deployment upgrade`.
+Current protocol limits: 64 MiB of changed file content per sync, held in memory;
 regular files and internal relative symlinks; no empty
 directory replication, Git index transfer, submodule transfer, or Git LFS object
 management. A failed I/O operation can leave earlier individual file updates in
@@ -384,9 +389,12 @@ native Docker and need no Compose plugin; run the command from the bundled
 deployment directory:
 
 ```sh
-cd ~/jara-deploy-personal
+cd ~/.jara-deploy-personal
 jara host update --project jara-personal --check
 ```
+
+New guided deployments use `~/.jara-deploy-NAME`. Existing deployments keep
+their recorded directory; upgrade and uninstall continue to support it.
 
 Existing Compose deployments can continue to use:
 

@@ -82,7 +82,7 @@ func provisionDockerHost(c *Config, name string, reader *bufio.Reader) (Remote, 
 	if err = check.Run(); err != nil {
 		return Remote{}, fmt.Errorf("host needs tar and permission to run Docker; no deployment was made: %w", err)
 	}
-	fmt.Printf("Ready to transfer the Jara source bundled in this CLI to ~/jara-deploy-%s, expose port %d on %s, and build/start the container.\n", name, servicePort, bind)
+	fmt.Printf("Ready to transfer the Jara source bundled in this CLI to ~/%s, expose port %d on %s, and build/start the container.\n", guidedDeploymentDirectory(name), servicePort, bind)
 	fmt.Println("A public SSH key will be authorized for the Jara container. The Docker host's SSH setup is unchanged.")
 	confirmed, err := askYes(reader, "Deploy Jara to this host now?", false)
 	if err != nil {
@@ -105,7 +105,7 @@ func provisionDockerHost(c *Config, name string, reader *bufio.Reader) (Remote, 
 	if c.HostDeployments == nil {
 		c.HostDeployments = map[string]HostDeployment{}
 	}
-	c.HostDeployments[name] = HostDeployment{Admin: admin, Directory: "jara-deploy-" + name, ServiceKeyMode: serviceKeyMode}
+	c.HostDeployments[name] = HostDeployment{Admin: admin, Directory: guidedDeploymentDirectory(name), ServiceKeyMode: serviceKeyMode}
 	fmt.Printf("Jara is starting on %s:%d. Allow that port through the host firewall if needed.\n", host, servicePort)
 	return service, nil
 }
@@ -217,7 +217,7 @@ func jaraServiceKeyPath(name string) (string, error) {
 }
 
 func deployJara(admin Remote, name string, port int, bind, publicKey string) error {
-	dir := "$HOME/jara-deploy-" + name
+	dir := "$HOME/" + guidedDeploymentDirectory(name)
 	quotedDir := `"` + dir + `"`
 	stage, err := os.MkdirTemp("", "jara-host-setup-")
 	if err != nil {

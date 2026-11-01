@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -14,7 +15,7 @@ import (
 	"strings"
 )
 
-// A bounded first protocol; reject large workspaces instead of exhausting memory.
+// Bound changed-file payloads so a single sync does not exhaust memory.
 const maxTransfer = 64 << 20
 
 const maxIgnoreFile = 1 << 20
@@ -113,6 +114,14 @@ func validLink(name, target string) bool {
 func snapshot(root string) (Snapshot, error) { return snapshotWithIgnored(root, false) }
 
 func snapshotWithIgnored(root string, includeIgnored bool) (Snapshot, error) {
+	return workspaceSnapshot(root, includeIgnored, true)
+}
+
+func manifestWithIgnored(root string, includeIgnored bool) (Snapshot, error) {
+	return workspaceSnapshot(root, includeIgnored, false)
+}
+
+func workspaceSnapshot(root string, includeIgnored, includeData bool) (Snapshot, error) {
 	files := []string{}
 	args := []string{"-C", root, "ls-files", "-z", "--cached", "--others"}
 	if !includeIgnored {
@@ -198,13 +207,21 @@ func snapshotWithIgnored(root string, includeIgnored bool) (Snapshot, error) {
 			}
 			f.Mode = 0
 		case info.Mode().IsRegular():
-			total += info.Size()
-			if total > maxTransfer {
-				return nil, fmt.Errorf("workspace exceeds the 64 MiB transfer limit; exclude generated/large files in .jaraignore")
-			}
-			f.Data, err = rootReadFile(rootFS, rel, maxTransfer-total)
-			if err != nil {
-				return nil, err
+			if includeData {
+				if info.Size() > maxTransfer-total {
+					return nil, fmt.Errorf("workspace exceeds the 64 MiB transfer limit; exclude generated/large files in .jaraignore")
+				}
+				f.Data, err = rootReadFile(rootFS, rel, maxTransfer-total)
+				if err != nil {
+					return nil, err
+				}
+				total += int64(len(f.Data))
+				hashData(&f)
+			} else {
+				f.Hash, err = hashRootFile(rootFS, rel)
+				if err != nil {
+					return nil, err
+				}
 			}
 		case info.IsDir():
 			return nil, fmt.Errorf("%s is a submodule/directory entry; submodule transfer is not supported yet", name)
@@ -214,11 +231,86 @@ func snapshotWithIgnored(root string, includeIgnored bool) (Snapshot, error) {
 		if err != nil {
 			return nil, err
 		}
-		sum := sha256.Sum256(f.Data)
-		f.Hash = hex.EncodeToString(sum[:])
+		if f.Hash == "" {
+			hashData(&f)
+		}
 		result[name] = f
 	}
 	return result, nil
+}
+
+func readSnapshotFiles(root string, names []string) (Snapshot, error) {
+	rootFS, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer rootFS.Close()
+	files := make(Snapshot, len(names))
+	total := int64(0)
+	for _, name := range names {
+		if err = validateWorkspacePath(name); err != nil {
+			return nil, err
+		}
+		rel := filepath.FromSlash(name)
+		if err = validateWorkspaceParents(rootFS, rel); err != nil {
+			return nil, err
+		}
+		info, statErr := rootFS.Lstat(rel)
+		if statErr != nil {
+			return nil, fmt.Errorf("read changed file %s: %w", name, statErr)
+		}
+		file := File{Mode: uint32(info.Mode().Perm())}
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			file.Link, err = rootFS.Readlink(rel)
+			if err != nil {
+				return nil, err
+			}
+			if !validLink(name, file.Link) {
+				return nil, fmt.Errorf("link %s points outside workspace", name)
+			}
+			file.Mode = 0
+		case info.Mode().IsRegular():
+			if info.Size() > maxTransfer-total {
+				return nil, fmt.Errorf("changed files exceed the 64 MiB transfer limit; sync a smaller change or exclude large files in .jaraignore")
+			}
+			file.Data, err = rootReadFile(rootFS, rel, maxTransfer-total)
+			if err != nil {
+				return nil, err
+			}
+			total += int64(len(file.Data))
+		default:
+			return nil, fmt.Errorf("cannot transfer special file %s", name)
+		}
+		hashData(&file)
+		files[name] = file
+	}
+	return files, nil
+}
+
+func hashData(file *File) {
+	sum := sha256.Sum256(file.Data)
+	file.Hash = hex.EncodeToString(sum[:])
+}
+
+func hashRootFile(root *os.Root, name string) (string, error) {
+	file, err := root.Open(name)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("not a regular file: %s", name)
+	}
+	hash := sha256.New()
+	if _, err = io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 type ignoreRule struct {

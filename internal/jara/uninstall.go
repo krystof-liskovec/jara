@@ -39,7 +39,7 @@ func uninstallCommand(c *Config, args []string) error {
 	if err := validateRemote(deployment.Admin); err != nil {
 		return fmt.Errorf("invalid saved host connection: %w", err)
 	}
-	if deployment.Directory != "jara-deploy-"+name {
+	if !validGuidedDeploymentDirectory(name, deployment.Directory) {
 		return fmt.Errorf("saved deployment directory is invalid; refusing to remove it")
 	}
 	generatedServiceKey := deployment.ServiceKeyMode == "" || deployment.ServiceKeyMode == "generated"

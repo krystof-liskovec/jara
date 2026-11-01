@@ -69,7 +69,7 @@ updater binary from the running container, and run the check. The native manifes
 selects the Docker-only updater automatically:
 
 ```sh
-cd ~/jara-deploy-work
+cd ~/.jara-deploy-work
 docker cp jara-agent-work:/opt/jara/bin/jara /tmp/jara-host
 sudo install -m 755 /tmp/jara-host /usr/local/bin/jara
 jara host update --project jara-work --check
@@ -120,8 +120,8 @@ For a guided native deployment, use absolute paths to its bundled settings in
 `/etc/jara/PROJECT.env` (replace `host-user` with the account used during setup):
 
 ```dotenv
-JARA_ENV_FILE=/home/host-user/jara-deploy-work/deploy/.env
-JARA_NATIVE_MANIFEST=/home/host-user/jara-deploy-work/deploy/.jara-native.json
+JARA_ENV_FILE=/home/host-user/.jara-deploy-work/deploy/.env
+JARA_NATIVE_MANIFEST=/home/host-user/.jara-deploy-work/deploy/.jara-native.json
 ```
 
 Then enable the timer with the same project name, for example

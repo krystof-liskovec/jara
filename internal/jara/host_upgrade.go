@@ -39,7 +39,7 @@ func deploymentUpgradeCommand(c Config, args []string) error {
 	if !ok {
 		return fmt.Errorf("%q was not deployed by guided setup; host code upgrades currently require its saved Docker-host connection", name)
 	}
-	if deployment.Directory != "jara-deploy-"+name {
+	if !validGuidedDeploymentDirectory(name, deployment.Directory) {
 		return fmt.Errorf("saved deployment directory is invalid; refusing to upgrade it")
 	}
 	if err := validateRemote(deployment.Admin); err != nil {
@@ -52,7 +52,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	if len(bundle) == 0 {
 		return fmt.Errorf("deployment source bundle is empty")
 	}
-	if !nameRE.MatchString(name) || saved.Directory != "jara-deploy-"+name {
+	if !nameRE.MatchString(name) || !validGuidedDeploymentDirectory(name, saved.Directory) {
 		return fmt.Errorf("invalid guided deployment metadata")
 	}
 	project := "jara-" + strings.ToLower(name)
@@ -66,7 +66,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return fmt.Errorf("Docker host returned an invalid home directory")
 	}
 	root := path.Join(home, saved.Directory)
-	lock := path.Join(home, "."+saved.Directory+".upgrade.lock")
+	lock := path.Join(home, ".jara-deploy-"+name+".upgrade.lock")
 	if _, err = runner.shell(20*time.Second, "mkdir -m 700 -- "+quote(lock), nil, false); err != nil {
 		return fmt.Errorf("another deployment upgrade may be running; if not, inspect and remove %s before retrying: %w", lock, err)
 	}
@@ -167,7 +167,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	}
 	nonce := hex.EncodeToString(nonceBytes[:])
 	stage := path.Join(home, ".jara-upgrade-"+strings.ToLower(name)+"-"+nonce)
-	backup := path.Join(home, "."+saved.Directory+".backup-"+nonce)
+	backup := path.Join(home, ".jara-deploy-"+name+".backup-"+nonce)
 	rollbackName := spec.Container + "-rollback-" + nonce[:8]
 	candidate := "jara-upgrade-" + project + ":server-" + nonce
 	defer func() {

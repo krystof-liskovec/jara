@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 func syncWorkspace(r Remote, b Binding, root, direction string, force bool, options ...bool) error {
@@ -20,13 +21,21 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	if len(options) > 1 {
 		deleteMissing = options[1]
 	}
-	local, err := snapshotWithIgnored(root, includeIgnored)
+	local, err := manifestWithIgnored(root, includeIgnored)
 	if err != nil {
 		return err
 	}
 	var remote Snapshot
-	if err = rpc(r, Request{Op: "snapshot", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &remote); err != nil {
-		return err
+	remoteHasManifest := true
+	if err = rpc(r, Request{Op: "manifest", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &remote); err != nil {
+		if !strings.Contains(err.Error(), "unknown RPC operation") {
+			return err
+		}
+		// Older hosts return full snapshots; keep them usable until their Jara deployment is upgraded.
+		remoteHasManifest = false
+		if err = rpc(r, Request{Op: "snapshot", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &remote); err != nil {
+			return err
+		}
 	}
 	state, err := syncStatePath(b, root)
 	if err != nil {
@@ -78,33 +87,44 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 			return err
 		}
 	}
+	if len(u.Files) > 0 {
+		files, readErr := changedFileData(r, b, root, direction, remoteHasManifest, u.Files)
+		if readErr != nil {
+			return readErr
+		}
+		u.Files = files
+	}
 	if direction == "push" {
-		payload, e := json.Marshal(u)
-		if e != nil {
-			return e
-		}
-		if err = rpc(r, Request{Op: "apply", ID: b.Workspace, Force: force}, bytes.NewReader(payload), nil); err != nil {
-			return err
-		}
-		for p, f := range u.Files {
-			remote[p] = f
-		}
-		for p := range u.Deletes {
-			delete(remote, p)
+		if hasUpdate(u) {
+			payload, e := json.Marshal(u)
+			if e != nil {
+				return e
+			}
+			if err = rpc(r, Request{Op: "apply", ID: b.Workspace, Force: force}, bytes.NewReader(payload), nil); err != nil {
+				return err
+			}
+			for p, f := range metadata(u.Files) {
+				remote[p] = f
+			}
+			for p := range u.Deletes {
+				delete(remote, p)
+			}
 		}
 	} else {
-		// Pull is also prohibited while Jara-managed agents are active remotely.
-		if err = rpc(r, Request{Op: "guard", ID: b.Workspace, Force: force}, nil, nil); err != nil {
-			return err
-		}
-		if err = applyUpdate(root, u); err != nil {
-			return err
-		}
-		for p, f := range u.Files {
-			local[p] = f
-		}
-		for p := range u.Deletes {
-			delete(local, p)
+		if hasUpdate(u) {
+			// Pull is also prohibited while Jara-managed agents are active remotely.
+			if err = rpc(r, Request{Op: "guard", ID: b.Workspace, Force: force}, nil, nil); err != nil {
+				return err
+			}
+			if err = applyUpdate(root, u); err != nil {
+				return err
+			}
+			for p, f := range metadata(u.Files) {
+				local[p] = f
+			}
+			for p := range u.Deletes {
+				delete(local, p)
+			}
 		}
 	}
 	// Preserve each endpoint's previous baseline for unresolved, one-sided differences.
@@ -135,6 +155,40 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	}
 	fmt.Fprintf(os.Stderr, "Transferred %d file(s), deleted %d previously synchronized file(s).\n", len(u.Files), len(u.Deletes))
 	return nil
+}
+
+func hasUpdate(update Update) bool {
+	return len(update.Files) > 0 || len(update.Deletes) > 0
+}
+
+func changedFileData(r Remote, b Binding, root, direction string, remoteHasManifest bool, planned Snapshot) (Snapshot, error) {
+	names := make([]string, 0, len(planned))
+	for name := range planned {
+		names = append(names, name)
+	}
+	var files Snapshot
+	var err error
+	if direction == "push" {
+		files, err = readSnapshotFiles(root, names)
+	} else if !remoteHasManifest {
+		files = planned
+	} else {
+		payload, marshalErr := json.Marshal(names)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		err = rpc(r, Request{Op: "read-files", ID: b.Workspace}, bytes.NewReader(payload), &files)
+	}
+	if err != nil {
+		return nil, err
+	}
+	for name, expected := range planned {
+		actual, ok := files[name]
+		if !ok || signature(actual) != signature(expected) {
+			return nil, fmt.Errorf("source file changed during sync: %s; retry", name)
+		}
+	}
+	return files, nil
 }
 
 func syncStatePath(b Binding, root string) (string, error) {
@@ -177,7 +231,7 @@ func localPushChangesPending(b Binding, root string, includeIgnored, isGit bool)
 			return false, false, nil
 		}
 	}
-	local, err := snapshotWithIgnored(root, includeIgnored)
+	local, err := manifestWithIgnored(root, includeIgnored)
 	if err != nil {
 		return false, false, err
 	}
@@ -224,8 +278,13 @@ func gitHead(root string) string {
 
 func seedCloneBaseline(r Remote, b Binding, root string) error {
 	var remote Snapshot
-	if err := rpc(r, Request{Op: "snapshot", ID: b.Workspace}, nil, &remote); err != nil {
-		return err
+	if err := rpc(r, Request{Op: "manifest", ID: b.Workspace}, nil, &remote); err != nil {
+		if !strings.Contains(err.Error(), "unknown RPC operation") {
+			return err
+		}
+		if err = rpc(r, Request{Op: "snapshot", ID: b.Workspace}, nil, &remote); err != nil {
+			return err
+		}
 	}
 	state, err := syncStatePath(b, root)
 	if err != nil {

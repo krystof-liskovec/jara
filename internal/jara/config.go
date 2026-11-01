@@ -29,6 +29,13 @@ type HostDeployment struct {
 	Directory      string `json:"directory"`
 	ServiceKeyMode string `json:"service_key_mode,omitempty"`
 }
+
+func guidedDeploymentDirectory(name string) string { return ".jara-deploy-" + name }
+
+func validGuidedDeploymentDirectory(name, directory string) bool {
+	return directory == guidedDeploymentDirectory(name) || directory == "jara-deploy-"+name
+}
+
 type Config struct {
 	Default         string                    `json:"default,omitempty"`
 	Editor          string                    `json:"editor,omitempty"`
