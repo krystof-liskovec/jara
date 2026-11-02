@@ -127,7 +127,7 @@ func (provider codexConversations) List(ctx context.Context) ([]Conversation, er
 			Next *string        `json:"nextCursor"`
 		}
 		if err = request("thread/list", params, &page); err != nil {
-			return nil, err
+			return all, err
 		}
 		for _, c := range page.Data {
 			if !seen[c.ID] {
@@ -140,7 +140,7 @@ func (provider codexConversations) List(ctx context.Context) ([]Conversation, er
 			break
 		}
 		if *page.Next == cursor {
-			return nil, fmt.Errorf("Codex returned a repeated history cursor")
+			return all, fmt.Errorf("Codex returned a repeated history cursor")
 		}
 		cursor = *page.Next
 	}
@@ -150,13 +150,16 @@ func (provider codexConversations) List(ctx context.Context) ([]Conversation, er
 func loadConversations() ([]Conversation, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	return listConversations(ctx, conversationProviders())
+}
+
+func listConversations(ctx context.Context, providers []conversationProvider) ([]Conversation, error) {
 	var all []Conversation
 	var failures []error
-	for _, provider := range conversationProviders() {
+	for _, provider := range providers {
 		threads, err := provider.List(ctx)
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", provider.Name(), err))
-			continue
 		}
 		for i := range threads {
 			threads[i].Agent = provider.Name()

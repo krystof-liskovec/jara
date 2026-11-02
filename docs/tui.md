@@ -22,6 +22,12 @@ the repository name; owner and host remain visible in the secondary line to
 distinguish repositories with the same name. Projects sort by the most recently
 updated conversation. Empty registered projects remain available for new chats.
 
+Projects reloads history and terminal counts when you return to the list. Use
+**Refresh projects** to fetch chats created elsewhere while the menu was open.
+History failures display **History unavailable**, rather than a misleading zero
+count; partial results show a lower-bound count and **history incomplete**.
+The Codex history fallback remains available, with the loading error visible.
+
 Separate checkouts of the same repository have distinct labels. New workspaces
 record the originating device and local path: duplicates appear as `jara · laptop`
 and `jara · desktop`. Multiple checkouts on one device include enough of their
