@@ -94,6 +94,8 @@ func remoteRPC(q Request) error {
 		auth := exec.CommandContext(ctx, "codex", "login", "status")
 		if err := auth.Run(); err != nil {
 			d.Checks = append(d.Checks, "SETUP Codex authentication: ssh to the environment and run codex login --device-auth")
+		} else {
+			d.Checks = append(d.Checks, "OK Codex authentication")
 		}
 		probe, err := os.MkdirTemp(dataRoot(), ".sandbox-check-")
 		if err != nil {

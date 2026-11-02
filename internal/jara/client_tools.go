@@ -12,15 +12,20 @@ import (
 )
 
 func doctor(remoteName string, r Remote) error {
+	_, err := diagnoseRemote(remoteName, r)
+	return err
+}
+
+func diagnoseRemote(remoteName string, r Remote) (Diagnosis, error) {
 	if _, err := exec.LookPath("ssh"); err != nil {
-		return fmt.Errorf("install the OpenSSH client: %w", err)
+		return Diagnosis{}, fmt.Errorf("install the OpenSSH client: %w", err)
 	}
 	var d Diagnosis
 	if err := rpc(r, Request{Op: "doctor"}, nil, &d); err != nil {
-		return err
+		return d, err
 	}
 	if d.Protocol != Protocol {
-		return fmt.Errorf("Jara protocol mismatch: client %d, remote %d; update both", Protocol, d.Protocol)
+		return d, fmt.Errorf("Jara protocol mismatch: client %d, remote %d; update both", Protocol, d.Protocol)
 	}
 	fmt.Printf("Jara %s; protocol %d; storage %s\n", d.Version, d.Protocol, d.Root)
 	for _, s := range d.Checks {
@@ -34,9 +39,18 @@ func doctor(remoteName string, r Remote) error {
 		fmt.Println(s)
 	}
 	if !d.OK {
-		return fmt.Errorf("remote needs setup; see diagnostics above")
+		return d, fmt.Errorf("remote needs setup; see diagnostics above")
 	}
-	return nil
+	return d, nil
+}
+
+func codexAuthenticationMissing(d Diagnosis) bool {
+	for _, check := range d.Checks {
+		if strings.HasPrefix(check, "SETUP Codex authentication:") {
+			return true
+		}
+	}
+	return false
 }
 
 func forward(r Remote, direction, port, target, bind string) error {

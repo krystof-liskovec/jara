@@ -24,9 +24,9 @@ addressed; the optional privileged Docker sidecar is for trusted workloads.
 
 ## Build the client
 
-Requires Go 1.27.3 or newer and an OpenSSH client (`ssh`). Git is required locally
-for repository discovery, Git-aware exclusions, and cloning unpublished commits.
-No local Docker or rsync is required for everyday use.
+Requires Go 1.27.3+ or Docker (the installer uses Go 1.27.3 if needed), plus
+`ssh`. Git is required locally for repository discovery, exclusions, and cloning
+unpublished commits. Docker and rsync are not needed after installation.
 
 ```sh
 ./install.sh
@@ -38,10 +38,10 @@ The installer refreshes the deployment source bundle embedded in the CLI.
 
 ## First connection
 
-Run `jara setup` on your computer to reuse a saved remote or deploy Jara to a new
-Linux Docker host, then check access and sign in to Codex. It detects saved
-remotes automatically; for a running Jara server not in your config, use
-`jara remote add`. New deployments run over SSH when your account can run Docker
+Run `jara setup` to reuse a saved remote, connect to a Jara server, or deploy
+a new Linux Docker host. Choose `connect` to enter its SSH address and key;
+SSH config or agent can supply other details. Setup checks the host and only
+asks for Codex sign-in if needed. New deployments run over SSH when your account can run Docker
 and the host has `tar`. The guide can generate a dedicated service key or use
 an existing SSH key, transfers the source bundled in the CLI, and uses native
 `docker build` and `docker run`; no Git
