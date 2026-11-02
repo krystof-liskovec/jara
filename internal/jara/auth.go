@@ -61,7 +61,8 @@ func validateProvider(provider, destination string) error {
 		_, err := parseGitCredentialTarget(destination)
 		return err
 	case "gitlab":
-		if destination == "" || strings.ContainsAny(destination, "/ \r\n\t") || strings.HasPrefix(destination, "-") {
+		parsed, err := url.Parse("https://" + destination)
+		if destination == "" || strings.HasPrefix(destination, "-") || strings.ContainsAny(destination, "/\\@?#% \r\n\t") || err != nil || parsed.Host != destination || parsed.Hostname() == "" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 			return fmt.Errorf("GitLab requires a hostname, optionally with port")
 		}
 	case "gitea":
@@ -99,6 +100,9 @@ func remoteAuth(provider, destination string, usernames ...string) error {
 	fingerprint := sha256.Sum256(append([]byte(provider+"\n"+destination+"\n"), secret...))
 	marker := filepath.Join(dataRoot(), "auth", provider+".sha256")
 	if old, e := os.ReadFile(marker); e == nil && string(old) == hex.EncodeToString(fingerprint[:]) {
+		if err := saveProviderCredential(provider, destination, string(secret)); err != nil {
+			return err
+		}
 		fmt.Fprintln(os.Stderr, provider+" credentials already configured")
 		return nil
 	}
@@ -113,6 +117,9 @@ func remoteAuth(provider, destination string, usernames ...string) error {
 	// Provider output is suppressed here so credentials cannot enter startup logs.
 	if err = cmd.Run(); err != nil {
 		return fmt.Errorf("%s authentication failed; verify installed CLI, host and token permissions (for Tea token rotation, remove its managed 'jara' login first)", provider)
+	}
+	if err = saveProviderCredential(provider, destination, string(secret)); err != nil {
+		return err
 	}
 	if err = os.MkdirAll(filepath.Dir(marker), 0700); err != nil {
 		return err

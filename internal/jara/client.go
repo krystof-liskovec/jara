@@ -17,6 +17,18 @@ func Run(args []string) error {
 	}
 	if len(args) > 0 {
 		switch args[0] {
+		case "docker":
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return dockerCommand(c, args[1:])
+		case "clone":
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return cloneRepositoryCommand(c, args[1:])
 		case "_rpc", "_open":
 			if len(args) != 2 {
 				return fmt.Errorf("invalid internal invocation")

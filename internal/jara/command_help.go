@@ -13,13 +13,13 @@ var commandHelp = map[string]helpEntry{
 		usage:   "jara [COMMAND] [OPTIONS]",
 		summary: "Open the current repository or browse persistent Codex workspaces.",
 		commands: []string{
-			"open, resume, new, run, connect, sessions\tManage remote Codex sessions.",
+			"open, resume, new, run, connect, sessions, clone\tManage remote Codex sessions and repositories.",
 			"sync, edit, tools, doctor\tWork with a remote workspace.",
 			"remote, workspace, config, auth\tManage workspaces and credentials.",
 			"setup, deployment, host, uninstall\tSet up and maintain Jara hosts.",
 			"forward, reverse, tunnel\tForward ports over SSH.",
 			"menu/ui, version, keygen, key\tClient and SSH key tools.",
-			"environment, migrate, help\tOther commands.",
+			"environment, docker, migrate, help\tOther commands.",
 		},
 		options: []string{
 			"--remote NAME       Select a configured host.",

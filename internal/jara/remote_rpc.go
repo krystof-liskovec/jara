@@ -139,6 +139,32 @@ func remoteRPC(q Request) error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(workspaces)
+	case "repository-providers":
+		return json.NewEncoder(os.Stdout).Encode(remoteRepositoryProviders())
+	case "repositories":
+		repositories, err := remoteRepositories(q.Provider)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(repositories)
+	case "clone":
+		return remoteCloneRepository(q)
+	case "docker-stale-list":
+		age, err := dockerCleanupAge(q.OlderThan)
+		if err != nil {
+			return err
+		}
+		containers, err := staleDockerContainers(age)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(containers)
+	case "docker-stale-remove":
+		age, err := dockerCleanupAge(q.OlderThan)
+		if err != nil {
+			return err
+		}
+		return removeStaleDockerContainers(age, q.Containers)
 	case "workspace-delete":
 		return remoteDeleteWorkspace(q.ID)
 	case "create":
