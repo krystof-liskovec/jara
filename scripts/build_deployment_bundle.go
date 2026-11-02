@@ -21,7 +21,7 @@ func main() {
 		fail(err.Error())
 	}
 	var files []string
-	files = append(files, ".dockerignore", "go.mod", "go.sum")
+	files = append(files, ".dockerignore", "go.mod", "go.sum", "scripts/build_deployment_bundle.go")
 	for _, dir := range []string{"cmd", "internal", "deploy"} {
 		err = filepath.WalkDir(filepath.Join(root, dir), func(path string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {

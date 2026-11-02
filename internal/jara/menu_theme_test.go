@@ -47,3 +47,28 @@ func TestMenuHonorsNoColor(t *testing.T) {
 		}
 	}
 }
+
+func TestTerminalThemeInheritsColorsAndReversesWholeSelection(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm-256color")
+	items := []menuItem{{Title: "Project", Detail: "2 live terminals", Kind: "project"}}
+	for _, theme := range []string{"", "terminal"} {
+		t.Setenv("JARA_THEME", theme)
+		lines := styleMenuLines(menuLines("Projects", items, 0, 80, 24), 80)
+		for i, line := range lines {
+			if strings.Contains(line, ";2;") {
+				t.Fatalf("terminal theme overrides RGB colors on row %d", i)
+			}
+			if strings.Contains(menuText(line), "▸ ") {
+				for _, selected := range lines[i : i+2] {
+					if !strings.Contains(selected, "\x1b[7m\x1b[39m") {
+						t.Fatal("selection does not invert the terminal's default colors")
+					}
+					if !strings.HasSuffix(selected, "\x1b[0m") {
+						t.Fatal("selection leaks styling into the next row")
+					}
+				}
+			}
+		}
+	}
+}

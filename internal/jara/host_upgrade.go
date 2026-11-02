@@ -16,23 +16,31 @@ import (
 )
 
 func deploymentUpgradeCommand(c Config, args []string) error {
-	if len(args) > 1 {
-		return fmt.Errorf("use jara deployment upgrade [NAME]")
+	name := ""
+	forceDowngrade := false
+	for _, arg := range args {
+		if arg == "--force-downgrade" {
+			forceDowngrade = true
+			continue
+		}
+		if name != "" {
+			return fmt.Errorf("use jara deployment upgrade [NAME] [--force-downgrade]")
+		}
+		name = arg
 	}
 	if len(deploymentBundle()) == 0 {
 		return fmt.Errorf("this Jara CLI does not include the source bundle; reinstall it with install.sh")
 	}
-	name := ""
-	if len(args) == 1 {
-		name = args[0]
-	} else if _, ok := c.HostDeployments[c.Default]; ok {
-		name = c.Default
-	} else if len(c.HostDeployments) == 1 {
-		for candidate := range c.HostDeployments {
-			name = candidate
+	if name == "" {
+		if _, ok := c.HostDeployments[c.Default]; ok {
+			name = c.Default
+		} else if len(c.HostDeployments) == 1 {
+			for candidate := range c.HostDeployments {
+				name = candidate
+			}
+		} else {
+			name = c.Default
 		}
-	} else {
-		name = c.Default
 	}
 	if !nameRE.MatchString(name) {
 		return fmt.Errorf("choose a guided deployment with `jara deployment upgrade NAME`")
@@ -50,10 +58,10 @@ func deploymentUpgradeCommand(c Config, args []string) error {
 	if err := validateRemote(deployment.Admin); err != nil {
 		return fmt.Errorf("invalid saved host connection: %w", err)
 	}
-	return upgradeGuidedHost(name, deployment, deploymentBundle(), Version, os.Stdout)
+	return upgradeGuidedHost(name, deployment, deploymentBundle(), Version, forceDowngrade, os.Stdout)
 }
 
-func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desiredVersion string, log io.Writer) error {
+func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desiredVersion string, forceDowngrade bool, log io.Writer) error {
 	name = deploymentName(name, saved)
 	if len(bundle) == 0 {
 		return fmt.Errorf("deployment source bundle is empty")
@@ -149,6 +157,19 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	oldJaraVersion, err := remoteJaraVersion(runDocker, container)
 	if err != nil {
 		return err
+	}
+	if versionNewer(oldJaraVersion, desiredVersion) {
+		if !forceDowngrade {
+			updated, updateErr := offerServerClientUpdate(runDocker, container, name, desiredVersion, log)
+			if updateErr != nil {
+				return updateErr
+			}
+			if updated {
+				return nil
+			}
+			return fmt.Errorf("server runs newer Jara %s; refusing downgrade to %s; update this client or pass --force-downgrade", oldJaraVersion, desiredVersion)
+		}
+		fmt.Fprintf(log, "WARNING: forcing Jara downgrade from %s to %s.\n", oldJaraVersion, desiredVersion)
 	}
 	busy, err := gate.maintenance(container, "status", "")
 	if err != nil {
