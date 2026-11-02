@@ -25,6 +25,10 @@ func terminalMenuAt(title string, items []menuItem, initial int) (int, bool, err
 	if os.Getenv("TERM") == "dumb" || !term.IsTerminal(input) || !term.IsTerminal(output) {
 		return 0, false, nil
 	}
+	palette := menuColors()
+	if os.Getenv("NO_COLOR") == "" {
+		palette = menuColorsForTerminal()
+	}
 	state, err := term.MakeRaw(input)
 	if err != nil {
 		return 0, true, err
@@ -77,7 +81,7 @@ func terminalMenuAt(title string, items []menuItem, initial int) (int, bool, err
 			for len(lines) < height {
 				lines = append(lines, "")
 			}
-			styled := styleMenuLines(lines, width)
+			styled := styleMenuLinesWithPalette(lines, width, palette)
 			var update strings.Builder
 			if width != lastWidth || height != lastHeight || lastRendered == nil {
 				update.WriteString("\x1b[H\x1b[2J")

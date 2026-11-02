@@ -1,22 +1,21 @@
 # Jara terminal interface
 
-By default, Jara menus use your terminal's foreground, background and ANSI accent
-colors. The selected item's title and metadata use inverse colors, adapting to
-both light and dark terminals without color detection or startup queries.
-Set `JARA_THEME=terminal` explicitly to select this behavior.
+Jara reads the terminal's background color once using the OSC 11 query, then
+builds visible card and selection surfaces from that color. Text and accent
+colors adapt for dark, light and middle gray backgrounds. The query happens
+before entering the menu so the response does not affect key navigation.
 
-The optional dark theme uses a midnight canvas, slate cards and an indigo selection that
-covers both title and metadata. A violet breadcrumb header, inset search field
-and bottom shortcut bar frame the list. Green accents identify live and working
-status. Desktop lists are centered at a readable width; phones use the available
-width, with compact spacing on short screens. Selection never changes row
-content. Search includes metadata and titles; long lists paginate to fit.
+If the terminal does not answer the query, Jara uses `JARA_TMUX_BACKGROUND`,
+then the host's configured background, then its built-in fallback. Set
+`JARA_TMUX_BACKGROUND=#RRGGBB` on the host when a phone terminal does not
+support the query and its theme differs from the configured background.
+`JARA_THEME=light` and `JARA_THEME=dark` explicitly select fixed palettes;
+`NO_COLOR` disables styling.
 
-Set `JARA_THEME=light` for the light palette or `JARA_THEME=dark` for the dark palette.
-Both explicit palettes paint complete backgrounds for consistent contrast, and `NO_COLOR`
-disables styling. These settings apply where Jara runs: set them on the remote
-host for the SSH interface. The colored interface uses RGB terminal colors,
-which modern terminals including Termius support.
+The interface keeps a violet breadcrumb, an inset search field, and a bottom
+shortcut bar. Desktop lists are centered at a readable width; phones use the
+available width, with compact spacing on short screens. Selection never
+changes row content. Search includes metadata and titles; long lists paginate.
 
 ## Projects and conversations
 

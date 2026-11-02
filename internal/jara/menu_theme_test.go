@@ -48,27 +48,25 @@ func TestMenuHonorsNoColor(t *testing.T) {
 	}
 }
 
-func TestTerminalThemeInheritsColorsAndReversesWholeSelection(t *testing.T) {
+func TestTerminalThemeUsesBackgroundWithVisibleCards(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("JARA_THEME", "")
 	items := []menuItem{{Title: "Project", Detail: "2 live terminals", Kind: "project"}}
-	for _, theme := range []string{"", "terminal"} {
-		t.Setenv("JARA_THEME", theme)
-		lines := styleMenuLines(menuLines("Projects", items, 0, 80, 24), 80)
-		for i, line := range lines {
-			if strings.Contains(line, ";2;") {
-				t.Fatalf("terminal theme overrides RGB colors on row %d", i)
+	for _, background := range []string{"#05070a", "#262626", "#808080", "#c6c6c6", "#fafafa"} {
+		t.Run(background, func(t *testing.T) {
+			t.Setenv("JARA_TMUX_BACKGROUND", background)
+			p := menuColors()
+			if p.canvas == p.surface || p.surface == p.selection {
+				t.Fatalf("invisible cards on %s: %+v", background, p)
 			}
-			if strings.Contains(menuText(line), "▸ ") {
-				for _, selected := range lines[i : i+2] {
-					if !strings.Contains(selected, "\x1b[7m\x1b[39m") {
-						t.Fatal("selection does not invert the terminal's default colors")
-					}
-					if !strings.HasSuffix(selected, "\x1b[0m") {
-						t.Fatal("selection leaks styling into the next row")
-					}
-				}
+			if menuBrightness(p.canvas) == menuBrightness(p.surface) {
+				t.Fatal("card has no luminance difference")
 			}
-		}
+			lines := styleMenuLines(menuLines("Projects", items, 0, 80, 24), 80)
+			if !strings.Contains(strings.Join(lines, "\n"), menuBG(p.surface)) || !strings.Contains(strings.Join(lines, "\n"), menuBG(p.selection)) {
+				t.Fatal("derived colors were not used")
+			}
+		})
 	}
 }
