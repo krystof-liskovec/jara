@@ -22,6 +22,29 @@ the repository name; owner and host remain visible in the secondary line to
 distinguish repositories with the same name. Projects sort by the most recently
 updated conversation. Empty registered projects remain available for new chats.
 
+Separate checkouts of the same repository have distinct labels. New workspaces
+record the originating device and local path: duplicates appear as `jara · laptop`
+and `jara · desktop`. Multiple checkouts on one device include enough of their
+source paths to distinguish them. Existing workspaces without device metadata
+use their creation time, with a short workspace reference when times coincide.
+Labels stay with their checkout as the activity order changes, including inside
+the project. The secondary line shows the current Git branch and, when recorded,
+the source path alongside conversation and terminal counts.
+
+Opening a Git folder on a new device checks the host for ready checkouts of the
+same repository. Choose an existing checkout to link this folder to it, or clone
+a separate checkout. The chooser uses the same device and path labels as Projects.
+The link is remembered for this local folder; future `jara` invocations reopen it.
+Setup's `open` choice uses this flow too. Explicit `--clone` skips discovery.
+For a folder already linked to a checkout, use `jara --choose-workspace` or
+**Choose checkout for this folder** in `jara menu` to select another one.
+
+Linking preserves the remote branch and files. Local working edits can be synced
+after confirmation, or later with `jara sync push`; remote edits are preserved
+and conflicting changes stop the transfer. Initial sync uses the local committed
+tree as its baseline, so joining does not replace a remote checkout with local
+commits. Later file changes and commits are tracked by the usual sync baseline.
+
 Opening a project shows conversation names, falling back to the prompt preview.
 The secondary line contains the agent, age and any matched live terminal count.
 A reported active Codex status appears as `working`. Selecting a conversation

@@ -34,6 +34,9 @@ func remoteWorkspaces() ([]Workspace, error) {
 			return nil, fmt.Errorf("read workspace %s: %w", id, err)
 		}
 		workspaces = append(workspaces, workspace)
+		if workspace.Ready && workspace.URL != "" {
+			workspaces[len(workspaces)-1].Branch, _ = gitOutput(workspace.Path, "symbolic-ref", "--short", "-q", "HEAD")
+		}
 	}
 	for _, entry := range entries {
 		id := entry.Name()

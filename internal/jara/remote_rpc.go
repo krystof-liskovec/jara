@@ -166,7 +166,8 @@ func remoteRPC(q Request) error {
 		} else if err = os.MkdirAll(p, 0700); err != nil {
 			return err
 		}
-		return writeJSON(p+".json", Workspace{ID: q.ID, Name: q.Name, Path: p, URL: q.URL, Branch: q.Branch, Created: time.Now().UTC().Format(time.RFC3339)})
+		return writeJSON(p+".json", Workspace{ID: q.ID, Name: q.Name, Path: p, URL: q.URL, Branch: q.Branch,
+			SourceHost: q.SourceHost, SourcePath: q.SourcePath, Created: time.Now().UTC().Format(time.RFC3339)})
 	case "checkout":
 		unlock, err := lockWorkspace(q.ID)
 		if err != nil {

@@ -39,6 +39,7 @@ func clientMenuItems(c Config) []menuItem {
 		remote := defaultRemoteLabel(c)
 		items = append(items,
 			menuItem{Title: "Open this workspace", Detail: "Attach or choose a session · " + remote, Kind: "workspace", Action: "open"},
+			menuItem{Title: "Choose checkout for this folder", Detail: "Link this folder to an existing remote checkout", Kind: "workspace", Action: "choose-workspace"},
 			menuItem{Title: "Projects", Detail: "Conversations and live terminals", Kind: "running", Action: "browse"},
 			menuItem{Title: "New conversation", Detail: "Codex", Kind: "new", Action: "new"},
 			menuItem{Title: "Connections", Detail: fmt.Sprintf("%d configured", len(c.Remotes)), Kind: "remote", Action: "remote"},
@@ -57,6 +58,12 @@ func runClientMenuAction(c Config, action string) error {
 	switch action {
 	case "open":
 		return Run(nil)
+	case "choose-workspace":
+		name, err := chooseMenuRemote(c, "Choose a remote checkout")
+		if err != nil || name == "" {
+			return err
+		}
+		return Run([]string{"--choose-workspace", "--remote", name})
 	case "browse":
 		name, err := chooseMenuRemote(c, "Browse remote workspaces")
 		if err != nil || name == "" {

@@ -39,7 +39,8 @@ func uninstallCommand(c *Config, args []string) error {
 	if err := validateRemote(deployment.Admin); err != nil {
 		return fmt.Errorf("invalid saved host connection: %w", err)
 	}
-	if !validGuidedDeploymentDirectory(name, deployment.Directory) {
+	actualName := deploymentName(name, deployment)
+	if !validGuidedDeploymentDirectory(actualName, deployment.Directory) {
 		return fmt.Errorf("saved deployment directory is invalid; refusing to remove it")
 	}
 	generatedServiceKey := deployment.ServiceKeyMode == "" || deployment.ServiceKeyMode == "generated"
@@ -61,7 +62,7 @@ func uninstallCommand(c *Config, args []string) error {
 	}
 	volumeMessage := "Workspace files, Codex login, Git credentials, history, and host keys in Docker volumes will be kept. Local workspace links will also be kept so a redeployment can reuse them."
 	volumeCommands := ""
-	lowerName := strings.ToLower(name)
+	lowerName := strings.ToLower(actualName)
 	if removeVolumes {
 		volumeMessage = "This permanently deletes workspace files, Codex login, Git credentials, history, and host keys. A reinstall will have a new SSH host fingerprint."
 		project := "jara-" + lowerName

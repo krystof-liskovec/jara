@@ -25,9 +25,17 @@ type Binding struct {
 	Workspace string `json:"workspace"`
 }
 type HostDeployment struct {
+	Name           string `json:"name,omitempty"`
 	Admin          Remote `json:"admin"`
 	Directory      string `json:"directory"`
 	ServiceKeyMode string `json:"service_key_mode,omitempty"`
+}
+
+func deploymentName(alias string, deployment HostDeployment) string {
+	if deployment.Name != "" {
+		return deployment.Name
+	}
+	return alias
 }
 
 func guidedDeploymentDirectory(name string) string { return ".jara-deploy-" + name }

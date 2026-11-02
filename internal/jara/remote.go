@@ -8,13 +8,15 @@ import (
 )
 
 type Workspace struct {
-	ID      string `json:"id"`
-	Name    string `json:"name,omitempty"`
-	Path    string `json:"path"`
-	URL     string `json:"url,omitempty"`
-	Branch  string `json:"branch,omitempty"`
-	Created string `json:"created"`
-	Ready   bool   `json:"ready"`
+	ID         string `json:"id"`
+	Name       string `json:"name,omitempty"`
+	Path       string `json:"path"`
+	URL        string `json:"url,omitempty"`
+	Branch     string `json:"branch,omitempty"`
+	Created    string `json:"created"`
+	Ready      bool   `json:"ready"`
+	SourceHost string `json:"source_host,omitempty"`
+	SourcePath string `json:"source_path,omitempty"`
 }
 
 type Diagnosis struct {

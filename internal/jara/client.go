@@ -182,7 +182,8 @@ func Run(args []string) error {
 	var codexArgs codexArgList
 	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
 	remoteName := f.String("remote", "", "named remote")
-	clone := f.Bool("clone", false, "clone without confirmation")
+	clone := f.Bool("clone", false, "skip workspace discovery and clone confirmation")
+	chooseWorkspace := f.Bool("choose-workspace", false, "choose an existing checkout for this local folder")
 	copyMode := f.Bool("copy", false, "copy current directory")
 	source := f.String("source", "", "source directory")
 	editor := f.String("editor", "", "editor override")
@@ -244,6 +245,9 @@ func Run(args []string) error {
 	if *clone && *copyMode {
 		return fmt.Errorf("--clone and --copy are mutually exclusive")
 	}
+	if *chooseWorkspace && (*clone || *copyMode || action != "open" && action != "new" && action != "resume" && action != "run") {
+		return fmt.Errorf("--choose-workspace requires open, new, resume, or run without --clone or --copy")
+	}
 	if *newTree && action != "new" && action != "run" {
 		return fmt.Errorf("--worktree requires jara new or jara run")
 	}
@@ -264,6 +268,9 @@ func Run(args []string) error {
 		return fmt.Errorf("source must be an existing directory: %s", cwd)
 	}
 	root, rel, isGit := workspaceContext(c, cwd, *copyMode)
+	if *chooseWorkspace && !isGit {
+		return fmt.Errorf("run --choose-workspace from a Git repository")
+	}
 	if resolved, e := filepath.EvalSymlinks(root); e == nil {
 		root = resolved
 	}
@@ -330,6 +337,9 @@ func Run(args []string) error {
 			}
 		}
 	}
+	if *chooseWorkspace {
+		exists = false
+	}
 	var clonePromptReader *bufio.Reader
 	if !exists && !isGit && !*copyMode {
 		if action != "open" && action != "resume" {
@@ -341,81 +351,38 @@ func Run(args []string) error {
 		if action == "sync" || action == "edit" || action == "tools" {
 			return fmt.Errorf("workspace is not associated with %s; open it with jara first", chosen)
 		}
-		if !*copyMode && !*clone {
-			clonePromptReader = bufio.NewReader(os.Stdin)
-			yes, e := confirmWithReader(clonePromptReader, "Clone this repository to "+chosen+"?")
-			if e != nil {
-				return e
-			}
-			if !yes {
-				return openSession(Request{})
-			}
+		if !*copyMode && originErr != nil {
+			return originErr
 		}
-		id := workspaceID(root, origin)
-		q := Request{Op: "create", ID: id, Name: filepath.Base(root)}
-		if !*copyMode {
-			if originErr != nil {
-				return originErr
+		var choice existingCheckoutChoice
+		if !*copyMode && !*clone {
+			choice, err = offerExistingCheckout(r, chosen, root, origin)
+			if err == io.EOF {
+				return nil
 			}
-			q.URL = origin
-			q.Commit, err = gitOutput(root, "rev-parse", "HEAD")
 			if err != nil {
 				return err
 			}
-			q.Branch, _ = gitOutput(root, "symbolic-ref", "--short", "-q", "HEAD")
 		}
-		reusedExisting := false
-		if q.URL != "" {
-			legacyID := workspaceID(root, "")
-			if legacyID != id {
-				if existing, matches := workspaceForOrigin(r, legacyID, q.URL); matches {
-					id, q.ID = legacyID, legacyID
-					if existing.Ready {
-						reusedExisting = true
-						fmt.Fprintf(os.Stderr, "Reusing existing remote workspace %s; its checkout was left unchanged.\n", id)
-					}
+		if choice.Binding.Workspace != "" {
+			b = choice.Binding
+		} else {
+			if !*copyMode && !*clone && !choice.Clone {
+				clonePromptReader = bufio.NewReader(os.Stdin)
+				yes, e := confirmWithReader(clonePromptReader, "Clone this repository to "+chosen+"?")
+				if e != nil {
+					return e
+				}
+				if !yes {
+					return openSession(Request{})
 				}
 			}
-		}
-		if !reusedExisting {
-			if err = rpc(r, q, nil, nil); err != nil {
-				destinationExists := strings.Contains(err.Error(), "destination already exists; no files changed:")
-				if q.URL != "" && destinationExists {
-					var existing Workspace
-					if infoErr := rpc(r, Request{Op: "info", ID: id}, nil, &existing); infoErr == nil && existing.Ready && existing.ID == id && existing.URL == q.URL {
-						reusedExisting = true
-						fmt.Fprintf(os.Stderr, "Reusing existing remote workspace %s; its checkout was left unchanged.\n", id)
-					}
-				}
-				if !reusedExisting {
-					if destinationExists {
-						return fmt.Errorf("%w\nThe existing workspace could not be verified as a ready clone of this repository; no files were changed.", err)
-					}
-					if q.URL != "" {
-						return fmt.Errorf("%w\nIf this is a private repository, run `jara auth git --remote %s` from the checkout and retry.", err, chosen)
-					}
-					return err
-				}
-			}
-		}
-		b = Binding{Remote: chosen, Workspace: id}
-		if !*copyMode && !reusedExisting {
-			bundle, cleanup, e := repositoryBundle(root)
-			if e != nil {
-				return e
-			}
-			defer cleanup()
-			if e = rpc(r, Request{Op: "checkout", ID: id, Branch: q.Branch, Commit: q.Commit}, bundle, nil); e != nil {
-				return e
-			}
-			if e = seedCloneBaseline(r, b, root); e != nil {
-				fmt.Fprintln(os.Stderr, "Clone succeeded but initial sync baseline could not be recorded:", e)
+			b, err = createClientWorkspace(r, chosen, root, origin, *copyMode, *includeIgnored, choice.Clone)
+			if err != nil {
+				return err
 			}
 		}
 		if *copyMode {
-			if err = syncWorkspace(r, b, root, "push", false, *includeIgnored, false); err != nil {
-				return err
-			}
 			rel = "."
 		}
 		c.Associations[key] = b

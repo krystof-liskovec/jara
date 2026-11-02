@@ -13,6 +13,7 @@ import (
 )
 
 type conversationProject struct {
+	Label     string
 	Workspace Workspace
 	Path      string
 	Threads   []Conversation
@@ -34,6 +35,9 @@ func readBrowserWorkspaces() ([]Workspace, error) {
 		var w Workspace
 		if e = json.Unmarshal(b, &w); e != nil {
 			return nil, e
+		}
+		if w.Ready && w.URL != "" {
+			w.Branch, _ = gitOutput(w.Path, "symbolic-ref", "--short", "-q", "HEAD")
 		}
 		workspaces = append(workspaces, w)
 	}
@@ -83,6 +87,7 @@ func conversationProjects(workspaces []Workspace, threads []Conversation, termin
 			return max(projects[i].Threads[a].Updated, projects[i].Threads[a].Created) > max(projects[i].Threads[b].Updated, projects[i].Threads[b].Created)
 		})
 	}
+	labelDuplicateProjects(projects)
 	sort.SliceStable(projects, func(i, j int) bool {
 		if projects[i].Recent != projects[j].Recent {
 			return projects[i].Recent > projects[j].Recent
@@ -92,6 +97,13 @@ func conversationProjects(workspaces []Workspace, threads []Conversation, termin
 	return projects
 }
 func projectName(p conversationProject) string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return projectBaseName(p)
+}
+
+func projectBaseName(p conversationProject) string {
 	if _, name, _, _, ok := workspaceOriginParts(p.Workspace.URL); ok {
 		return name
 	}
@@ -105,6 +117,9 @@ func projectName(p conversationProject) string {
 }
 func projectDetail(p conversationProject) string {
 	detail := fmt.Sprintf("%d chats", len(p.Threads))
+	if p.Workspace.Branch != "" {
+		detail = p.Workspace.Branch + " · " + detail
+	}
 	if p.Workspace.ID != "" && !p.Workspace.Ready {
 		detail += " · setup needed"
 	}
@@ -113,6 +128,9 @@ func projectDetail(p conversationProject) string {
 	}
 	if _, _, host, owner, ok := workspaceOriginParts(p.Workspace.URL); ok {
 		detail += " · " + owner + "@" + host
+	}
+	if p.Workspace.SourcePath != "" {
+		detail += " · " + p.Workspace.SourcePath
 	}
 	return detail
 }

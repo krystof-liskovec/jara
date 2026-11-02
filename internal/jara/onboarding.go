@@ -74,6 +74,15 @@ func guidedSetup(c Config) error {
 			return err
 		}
 	}
+	if _, managed := c.HostDeployments[name]; !managed {
+		c, err = readConfig()
+		if err != nil {
+			return err
+		}
+		if err = offerDeploymentConnection(&c, name, r, reader); err != nil {
+			return fmt.Errorf("Jara connection was saved, but Docker host registration failed: %w; rerun jara setup to retry", err)
+		}
+	}
 	if err = setupHostCodexArgs(r, name, reader); err != nil {
 		return err
 	}
@@ -101,14 +110,14 @@ func guidedSetup(c Config) error {
 	_, _, isGit := workspaceRoot(cwd, false)
 	workspaceChoices := "copy/skip"
 	if isGit {
-		workspaceChoices = "clone/copy/skip"
+		workspaceChoices = "open/copy/skip"
 	}
 	mode, err := askSetup(reader, "Open this folder now? ["+workspaceChoices+"]", "skip")
 	if err != nil {
 		return err
 	}
 	switch strings.ToLower(mode) {
-	case "clone":
+	case "open", "clone":
 		if !isGit {
 			return fmt.Errorf("clone is available from inside a Git repository; choose copy for this folder")
 		}
@@ -121,14 +130,14 @@ func guidedSetup(c Config) error {
 				return err
 			}
 		}
-		return Run([]string{"--remote", name, "--clone"})
+		return Run([]string{"--remote", name})
 	case "copy":
 		return Run([]string{"--remote", name, "--copy"})
 	case "skip", "":
-		fmt.Printf("Ready. Run jara --remote %s --clone in a Git repository, or --copy in a folder.\n", name)
+		fmt.Printf("Ready. Run jara --remote %s in a Git repository, or --copy in a folder.\n", name)
 		return nil
 	default:
-		return fmt.Errorf("choose clone, copy, or skip")
+		return fmt.Errorf("choose open, copy, or skip")
 	}
 }
 
