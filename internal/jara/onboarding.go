@@ -22,23 +22,41 @@ func guidedSetup(c Config) error {
 		return fmt.Errorf("remote name may contain only letters, digits, underscores and hyphens")
 	}
 	var r Remote
+	var diagnosis Diagnosis
 	checkRemote := false
 	if saved, ok := c.Remotes[name]; ok {
 		r = saved
 		fmt.Printf("Checking SSH access and Jara on %s...\n", r.Host)
-		if err := doctor(name, r); err != nil {
+		if diagnosis, err = diagnoseRemote(name, r); err != nil {
 			return fmt.Errorf("saved Jara remote %q is unavailable: %w; choose a new name to deploy another host", name, err)
 		}
 	} else {
 		if _, managed := c.HostDeployments[name]; managed {
 			return fmt.Errorf("guided deployment %q has no saved remote connection; remove its local entry or repair the Jara config", name)
 		}
-		var err error
-		r, err = provisionDockerHost(&c, name, reader)
+		method, err := askSetup(reader, "Connect to an existing Jara host or deploy a new one? [connect/deploy]", "connect")
 		if err != nil {
 			return err
 		}
-		checkRemote = true
+		switch strings.ToLower(method) {
+		case "connect":
+			r, err = connectExistingJaraHost(reader)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("Checking SSH access and Jara on %s...\n", r.Host)
+			if diagnosis, err = diagnoseRemote(name, r); err != nil {
+				return fmt.Errorf("could not connect to the existing Jara host: %w", err)
+			}
+		case "deploy":
+			r, err = provisionDockerHost(&c, name, reader)
+			if err != nil {
+				return err
+			}
+			checkRemote = true
+		default:
+			return fmt.Errorf("choose connect or deploy")
+		}
 	}
 	c.Remotes[name] = r
 	c.Default = name
@@ -52,7 +70,7 @@ func guidedSetup(c Config) error {
 			return fmt.Errorf("deployment was saved, but Jara SSH did not become ready: %w", err)
 		}
 		fmt.Println("Checking the new Jara deployment...")
-		if err = doctor(name, r); err != nil {
+		if diagnosis, err = diagnoseRemote(name, r); err != nil {
 			return err
 		}
 	}
@@ -60,17 +78,21 @@ func guidedSetup(c Config) error {
 		return err
 	}
 
-	fmt.Println("Codex sign-in is saved in the remote Jara environment's persistent home.")
-	yes, err := askYes(reader, "Sign in to Codex on the remote now?", true)
-	if err != nil {
-		return err
-	}
-	if yes {
-		if err = authCommand(c, []string{"codex", "--remote", name}); err != nil {
-			return err
+	if codexAuthenticationMissing(diagnosis) {
+		fmt.Println("Codex sign-in is saved in the remote Jara environment's persistent home.")
+		yes, askErr := askYes(reader, "Sign in to Codex on the remote now?", true)
+		if askErr != nil {
+			return askErr
+		}
+		if yes {
+			if err = authCommand(c, []string{"codex", "--remote", name}); err != nil {
+				return err
+			}
+		} else {
+			fmt.Printf("You can sign in later with `jara auth codex --remote %s`.\n", name)
 		}
 	} else {
-		fmt.Printf("You can sign in later with `jara auth codex --remote %s`.\n", name)
+		fmt.Println("Codex is already signed in on this Jara host.")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
