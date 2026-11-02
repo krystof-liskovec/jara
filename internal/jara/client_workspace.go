@@ -36,7 +36,7 @@ func confirmWithReader(reader *bufio.Reader, prompt string) (bool, error) {
 }
 
 func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string, includeIgnored, isGit bool, reader *bufio.Reader) error {
-	pending, deletions, err := localPushChangesPending(b, root, includeIgnored, isGit)
+	pending, deletions, size, err := localPushChangesSummary(b, root, includeIgnored, isGit)
 	if err != nil {
 		return fmt.Errorf("local changes could not be checked: %w; run `jara sync push` if needed", err)
 	}
@@ -46,9 +46,9 @@ func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string,
 	if reader == nil {
 		reader = bufio.NewReader(os.Stdin)
 	}
-	prompt := "Local changes are not synced. Sync them to " + remoteName + " before starting?"
+	prompt := fmt.Sprintf("Local changes are not synced (about %s of file data). Sync them to %s before starting?", formatSyncSize(size), remoteName)
 	if deletions {
-		prompt = "Local changes are not synced. Sync them to " + remoteName + " before starting? This will also remove files deleted locally from the remote."
+		prompt += " This will also remove files deleted locally from the remote."
 	}
 	pushChanges, err := confirmWithReader(reader, prompt)
 	if err != nil && err != io.EOF {

@@ -37,6 +37,7 @@ func terminalMenuAt(title string, items []menuItem, initial int) (int, bool, err
 	defer fmt.Print("\x1b[0m\x1b[?25h\x1b[?1049l")
 
 	selected, lastWidth, lastHeight := max(0, min(initial, len(items)-1)), 0, 0
+	var lastRendered []string
 	filter, searching := "", false
 	redraw := true
 	escape := ""
@@ -76,7 +77,21 @@ func terminalMenuAt(title string, items []menuItem, initial int) (int, bool, err
 			for len(lines) < height {
 				lines = append(lines, "")
 			}
-			fmt.Print("\x1b[H\x1b[2J" + strings.Join(styleMenuLines(lines, width), "\r\n"))
+			styled := styleMenuLines(lines, width)
+			var update strings.Builder
+			if width != lastWidth || height != lastHeight || lastRendered == nil {
+				update.WriteString("\x1b[H\x1b[2J")
+				update.WriteString(strings.Join(styled, "\r\n"))
+			} else {
+				for i, line := range styled {
+					if i < len(lastRendered) && line == lastRendered[i] {
+						continue
+					}
+					fmt.Fprintf(&update, "\x1b[%d;1H%s\x1b[K", i+1, line)
+				}
+			}
+			fmt.Print(update.String())
+			lastRendered = styled
 			lastWidth, lastHeight = width, height
 			redraw = false
 		}

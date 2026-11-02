@@ -201,45 +201,63 @@ func syncStatePath(b Binding, root string) (string, error) {
 }
 
 func localPushChangesPending(b Binding, root string, includeIgnored, isGit bool) (pending, deletions bool, err error) {
+	pending, deletions, _, err = localPushChangesSummary(b, root, includeIgnored, isGit)
+	return pending, deletions, err
+}
+
+func localPushChangesSummary(b Binding, root string, includeIgnored, isGit bool) (pending, deletions bool, size int64, err error) {
 	state, err := syncStatePath(b, root)
 	if err != nil {
-		return false, false, err
+		return false, false, 0, err
 	}
 	data, err := os.ReadFile(state)
 	if os.IsNotExist(err) {
 		if !isGit {
-			return false, false, nil
+			return false, false, 0, nil
 		}
 		status, statusErr := gitOutput(root, "status", "--porcelain")
-		return status != "", false, statusErr
+		if statusErr != nil || status == "" {
+			return false, false, 0, statusErr
+		}
+		paths, pathErr := uncommittedGitPaths(root, includeIgnored)
+		if pathErr != nil {
+			return false, false, 0, pathErr
+		}
+		size, pathErr = localFileDataSize(root, paths)
+		return true, false, size, pathErr
 	}
 	if err != nil {
-		return false, false, err
+		return false, false, 0, err
 	}
 	var baseline Baseline
 	if err = json.Unmarshal(data, &baseline); err != nil {
-		return false, false, err
+		return false, false, 0, err
 	}
 	var head string
 	if isGit && !includeIgnored {
 		status, statusErr := gitOutput(root, "status", "--porcelain")
 		if statusErr != nil {
-			return false, false, statusErr
+			return false, false, 0, statusErr
 		}
 		head = gitHead(root)
 		if status == "" && head == baseline.LocalHead {
-			return false, false, nil
+			return false, false, 0, nil
 		}
 	}
 	local, err := manifestWithIgnored(root, includeIgnored)
 	if err != nil {
-		return false, false, err
+		return false, false, 0, err
 	}
+	changed := make([]string, 0)
 	for name := range local {
 		if sig(local, name) != sig(baseline.Local, name) {
 			pending = true
-			break
+			changed = append(changed, name)
 		}
+	}
+	size, err = localFileDataSize(root, changed)
+	if err != nil {
+		return false, false, 0, err
 	}
 	var missing []string
 	for name := range baseline.Local {
@@ -250,7 +268,7 @@ func localPushChangesPending(b Binding, root string, includeIgnored, isGit bool)
 	if len(missing) > 0 {
 		present, presentErr := existingPaths(root, missing)
 		if presentErr != nil {
-			return false, false, presentErr
+			return false, false, 0, presentErr
 		}
 		for _, name := range missing {
 			if !present[name] {
@@ -262,10 +280,10 @@ func localPushChangesPending(b Binding, root string, includeIgnored, isGit bool)
 	if !pending && head != "" && head != baseline.LocalHead {
 		baseline.LocalHead = head
 		if err = writeJSON(state, baseline); err != nil {
-			return false, false, err
+			return false, false, 0, err
 		}
 	}
-	return pending, deletions, nil
+	return pending, deletions, size, nil
 }
 
 func gitHead(root string) string {
