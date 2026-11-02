@@ -70,7 +70,11 @@ func sessionJanitorCommand(args []string) error {
 }
 
 func initializeSessionLifecycle(session string) error {
-	if err := setLastAttached(session, time.Now()); err != nil {
+	now := time.Now()
+	if err := runTmux("set-option", "-t", session, "@jara_created_at", strconv.FormatInt(now.UnixNano(), 10)); err != nil {
+		return fmt.Errorf("record session creation time: %w", err)
+	}
+	if err := setLastAttached(session, now); err != nil {
 		return err
 	}
 	return installSessionAttachHook(session)

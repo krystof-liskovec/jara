@@ -49,7 +49,7 @@ The SSH examples use `agent`, the default username. Replace it with your selecte
 Jara SSH username if you changed it during setup.
 
 ```sh
-jara connect                            # Workspace and running-session menu
+jara connect                            # Codex history and workspace menu
 jara connect WORKSPACE_ID               # Attach, or start Codex if stopped
 jara connect --resume WORKSPACE_ID      # Attach, or start plain codex resume
 jara connect --new WORKSPACE_ID         # Additional terminal; warns about shared files
@@ -62,6 +62,10 @@ inside the environment and do not read the laptop's remote configuration or open
 another SSH connection. The browser lists workspaces already created by Jara's
 clone/copy flow. You can also use ordinary shell commands, Git, editors and tmux
 for manually managed folders.
+
+`Browse Codex sessions` is the first, preselected menu item. It opens Codex's
+native `resume --all` picker, including conversations from every workspace. The
+workspace entries below it manage Jara's persistent tmux terminals.
 
 From a computer without the Jara client, open the same menu directly:
 
@@ -81,8 +85,10 @@ show them side by side. Names and branches are shortened to fit, long lists are
 paged to fit the available height, and resizing/orientation changes redraw the
 layout. New clone/copy workspaces remember the local folder name. Older cloned
 workspaces derive their name from origin; older copied workspaces show a short ID.
-The footer identifies the selected workspace. A `New: PROJECT` entry starts an
-additional session. Running entries show whether other clients are attached.
+The footer identifies the selected workspace. Sessions are grouped under their
+workspace, with workspaces sorted by their newest session. Background entries
+show the prompt; Jara terminals show their state, age and attachment count. A
+`New session` entry starts another terminal in that workspace.
 
 Noninteractive input and `TERM=dumb` retain a numbered, line-based menu: enter the
 number followed by Enter. Choose `q` to leave the menu; when run from an

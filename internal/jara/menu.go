@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/rivo/uniseg"
@@ -16,8 +17,10 @@ import (
 
 type menuItem struct {
 	Title, Detail, Workspace string
+	Group                    string
 	Kind                     string
 	Action                   string
+	Indent                   int
 }
 
 var terminalEscapes = regexp.MustCompile("\\x1b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\))")
@@ -81,7 +84,7 @@ func menuLinesFiltered(title string, items []menuItem, selected, width, height i
 		return emptyMenuLines(title, width, height, filter, total)
 	}
 	selected = max(0, min(selected, len(items)-1))
-	if width >= 90 && height >= 14 {
+	if width >= 90 && height >= 14 && title != "Sessions & workspaces" && title != "Running sessions" {
 		return menuPanelLines(title, items, selected, width, height, filter, total)
 	}
 	size := menuPageSize(width+1, height)
@@ -93,7 +96,7 @@ func menuLinesFiltered(title string, items []menuItem, selected, width, height i
 		if i == selected {
 			mark = "> "
 		}
-		prefix := mark + menuKindIcon(items[i].Kind) + " "
+		prefix := mark + menuKindIcon(items[i].Kind) + " " + strings.Repeat("  ", items[i].Indent)
 		if width+1 < 60 {
 			lines = append(lines, fitMenu(prefix+items[i].Title, width), fitMenu("    "+items[i].Detail, width))
 		} else {
@@ -152,7 +155,7 @@ func menuPanelLines(title string, items []menuItem, selected, width, height int,
 			if index == selected {
 				mark = "> "
 			}
-			left = mark + menuKindIcon(items[index].Kind) + " " + items[index].Title
+			left = mark + menuKindIcon(items[index].Kind) + " " + strings.Repeat("  ", items[index].Indent) + items[index].Title
 		}
 		right := ""
 		if row < len(preview) {
@@ -190,12 +193,18 @@ func menuKindIcon(kind string) string {
 	switch kind {
 	case "running":
 		return "●"
+	case "terminal", "background":
+		return "●"
 	case "workspace":
 		return "○"
 	case "new":
 		return "+"
 	case "tools":
 		return "?"
+	case "group":
+		return "…"
+	case "history":
+		return "↻"
 	default:
 		return "›"
 	}
@@ -205,12 +214,20 @@ func menuKindLabel(kind string) string {
 	switch kind {
 	case "running":
 		return "RUNNING SESSION"
+	case "terminal":
+		return "JARA TERMINAL"
+	case "background":
+		return "CODEX BACKGROUND"
 	case "workspace":
 		return "WORKSPACE"
 	case "new":
 		return "NEW SESSION"
 	case "tools":
 		return "DIAGNOSTICS"
+	case "group":
+		return "SESSION GROUP"
+	case "history":
+		return "CODEX SESSIONS"
 	default:
 		return "ITEM"
 	}
@@ -220,7 +237,7 @@ func menuMatches(items []menuItem, filter string) []int {
 	indices := make([]int, 0, len(items))
 	needle := strings.ToLower(menuText(filter))
 	for i, item := range items {
-		searchable := strings.ToLower(menuText(strings.Join([]string{item.Title, item.Detail, item.Workspace, item.Kind}, " ")))
+		searchable := strings.ToLower(menuText(strings.Join([]string{item.Title, item.Detail, item.Workspace, item.Group, item.Kind}, " ")))
 		if needle == "" || strings.Contains(searchable, needle) {
 			indices = append(indices, i)
 		}
@@ -247,7 +264,7 @@ func selectMenu(title string, items []menuItem) (int, error) {
 	}
 	fmt.Println(menuText(title))
 	for i, item := range items {
-		fmt.Printf("  %d) %s — %s\n", i+1, menuText(item.Title), menuText(item.Detail))
+		fmt.Printf("  %d) %s%s — %s\n", i+1, strings.Repeat("  ", item.Indent), menuText(item.Title), menuText(item.Detail))
 	}
 	fmt.Print("Choose a number (q to exit): ")
 	reader := bufio.NewReader(os.Stdin)
@@ -378,11 +395,22 @@ func workspaceBadge(w Workspace) string {
 	return id
 }
 func sessionItem(w Workspace, s Session, number int) menuItem {
-	state := fmt.Sprintf("Running #%d", number)
+	title := strings.TrimSpace(s.Label)
+	if title == "" {
+		if s.Background {
+			title = fmt.Sprintf("Background run #%d", number)
+		} else {
+			title = fmt.Sprintf("Jara terminal #%d", number)
+		}
+	}
+	state := "Running"
 	if s.Background {
 		state = fmt.Sprintf("Background #%d", number)
-		if s.Dead {
-			state = fmt.Sprintf("Completed #%d", number)
+	}
+	if s.Dead {
+		state = "Exited"
+		if s.Background {
+			state = fmt.Sprintf("Finished background #%d", number)
 		}
 	}
 	viewers := fmt.Sprintf("%d viewers", s.Attached)
@@ -392,5 +420,34 @@ func sessionItem(w Workspace, s Session, number int) menuItem {
 	if s.Attached == 0 {
 		viewers = "detached"
 	}
-	return menuItem{Title: workspaceTitle(w), Detail: fmt.Sprintf("%s · %s · %s", state, viewers, workspaceBadge(w)), Workspace: w.ID, Kind: "running"}
+	detail := []string{state, viewers}
+	if started := sessionStartedLabel(s); started != "" {
+		detail = append(detail, started)
+	}
+	kind := "terminal"
+	if s.Background {
+		kind = "background"
+	}
+	return menuItem{Title: title, Detail: strings.Join(detail, " · "), Workspace: w.ID, Group: workspaceTitle(w), Kind: kind, Action: s.Name}
+}
+
+func sessionStartedLabel(session Session) string {
+	created := session.CreatedAt
+	if created == 0 {
+		created = session.LastAttach
+	}
+	if created == 0 {
+		return ""
+	}
+	age := time.Since(time.Unix(0, created))
+	switch {
+	case age < time.Minute:
+		return "just started"
+	case age < time.Hour:
+		return fmt.Sprintf("%dm ago", int(age.Minutes()))
+	case age < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(age.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(age.Hours()/24))
+	}
 }
