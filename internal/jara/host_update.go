@@ -139,7 +139,7 @@ func (u hostUpdater) container() (string, error) {
 
 func (u hostUpdater) maintenance(container, action, lease string) (maintenanceStatus, error) {
 	var s maintenanceStatus
-	a := []string{"docker", "exec", "--user", "agent", container, "jara", "_maintenance", action}
+	a := []string{"docker", "exec", "--user", "1001", container, "jara", "_maintenance", action}
 	if lease != "" {
 		a = append(a, lease)
 	}
@@ -154,7 +154,7 @@ func (u hostUpdater) maintenance(container, action, lease string) (maintenanceSt
 }
 
 func (u hostUpdater) installed(container string) (string, error) {
-	b, err := u.run(20*time.Second, []string{"docker", "exec", "--user", "agent", container, "codex", "--version"}, false)
+	b, err := u.run(20*time.Second, []string{"docker", "exec", "--user", "1001", container, "codex", "--version"}, false)
 	if err != nil {
 		return "", err
 	}

@@ -283,7 +283,7 @@ func verifyNativeCandidate(run func(time.Duration, []string, bool) ([]byte, erro
 	if version != target {
 		return fmt.Errorf("deployed Codex version %s does not match candidate %s", version, target)
 	}
-	data, err := run(30*time.Second, []string{"docker", "exec", "--user", "agent", id, "jara", "_rpc", token(Request{Op: "doctor"})}, false)
+	data, err := run(30*time.Second, []string{"docker", "exec", "--user", "1001", id, "jara", "_rpc", token(Request{Op: "doctor"})}, false)
 	if err != nil {
 		return err
 	}

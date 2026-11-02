@@ -419,6 +419,7 @@ var commandHelp = map[string]helpEntry{
 		summary: "Generate an environment file for a Compose deployment.",
 		options: []string{
 			"--out FILE          Output path (created without overwriting).",
+			"--ssh-user NAME     SSH username inside the environment (default agent).",
 			"--codex-version VER Exact Codex version; defaults to latest stable.",
 			"--node-version VER  Exact Node version.",
 			"--go-version VER    Optional exact Go version.",
@@ -431,6 +432,7 @@ var commandHelp = map[string]helpEntry{
 		},
 		examples: []string{
 			"jara environment --out .env",
+			"jara environment --ssh-user jara --out .env",
 			"jara environment --out .env --codex-version 0.166.0 --nvim",
 		},
 	},

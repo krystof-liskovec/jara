@@ -6,7 +6,6 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no
 UsePAM no
-AllowUsers agent
 AuthorizedKeysFile /etc/ssh/authorized_keys/%u
 AllowTcpForwarding yes
 AllowStreamLocalForwarding yes

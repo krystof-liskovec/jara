@@ -232,7 +232,7 @@ func (u hostUpdater) update(target string, check bool) error {
 			return fmt.Errorf("deployed version does not match candidate")
 		}
 		var d Diagnosis
-		out, e := u.run(30*time.Second, []string{"docker", "exec", "--user", "agent", id, "jara", "_rpc", token(Request{Op: "doctor"})}, false)
+		out, e := u.run(30*time.Second, []string{"docker", "exec", "--user", "1001", id, "jara", "_rpc", token(Request{Op: "doctor"})}, false)
 		if e != nil {
 			return e
 		}

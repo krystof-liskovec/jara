@@ -39,7 +39,7 @@ func provisionDockerHost(c *Config, name string, reader *bufio.Reader) (Remote, 
 			return Remote{}, fmt.Errorf("host SSH port must be between 1 and 65535")
 		}
 	}
-	adminIdentity, err := askSetup(reader, "Host login private key path (blank uses SSH config/agent)", "")
+	adminIdentity, err := askSetupPath(reader, "Host login private key path (blank uses SSH config/agent)", "")
 	if err != nil {
 		return Remote{}, err
 	}
@@ -76,6 +76,13 @@ func provisionDockerHost(c *Config, name string, reader *bufio.Reader) (Remote, 
 	if parsedBind == nil || parsedBind.To4() == nil {
 		return Remote{}, fmt.Errorf("host bind address must be an IPv4 address")
 	}
+	serviceUser, err := askSetup(reader, "Jara SSH login username", "agent")
+	if err != nil {
+		return Remote{}, err
+	}
+	if !validSSHUser(serviceUser) {
+		return Remote{}, fmt.Errorf("Jara SSH username must start with a lowercase letter or underscore and contain only lowercase letters, digits, underscores or hyphens")
+	}
 	fmt.Println("Checking Docker and archive extraction on the host...")
 	check := sshCommand(admin, false, shellArgs("sh", "-c", "command -v tar >/dev/null && docker info >/dev/null"))
 	check.Stdin, check.Stdout, check.Stderr = os.Stdin, os.Stdout, os.Stderr
@@ -95,11 +102,11 @@ func provisionDockerHost(c *Config, name string, reader *bufio.Reader) (Remote, 
 	if err != nil {
 		return Remote{}, err
 	}
-	service := Remote{Host: host, User: "agent", Port: servicePort, Identity: serviceKey}
+	service := Remote{Host: host, User: serviceUser, Port: servicePort, Identity: serviceKey}
 	if err = validateRemote(service); err != nil {
 		return Remote{}, err
 	}
-	if err = deployJara(admin, name, servicePort, bind, publicKey); err != nil {
+	if err = deployJara(admin, name, servicePort, bind, serviceUser, publicKey); err != nil {
 		return Remote{}, err
 	}
 	if c.HostDeployments == nil {
@@ -153,7 +160,7 @@ func chooseJaraServiceKey(name, defaultPath string, reader *bufio.Reader) (strin
 		}
 		return privatePath, strings.TrimSpace(string(publicKey)), "generated", nil
 	}
-	privatePath, err := askSetup(reader, "Existing private SSH key path (public key will be derived)", defaultPath)
+	privatePath, err := askSetupPath(reader, "Existing private SSH key path (public key will be derived)", defaultPath)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -216,7 +223,7 @@ func jaraServiceKeyPath(name string) (string, error) {
 	return filepath.Join(home, ".ssh", "id_ed25519_jara_"+name), nil
 }
 
-func deployJara(admin Remote, name string, port int, bind, publicKey string) error {
+func deployJara(admin Remote, name string, port int, bind, serviceUser, publicKey string) error {
 	dir := "$HOME/" + guidedDeploymentDirectory(name)
 	quotedDir := `"` + dir + `"`
 	stage, err := os.MkdirTemp("", "jara-host-setup-")
@@ -237,14 +244,19 @@ func deployJara(admin Remote, name string, port int, bind, publicKey string) err
 	}
 	text := strings.Replace(string(env), "JARA_SSH_BIND=127.0.0.1", "JARA_SSH_BIND="+bind, 1)
 	text = strings.Replace(text, "JARA_SSH_PORT=2222", "JARA_SSH_PORT="+strconv.Itoa(port), 1)
+	text = strings.Replace(text, "JARA_SSH_USER=agent", "JARA_SSH_USER="+serviceUser, 1)
 	if net.ParseIP(bind) == nil || strings.ContainsAny(bind, "\r\n\x00") || !strings.Contains(text, "JARA_SSH_BIND="+bind) {
 		return fmt.Errorf("invalid Jara bind address")
+	}
+	if !validSSHUser(serviceUser) || !strings.Contains(text, "JARA_SSH_USER="+serviceUser) {
+		return fmt.Errorf("invalid Jara SSH username")
 	}
 	config, err := parseGeneratedEnvironment([]byte(text))
 	if err != nil {
 		return err
 	}
 	deployment := newNativeDeployment(name, bind, port)
+	deployment.SSHUser = serviceUser
 	manifest, err := nativeManifestBytes(deployment)
 	if err != nil {
 		return err

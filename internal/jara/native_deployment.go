@@ -19,12 +19,13 @@ type nativeDeployment struct {
 	Image     string `json:"image"`
 	Bind      string `json:"bind"`
 	Port      int    `json:"port"`
+	SSHUser   string `json:"ssh_user,omitempty"`
 }
 
 func newNativeDeployment(name, bind string, port int) nativeDeployment {
 	lower := strings.ToLower(name)
 	return nativeDeployment{Version: 1, Name: name, Project: "jara-" + lower,
-		Container: "jara-agent-" + lower, Image: "jara-agent-" + lower, Bind: bind, Port: port}
+		Container: "jara-agent-" + lower, Image: "jara-agent-" + lower, Bind: bind, Port: port, SSHUser: "agent"}
 }
 
 func (d nativeDeployment) validate(project string) error {
@@ -32,6 +33,9 @@ func (d nativeDeployment) validate(project string) error {
 		d.Container != "jara-agent-"+strings.ToLower(d.Name) || d.Image != d.Container ||
 		project != "" && project != d.Project || d.Port < 1 || d.Port > 65535 {
 		return fmt.Errorf("invalid native deployment manifest")
+	}
+	if d.SSHUser != "" && !validSSHUser(d.SSHUser) {
+		return fmt.Errorf("native deployment manifest has an invalid SSH username")
 	}
 	bind := net.ParseIP(d.Bind)
 	if bind == nil || bind.To4() == nil {
@@ -68,7 +72,7 @@ func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deploy
 		"--volume", "/dev/null:/run/secrets/gitea_token:ro",
 		"--label", "io.jara.managed=true", "--label", "io.jara.name=" + d.Name,
 		"--label", "io.jara.project=" + d.Project,
-		"--health-cmd", "/usr/sbin/sshd -t && test -r /etc/ssh/authorized_keys/agent",
+		"--health-cmd", "/usr/sbin/sshd -t && test -r /etc/ssh/authorized_keys/" + nativeSSHUser(d),
 		"--health-interval", "30s", "--health-timeout", "5s", "--health-retries", "3"}
 	if apparmorProfile != "" {
 		args = append(args, "--security-opt", "apparmor="+apparmorProfile)
@@ -76,7 +80,15 @@ func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deploy
 	for _, key := range []string{"JARA_DOCKER", "JARA_GATEWAY_PORTS", "JARA_CODEX_ARGS", "JARA_TMUX_BACKGROUND", "GITLAB_HOST", "GITEA_URL"} {
 		args = append(args, "--env", key+"="+settings[key])
 	}
+	args = append(args, "--env", "JARA_SSH_USER="+nativeSSHUser(d))
 	return append(args, image)
+}
+
+func nativeSSHUser(d nativeDeployment) string {
+	if d.SSHUser == "" {
+		return "agent"
+	}
+	return d.SSHUser
 }
 
 func nativeAppArmorOption(run func(time.Duration, []string, bool) ([]byte, error), container string) (string, error) {

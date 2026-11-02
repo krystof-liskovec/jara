@@ -390,7 +390,7 @@ func readHostFile(runner hostSSHRunner, file string) ([]byte, error) {
 }
 
 func remoteJaraVersion(run func(time.Duration, []string, bool) ([]byte, error), container string) (string, error) {
-	data, err := run(20*time.Second, []string{"docker", "exec", "--user", "agent", container, "jara", "version"}, false)
+	data, err := run(20*time.Second, []string{"docker", "exec", "--user", "1001", container, "jara", "version"}, false)
 	if err != nil {
 		return "", err
 	}
