@@ -156,7 +156,9 @@ selects an alternative OpenSSH configuration file. The default configuration is
 overrides it.
 For a guided deployment, use `jara key install --remote work --public-key ~/.ssh/phone.pub`
 after generating the pair with `jara keygen --out ~/.ssh/phone`. Manual Compose
-deployments still use `deploy/authorized_keys`. Passphrase setup is handled by OpenSSH.
+deployments still use `deploy/authorized_keys`. Guided keys can be listed and
+removed with `jara key list` and `jara key remove --fingerprint SHA256:...`.
+Passphrase setup is handled by OpenSSH.
 Concurrent configuration updates fail rather than overwrite each other's changes; retry
 the command. An interrupted config update may leave
 a `config.json.lock` directory; remove it only after confirming no Jara writer runs.

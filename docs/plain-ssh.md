@@ -18,12 +18,13 @@ Command** to `jara connect`. Termius documents this feature in its
 Leaving the startup command empty gives you a regular shell instead.
 
 If you use a separate key on the phone, guided deployments support
-`jara key install --remote NAME --public-key FILE`. It uses the saved Docker-host
-connection to install the key without restarting the agent. For a manual Compose
-deployment, add the key to `deploy/authorized_keys` and recreate the agent using
-the same Compose project and files (including the Docker overlay when enabled).
-The entrypoint installs that file when the container starts. No password login
-is enabled.
+`jara key install --remote NAME --public-key FILE`, `jara key list`, and
+`jara key remove --fingerprint SHA256:...`. These use the saved Docker-host
+connection to update the live authorized key file without restarting the agent.
+For a manual Compose deployment, edit `deploy/authorized_keys` and recreate the
+agent using the same Compose project and files (including the Docker overlay when
+enabled). The entrypoint installs that file when the container starts. No password
+login is enabled.
 
 The default deployment binds SSH to host loopback; the phone needs access through
 your existing jump host/tunnel or a reachable `JARA_SSH_BIND` address. `localhost`
