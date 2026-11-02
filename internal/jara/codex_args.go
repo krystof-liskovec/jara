@@ -103,6 +103,10 @@ func codexCommand(resume bool, args []string) []string {
 	return append(command, args...)
 }
 
+func codexResumeLatestCommand(args []string) []string {
+	return append([]string{"/usr/local/bin/codex", "resume", "--last", "--include-non-interactive"}, args...)
+}
+
 func warnRunningCodexArgs(args []string) {
 	if len(args) > 0 {
 		fmt.Fprintln(os.Stderr, "Attaching to an existing session; Codex arguments apply only to new processes. Use jara new to start another session with these arguments.")

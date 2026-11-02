@@ -14,14 +14,25 @@ same persistent Codex terminals you use from your laptop.
 3. Connect and run `jara connect` to browse workspaces and running sessions.
 
 For direct access to the menu whenever you connect, set the host's **Startup
-Command** to `jara connect`. Termius documents this feature in its
-[mobile agent guide](https://termius.com/blog/8-tips-for-using-ai-agents-on-mobile-in-termius).
-Leaving the startup command empty gives you a regular shell instead.
+Command** to `jara connect`. Termius documents startup snippets in its
+[snippets guide](https://docs.termius.com/terminal/snippets.md).
 
-If you use a separate key on the phone, guided deployments support
-`jara key install --remote NAME --public-key FILE`, `jara key list`, and
-`jara key remove --fingerprint SHA256:...`. These use the saved Docker-host
-connection to update the live authorized key file without restarting the agent.
+If your Termius plan does not include startup snippets, use a separate phone
+key with `--connect-only`:
+
+```sh
+jara key install --remote NAME --public-key ~/.ssh/termius.pub --connect-only
+```
+
+Keep the unrestricted key for VS Code. Make the phone key's public half
+available to your Jara client and install it with the command above. Configure
+Termius to use that key; SSH will launch `jara connect` automatically for it. A
+connect-only key cannot open a normal shell, use SFTP, or forward ports.
+
+Guided deployments support `jara key install --remote NAME --public-key FILE`,
+`jara key list`, and `jara key remove --fingerprint SHA256:...`. These use the
+saved Docker-host connection to update the live authorized key file without
+restarting the agent.
 For a manual Compose deployment, edit `deploy/authorized_keys` and recreate the
 agent using the same Compose project and files (including the Docker overlay when
 enabled). The entrypoint installs that file when the container starts. No password
@@ -85,10 +96,11 @@ connection leaves Codex running in tmux. A container restart stops its processes
 workspace files and conversation history persist, and `--resume` opens Codex's
 own session selector. Ctrl-C is passed to Codex as usual.
 
-SFTP and editor connections retain ordinary SSH behavior; no forced command or
-server-side auto-launch hook is installed. You can use `vim`/`nvim` over SSH when
-those packages were selected for the image. Docker and per-project toolchains
-work in SSH sessions as documented elsewhere.
+Connections using an ordinary key retain normal SSH behavior, so VS Code and
+SFTP continue to work. The connect-only Termius key forces `jara connect` and
+cannot run shell commands or SFTP. You can use `vim`/`nvim` over SSH when those
+packages were selected for the image. Docker and per-project toolchains work in
+SSH sessions as documented elsewhere.
 
 ## Verification
 

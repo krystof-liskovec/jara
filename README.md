@@ -12,7 +12,10 @@ available to the environment owner.
 
 Codex startup arguments are configurable through `JARA_CODEX_ARGS` in the
 container and arguments forwarded by the local Jara client. No extra Codex flags
-are enabled by default.
+are enabled by default. Deployments allow up to 500 concurrent terminals by
+default; lower `JARA_MAX_SESSIONS` to reduce that cap. Detached sessions expire
+24 hours after their most recent attachment; configure `JARA_SESSION_IDLE_TIMEOUT`
+or set it to `0` to disable expiration.
 
 **Security status:** a focused review found a startup privilege escalation,
 which has been fixed and regression tested. Treat this as a development prototype
@@ -174,7 +177,8 @@ From a repository:
 ```sh
 jara                 # Offer initial clone, subsequently reopen
 jara --clone         # Skip initial clone confirmation
-jara resume          # Attach if running, otherwise plain codex resume
+jara resume --latest   # Resume Codex's latest session
+jara run "Review this repository" # Background prompt; --resume-latest continues latest
 jara --remote work   # Select and remember this remote for this checkout
 jara new --worktree  # Additional session in a separate Git worktree
 ```

@@ -258,7 +258,7 @@ func remoteRPC(q Request) error {
 		if _, err := workspaceInfo(q.ID); err != nil {
 			return err
 		}
-		ss, err := sessions()
+		ss, err := activeSessions()
 		if err != nil {
 			return err
 		}
@@ -280,7 +280,7 @@ func remoteRPC(q Request) error {
 		if err != nil {
 			return err
 		}
-		ss, err := sessions()
+		ss, err := activeSessions()
 		if err != nil {
 			return err
 		}

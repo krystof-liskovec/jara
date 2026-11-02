@@ -21,14 +21,14 @@ func Run(args []string) error {
 			if len(args) != 2 {
 				return fmt.Errorf("invalid internal invocation")
 			}
+			if args[0] == "_open" {
+				return openRequest(args[1])
+			}
 			var q Request
 			if err := decode(args[1], &q); err != nil {
 				return err
 			}
-			if args[0] == "_rpc" {
-				return remoteRPC(q)
-			}
-			return remoteOpen(q)
+			return remoteRPC(q)
 		case "_terminal":
 			if len(args) != 2 {
 				return fmt.Errorf("invalid internal invocation")
@@ -38,6 +38,15 @@ func Run(args []string) error {
 				return err
 			}
 			return runCodexTerminal(codexArgs)
+		case "_background":
+			if len(args) != 2 {
+				return fmt.Errorf("invalid background Codex invocation")
+			}
+			var q Request
+			if err := decode(args[1], &q); err != nil {
+				return err
+			}
+			return runBackgroundCodex(q)
 		case "help", "--help", "-h":
 			printHelpEntry("root", commandHelp["root"])
 			return nil
@@ -96,6 +105,12 @@ func Run(args []string) error {
 			return hostCommand(args[1:])
 		case "_maintenance":
 			return maintenanceCommand(args[1:])
+		case "_session-janitor":
+			return sessionJanitorCommand(args[1:])
+		case "_session-attached", "_session-count":
+			return sessionUtilityCommand(args[0], args[1:])
+		case "_validate-session-settings":
+			return validateSessionSettings()
 		case "_tools":
 			return toolsCommand(args[1:])
 		case "_auth":
@@ -172,6 +187,8 @@ func Run(args []string) error {
 	source := f.String("source", "", "source directory")
 	editor := f.String("editor", "", "editor override")
 	newTree := f.Bool("worktree", false, "create a separate Git worktree")
+	latest := f.Bool("latest", false, "resume Codex's latest session")
+	resumeLatest := f.Bool("resume-latest", false, "continue Codex's latest session with a prompt")
 	takeover := f.Bool("takeover", false, "detach other terminal clients")
 	force := f.Bool("force", false, "overwrite conflicts / permit transfer with running agents")
 	includeIgnored := f.Bool("include-ignored", false, "explicitly include Git-ignored files; .jaraignore still applies")
@@ -194,26 +211,41 @@ func Run(args []string) error {
 	if err = f.Parse(args); err != nil {
 		return err
 	}
-	if f.NArg() != 0 {
+	prompt := ""
+	if action == "run" {
+		prompt = strings.Join(f.Args(), " ")
+		if strings.TrimSpace(prompt) == "" {
+			return fmt.Errorf("use jara run [--resume-latest] [OPTIONS] PROMPT")
+		}
+		if len(prompt) > maxBackgroundPrompt {
+			return fmt.Errorf("prompt exceeds 64 KiB")
+		}
+	} else if f.NArg() != 0 {
 		return fmt.Errorf("unexpected argument %q", f.Arg(0))
 	}
 	codexArgs = append(codexArgs, tail...)
 	if err = validateCodexArgs(codexArgs); err != nil {
 		return err
 	}
-	if len(codexArgs) > 0 && action != "open" && action != "new" && action != "resume" && action != "sessions" {
-		return fmt.Errorf("Codex arguments require open, new, resume, or sessions")
+	if len(codexArgs) > 0 && action != "open" && action != "new" && action != "resume" && action != "run" && action != "sessions" {
+		return fmt.Errorf("Codex arguments require open, new, resume, run, or sessions")
 	}
 	switch action {
-	case "open", "resume", "new", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tunnel", "tools":
+	case "open", "resume", "new", "run", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tunnel", "tools":
 	default:
 		return fmt.Errorf("unknown command %q; see jara --help", action)
+	}
+	if *latest && action != "resume" {
+		return fmt.Errorf("--latest requires jara resume")
+	}
+	if *resumeLatest && action != "run" {
+		return fmt.Errorf("--resume-latest requires jara run")
 	}
 	if *clone && *copyMode {
 		return fmt.Errorf("--clone and --copy are mutually exclusive")
 	}
-	if *newTree && action != "new" {
-		return fmt.Errorf("--worktree requires jara new")
+	if *newTree && action != "new" && action != "run" {
+		return fmt.Errorf("--worktree requires jara new or jara run")
 	}
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -249,7 +281,20 @@ func Run(args []string) error {
 	if err = validateRemote(r); err != nil {
 		return err
 	}
-	openSession := func(q Request) error { q.CodexArgs = codexArgs; return openRemote(r, q) }
+	openSession := func(q Request) error {
+		q.CodexArgs = codexArgs
+		if action == "resume" {
+			q.ResumeLatest = *latest
+		}
+		if action == "run" {
+			q.New = true
+			q.Worktree = *newTree
+			q.Background = true
+			q.Prompt = prompt
+			q.ResumeLatest = *resumeLatest
+		}
+		return openRemote(r, q)
+	}
 	if action == "doctor" {
 		return doctor(chosen, r)
 	}
@@ -383,7 +428,7 @@ func Run(args []string) error {
 	if err = saveConfig(c); err != nil {
 		return err
 	}
-	if action == "open" || action == "new" || action == "resume" {
+	if action == "open" || action == "new" || action == "resume" || action == "run" {
 		if err = syncLocalChangesBeforeSession(r, b, root, chosen, *includeIgnored, isGit, clonePromptReader); err != nil {
 			return err
 		}

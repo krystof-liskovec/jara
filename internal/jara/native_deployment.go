@@ -77,7 +77,7 @@ func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deploy
 	if apparmorProfile != "" {
 		args = append(args, "--security-opt", "apparmor="+apparmorProfile)
 	}
-	for _, key := range []string{"JARA_DOCKER", "JARA_GATEWAY_PORTS", "JARA_CODEX_ARGS", "JARA_TMUX_BACKGROUND", "GITLAB_HOST", "GITEA_URL"} {
+	for _, key := range []string{"JARA_DOCKER", "JARA_GATEWAY_PORTS", "JARA_CODEX_ARGS", "JARA_TMUX_BACKGROUND", "JARA_MAX_SESSIONS", "JARA_SESSION_IDLE_TIMEOUT", "GITLAB_HOST", "GITEA_URL"} {
 		args = append(args, "--env", key+"="+settings[key])
 	}
 	args = append(args, "--env", "JARA_SSH_USER="+nativeSSHUser(d))

@@ -83,7 +83,7 @@ func remoteDeleteWorkspace(id string) error {
 	} else if statErr != nil && !os.IsNotExist(statErr) {
 		return statErr
 	}
-	sessions, err := sessions()
+	sessions, err := activeSessions()
 	if err != nil {
 		return err
 	}

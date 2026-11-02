@@ -26,9 +26,11 @@ type Diagnosis struct {
 }
 
 type Session struct {
-	Name      string
-	Workspace string
-	Attached  int
+	Name       string
+	Workspace  string
+	Attached   int
+	Background bool
+	Dead       bool
 }
 
 func dataRoot() string {
