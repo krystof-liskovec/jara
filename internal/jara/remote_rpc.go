@@ -128,6 +128,14 @@ func remoteRPC(q Request) error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(w)
+	case "workspace-list":
+		workspaces, err := remoteWorkspaces()
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(workspaces)
+	case "workspace-delete":
+		return remoteDeleteWorkspace(q.ID)
 	case "create":
 		unlock, err := lockWorkspace(q.ID)
 		if err != nil {

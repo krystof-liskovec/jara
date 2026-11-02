@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -269,6 +270,12 @@ func selectMenu(title string, items []menuItem) (int, error) {
 func workspaceTitle(w Workspace) string {
 	name := strings.TrimSpace(w.Name)
 	nameIsID := name == w.ID || isGeneratedWorkspaceID(name)
+	if origin, project, _, _, ok := workspaceOriginParts(w.URL); ok {
+		if name != "" && !nameIsID && !strings.EqualFold(name, project) {
+			return menuText(origin + " · " + name)
+		}
+		return menuText(origin)
+	}
 	if name != "" && !nameIsID {
 		return menuText(name)
 	}
@@ -281,6 +288,67 @@ func workspaceTitle(w Workspace) string {
 		}
 	}
 	return "Copied workspace"
+}
+
+func workspaceTerminalTitle(w Workspace) string {
+	_, project, host, _, ok := workspaceOriginParts(w.URL)
+	if !ok {
+		return fitMenu(workspaceTitle(w), 24)
+	}
+	provider := workspaceProviderLabel(host)
+	suffix := " · " + provider
+	projectWidth := 24 - uniseg.StringWidth(suffix)
+	return fitMenu(project, projectWidth) + suffix
+}
+
+func workspaceProviderLabel(host string) string {
+	host = strings.ToLower(host)
+	switch {
+	case strings.Contains(host, "github"):
+		return "GitHub"
+	case strings.Contains(host, "gitlab"):
+		return "GitLab"
+	case strings.Contains(host, "gitea"):
+		return "Gitea"
+	case strings.Contains(host, "codeberg"):
+		return "Codeberg"
+	}
+	host = strings.SplitN(host, ":", 2)[0]
+	parts := strings.Split(host, ".")
+	provider := parts[0]
+	if provider == "git" && len(parts) > 1 {
+		provider = parts[1]
+	}
+	return fitMenu(provider, 10)
+}
+
+func workspaceOriginParts(origin string) (display, project, host, namespace string, ok bool) {
+	if isSSHGitOrigin(origin) {
+		if target, err := parseGitCredentialTarget(origin); err == nil {
+			origin = target.URL
+		}
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Hostname() == "" || u.User != nil && u.Scheme != "ssh" {
+		return "", "", "", "", false
+	}
+	host = strings.ToLower(u.Hostname())
+	if port := u.Port(); port != "" {
+		host += ":" + port
+	}
+	parts := strings.FieldsFunc(strings.Trim(u.Path, "/"), func(r rune) bool { return r == '/' })
+	if len(parts) == 0 {
+		return "", "", "", "", false
+	}
+	project = strings.TrimSuffix(parts[len(parts)-1], ".git")
+	if project == "" {
+		return "", "", "", "", false
+	}
+	parts[len(parts)-1] = project
+	if len(parts) > 1 {
+		namespace = parts[len(parts)-2]
+	}
+	return strings.Join(parts, "/") + "@" + host, project, host, namespace, true
 }
 
 func isGeneratedWorkspaceID(value string) bool {

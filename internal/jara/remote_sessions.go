@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func runGit(dir string, args ...string) error {
@@ -195,7 +194,7 @@ func remoteOpen(q Request) error {
 		return attach(matches[i], q.Takeover)
 	}
 	path := w.Path
-	name := "jara-" + q.ID + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	name := tmuxSessionName(w, q.ID)
 	if q.Worktree {
 		path = filepath.Join(dataRoot(), "worktrees", name)
 		if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
