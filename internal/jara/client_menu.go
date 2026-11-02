@@ -39,17 +39,17 @@ func clientMenuItems(c Config) []menuItem {
 		remote := defaultRemoteLabel(c)
 		items = append(items,
 			menuItem{Title: "Open this workspace", Detail: "Attach or choose a session · " + remote, Kind: "workspace", Action: "open"},
-			menuItem{Title: "Browse remote workspaces", Detail: "Choose a workspace or running session", Kind: "running", Action: "browse"},
-			menuItem{Title: "Start a new session", Detail: "Open another Codex terminal", Kind: "new", Action: "new"},
-			menuItem{Title: "Remote connections", Detail: fmt.Sprintf("%d configured", len(c.Remotes)), Kind: "remote", Action: "remote"},
-			menuItem{Title: "Sign-in and Git access", Detail: "Codex login or Git credentials", Kind: "tools", Action: "auth"},
-			menuItem{Title: "Check remote setup", Detail: "Run Jara diagnostics", Kind: "tools", Action: "doctor"},
+			menuItem{Title: "Projects", Detail: "Conversations and live terminals", Kind: "running", Action: "browse"},
+			menuItem{Title: "New conversation", Detail: "Codex", Kind: "new", Action: "new"},
+			menuItem{Title: "Connections", Detail: fmt.Sprintf("%d configured", len(c.Remotes)), Kind: "remote", Action: "remote"},
+			menuItem{Title: "Credentials", Detail: "Codex and Git", Kind: "tools", Action: "auth"},
+			menuItem{Title: "Diagnostics", Detail: "Host health", Kind: "tools", Action: "doctor"},
 		)
 	}
 	if len(c.HostDeployments) > 0 {
-		items = append(items, menuItem{Title: "Manage deployment", Detail: fmt.Sprintf("%d guided deployment(s)", len(c.HostDeployments)), Kind: "remote", Action: "deployment"})
+		items = append(items, menuItem{Title: "Deployment", Detail: fmt.Sprintf("%d guided deployment(s)", len(c.HostDeployments)), Kind: "remote", Action: "deployment"})
 	}
-	items = append(items, menuItem{Title: "Show command help", Detail: "Print all CLI commands and options", Kind: "tools", Action: "help"})
+	items = append(items, menuItem{Title: "Help", Detail: "Commands and shortcuts", Kind: "tools", Action: "help"})
 	return items
 }
 

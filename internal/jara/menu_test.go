@@ -24,7 +24,7 @@ func TestMenuFitsTerminal(t *testing.T) {
 					if uniseg.StringWidth(line) > width-1 {
 						t.Fatalf("%dx%d overflow: %q", width, height, line)
 					}
-					if strings.HasPrefix(line, ">") {
+					if strings.HasPrefix(strings.TrimLeft(line, " "), "▸") {
 						found = true
 					}
 				}
@@ -52,8 +52,8 @@ func TestWorkspaceMenuNames(t *testing.T) {
 		w    Workspace
 		want string
 	}{
-		{Workspace{Name: "my-copy", URL: "https://git.example/other.git"}, "my-copy"},
-		{Workspace{URL: "git@git.example:owner/repository.git"}, "repository"},
+		{Workspace{Name: "my-copy", URL: "https://git.example/other.git"}, "other@git.example · my-copy"},
+		{Workspace{URL: "git@git.example:owner/repository.git"}, "owner/repository@git.example"},
 		{Workspace{URL: "https://user:secret@git.example/owner/repo.git?token=private"}, "repo"},
 		{Workspace{ID: "w-0123456789"}, "Copied workspace"},
 	} {
@@ -67,7 +67,7 @@ func TestPhoneMenuKeepsSessionNumberAndHelp(t *testing.T) {
 	item := sessionItem(Workspace{ID: "w-012345678901234567890123", Name: strings.Repeat("long-name", 10)}, Session{Attached: 1}, 2)
 	lines := menuLines("Sessions", []menuItem{item}, 0, 32, 10)
 	joined := strings.Join(lines, "\n")
-	for _, want := range []string{"Running #2", "1-9 open", "Enter open", "q back", "ID: w-012345678901234567890123"} {
+	for _, want := range []string{"Jara terminal #2", "Ctrl-C quit", "Enter open", "←/⌫ back"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("phone menu hides %q: %s", want, joined)
 		}

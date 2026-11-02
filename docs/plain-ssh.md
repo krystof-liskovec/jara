@@ -49,7 +49,7 @@ The SSH examples use `agent`, the default username. Replace it with your selecte
 Jara SSH username if you changed it during setup.
 
 ```sh
-jara connect                            # Codex history and workspace menu
+jara connect                            # Projects and conversations
 jara connect WORKSPACE_ID               # Attach, or start Codex if stopped
 jara connect --resume WORKSPACE_ID      # Attach, or start plain codex resume
 jara connect --new WORKSPACE_ID         # Additional terminal; warns about shared files
@@ -57,15 +57,16 @@ jara connect --worktree WORKSPACE_ID    # New terminal in a separate Git worktre
 jara connect --takeover WORKSPACE_ID    # Detach other clients and attach here
 ```
 
-The selected workspace’s ID appears below the list. Options go before the ID. These commands operate
-inside the environment and do not read the laptop's remote configuration or open
-another SSH connection. The browser lists workspaces already created by Jara's
-clone/copy flow. You can also use ordinary shell commands, Git, editors and tmux
-for manually managed folders.
+The menu opens on **Projects**. Choose a project to see its saved conversations,
+then select a prompt or conversation name to resume. Conversations with a matched
+running terminal show a `live` count. Opening one reattaches to that terminal;
+multiple terminals offer a short chooser. Codex's reported active state appears
+as `working` when available.
 
-`Browse Codex sessions` is the first, preselected menu item. It opens Codex's
-native `resume --all` picker, including conversations from every workspace. The
-workspace entries below it manage Jara's persistent tmux terminals.
+Project terminals and all host terminals have their own entries. They include
+older terminals whose conversation cannot be identified. `All Codex conversations`
+opens Codex's native picker as a fallback. History comes from the installed
+Codex app-server's local metadata API; it does not require an inference request.
 
 From a computer without the Jara client, open the same menu directly:
 
@@ -76,19 +77,18 @@ ssh -t -p 2222 agent@example.org jara connect
 On interactive Linux terminals, the menu adapts to the actual terminal size:
 
 - **1–9:** immediately open the corresponding visible entry; no Enter required.
-- **Arrow keys** or **j/k:** move the selection; **Enter** opens it.
+- **Up/Down** or **j/k:** move the selection; **Right** or **Enter** opens it.
+- **Left** or **Backspace:** return to the parent menu. Backspace edits an active
+  search first; with an empty search it goes back.
 - **n/p:** next/previous page. Numbers restart on each page.
-- **q** or **Ctrl-C:** leave the browser without stopping running sessions.
+- **q:** go back. **Ctrl-C:** close the entire Jara interface from any menu.
+  Running terminal sessions are left running.
 
-Narrow terminals show a project name and status on separate lines. Wider terminals
-show them side by side. Names and branches are shortened to fit, long lists are
-paged to fit the available height, and resizing/orientation changes redraw the
-layout. New clone/copy workspaces remember the local folder name. Older cloned
-workspaces derive their name from origin; older copied workspaces show a short ID.
-The footer identifies the selected workspace. Sessions are grouped under their
-workspace, with workspaces sorted by their newest session. Background entries
-show the prompt; Jara terminals show their state, age and attachment count. A
-`New session` entry starts another terminal in that workspace.
+All menus use the same layout on phone and desktop: a full-width title with one
+short metadata line beneath it. Highlighting changes only the selection marker
+and color. There are no hover previews or changing side panels. Lists support
+search, pagination and resizing. Returning from a project preserves its position
+in the project list. The project order follows the latest conversation activity.
 
 Noninteractive input and `TERM=dumb` retain a numbered, line-based menu: enter the
 number followed by Enter. Choose `q` to leave the menu; when run from an

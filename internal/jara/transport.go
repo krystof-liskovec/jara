@@ -61,6 +61,9 @@ func interactive(cmd *exec.Cmd) error {
 }
 
 type Request struct {
+	Agent              string   `json:"agent,omitempty"`
+	ConversationCWD    string   `json:"conversation_cwd,omitempty"`
+	Conversation       string   `json:"conversation,omitempty"`
 	Op                 string   `json:"op"`
 	Name               string   `json:"name,omitempty"`
 	ID                 string   `json:"id,omitempty"`
@@ -107,5 +110,5 @@ func openRemote(r Remote, q Request) error {
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 	}
-	return clipboardTerminal(r, sshCommand(r, true, shellArgs("jara", "_open", token(q))))
+	return remoteMenuResult(clipboardTerminal(r, sshCommand(r, true, shellArgs("jara", "_open", token(q)))))
 }
