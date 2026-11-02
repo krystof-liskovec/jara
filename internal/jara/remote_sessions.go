@@ -27,7 +27,7 @@ func tmux(args ...string) *exec.Cmd {
 
 func sessions() ([]Session, error) {
 	// has-session distinguishes an absent server from malformed output.
-	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}")
+	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}|#{@jara_created_at}|#{@jara_last_attached}|#{@jara_session_label}")
 	b, err := probe.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -39,11 +39,21 @@ func sessions() ([]Session, error) {
 	var ss []Session
 	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 		p := strings.Split(line, "|")
-		if len(p) != 5 || p[1] == "" {
+		if len(p) < 5 {
 			continue
 		}
 		n, _ := strconv.Atoi(p[2])
-		ss = append(ss, Session{Name: p[0], Workspace: p[1], Attached: n, Background: p[3] == "1", Dead: p[4] == "1"})
+		session := Session{Name: p[0], Workspace: p[1], Attached: n, Background: p[3] == "1", Dead: p[4] == "1"}
+		if len(p) > 5 {
+			session.CreatedAt, _ = strconv.ParseInt(p[5], 10, 64)
+		}
+		if len(p) > 6 {
+			session.LastAttach, _ = strconv.ParseInt(p[6], 10, 64)
+		}
+		if len(p) > 7 {
+			session.Label = decodeSessionMenuLabel(p[7])
+		}
+		ss = append(ss, session)
 	}
 	return ss, nil
 }
@@ -192,7 +202,6 @@ func remoteOpen(q Request) error {
 		}
 		sort.Strings(files)
 		var workspaces []Workspace
-		byID := map[string]Workspace{}
 		for _, f := range files {
 			b, e := os.ReadFile(f)
 			if e != nil {
@@ -203,32 +212,8 @@ func remoteOpen(q Request) error {
 				return e
 			}
 			workspaces = append(workspaces, w)
-			byID[w.ID] = w
 		}
-		var items []menuItem
-		numbers := map[string]int{}
-		for _, s := range ss {
-			w, ok := byID[s.Workspace]
-			if !ok {
-				w = Workspace{ID: s.Workspace, Name: s.Workspace}
-			}
-			numbers[s.Workspace]++
-			items = append(items, sessionItem(w, s, numbers[s.Workspace]))
-		}
-		var ws []Workspace
-		var modes []bool
-		for _, w := range workspaces {
-			status := "Open"
-			if !w.Ready {
-				status = "Setup unfinished"
-			}
-			ws = append(ws, w)
-			modes = append(modes, false)
-			items = append(items, menuItem{Title: workspaceTitle(w), Detail: status + " · " + workspaceBadge(w), Workspace: w.ID, Kind: "workspace"})
-			ws = append(ws, w)
-			modes = append(modes, true)
-			items = append(items, menuItem{Title: "New: " + workspaceTitle(w), Detail: "New session · " + workspaceBadge(w), Workspace: w.ID, Kind: "new"})
-		}
+		items := append([]menuItem{{Title: "Browse Codex sessions", Detail: "Codex resume picker · all workspaces", Kind: "history"}}, workspaceMenuItems(workspaces, ss)...)
 		items = append(items, menuItem{Title: "Setup diagnostics", Detail: "Check tools, storage and authentication", Kind: "tools"})
 		n, err := selectMenu("Sessions & workspaces", items)
 		if errors.Is(err, io.EOF) {
@@ -237,19 +222,37 @@ func remoteOpen(q Request) error {
 		if err != nil {
 			return err
 		}
-		if n < len(ss) {
-			if !q.Background {
-				warnRunningCodexArgs(q.CodexArgs)
-				return attach(ss[n], q.Takeover)
-			}
-			q.ID = ss[n].Workspace
-		} else {
-			if n == len(items)-1 {
-				return remoteRPC(Request{Op: "doctor"})
-			}
-			q.ID = ws[n-len(ss)].ID
-			q.New = q.New || modes[n-len(ss)]
+		selected := items[n]
+		if selected.Kind == "tools" {
+			return remoteRPC(Request{Op: "doctor"})
 		}
+		if selected.Kind == "history" {
+			if q.Background {
+				return fmt.Errorf("Codex session browsing is interactive; use `jara resume`")
+			}
+			command := codexResumeAllCommand(codexArgs)
+			return interactive(exec.Command(command[0], command[1:]...))
+		}
+		if selected.Kind == "group" {
+			if q.Background {
+				return fmt.Errorf("choose a workspace to start a background run")
+			}
+			warnRunningCodexArgs(q.CodexArgs)
+			return attach(Session{Name: selected.Action}, q.Takeover)
+		}
+		if q.Background && (selected.Kind == "terminal" || selected.Kind == "background") && selected.Workspace == "" {
+			return fmt.Errorf("this session has no workspace link; choose a workspace to start a background run")
+		}
+		if (selected.Kind == "terminal" || selected.Kind == "background") && !q.Background {
+			warnRunningCodexArgs(q.CodexArgs)
+			return attach(Session{Name: selected.Action, Workspace: selected.Workspace}, q.Takeover)
+		}
+		if selected.Kind == "workspace" && selected.Action != "" && !q.Background && !q.New {
+			warnRunningCodexArgs(q.CodexArgs)
+			return attach(Session{Name: selected.Action, Workspace: selected.Workspace}, q.Takeover)
+		}
+		q.ID = selected.Workspace
+		q.New = q.New || selected.Kind == "new"
 	}
 
 	unlock, err := lockWorkspace(q.ID)
@@ -279,6 +282,9 @@ func remoteOpen(q Request) error {
 			matches = append(matches, s)
 		}
 	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		return sessionRecency(matches[i]) > sessionRecency(matches[j])
+	})
 	if !q.New && len(matches) > 0 {
 		unlock()
 		locked = false
@@ -313,6 +319,7 @@ func remoteOpen(q Request) error {
 	}
 	path := w.Path
 	name := tmuxSessionName(w, q.ID)
+	sessionLabel := sessionMenuLabel(q)
 	worktreeRoot := ""
 	if q.Worktree {
 		path = filepath.Join(dataRoot(), "worktrees", name)
@@ -382,6 +389,10 @@ func remoteOpen(q Request) error {
 		return err
 	}
 	if err = runTmux("set-option", "-t", name, "@jara_workspace", q.ID); err != nil {
+		_ = tmux("kill-session", "-t", name).Run()
+		return err
+	}
+	if err = runTmux("set-option", "-t", name, "@jara_session_label", encodeSessionMenuLabel(sessionLabel)); err != nil {
 		_ = tmux("kill-session", "-t", name).Run()
 		return err
 	}

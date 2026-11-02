@@ -31,6 +31,9 @@ type Session struct {
 	Attached   int
 	Background bool
 	Dead       bool
+	CreatedAt  int64
+	LastAttach int64
+	Label      string
 }
 
 func dataRoot() string {

@@ -124,7 +124,7 @@ var commandHelp = map[string]helpEntry{
 	},
 	"sessions": {
 		usage:   "jara sessions [--remote NAME] [--codex-arg VALUE]...",
-		summary: "Browse remote workspaces and running sessions.",
+		summary: "Browse Codex conversations, workspaces and Jara terminals.",
 		options: []string{
 			"--remote NAME       Select a configured host.",
 			"--codex-arg VALUE   Use when a new Codex process is started; repeatable.",

@@ -28,6 +28,9 @@ through a menu. This permits VS Code Remote SSH and other editors to operate.
   start Codex if none exists.
 - `resume`: attach if running; otherwise run plain `codex resume`, without
   `--last`. Codex owns saved-conversation selection.
+- The workspace browser starts with a selected `Browse Codex sessions` action
+  that runs `codex resume --all`; workspace entries continue to manage Jara
+  tmux terminals separately.
 - New repository: offer initial clone. `--clone` skips that prompt. Before
   starting a session, offer to push unsynced local file changes if present.
 - `--copy`: initially copy the selected source directory. Subsequent use opens
