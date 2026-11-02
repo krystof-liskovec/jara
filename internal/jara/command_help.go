@@ -417,9 +417,13 @@ var commandHelp = map[string]helpEntry{
 		},
 	},
 	"deployment upgrade": {
-		usage:    "jara deployment upgrade [NAME]",
-		summary:  "Build and validate this CLI's Jara source bundle on the Docker host.",
-		examples: []string{"jara deployment upgrade jellyfish"},
+		usage:   "jara deployment upgrade [NAME] [--force-downgrade]",
+		summary: "Build and validate this CLI's Jara source bundle on the Docker host.",
+		options: []string{"--force-downgrade   Permit replacing a newer server with this older CLI version."},
+		examples: []string{
+			"jara deployment upgrade jellyfish",
+			"jara deployment upgrade jellyfish --force-downgrade",
+		},
 	},
 	"deployment uninstall": {
 		usage:   "jara deployment uninstall [NAME] [--volumes]",

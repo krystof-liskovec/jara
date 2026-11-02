@@ -1,14 +1,19 @@
 # Jara terminal interface
 
-Every Jara menu uses a midnight canvas, slate cards and an indigo selection that
+By default, Jara menus use your terminal's foreground, background and ANSI accent
+colors. The selected item's title and metadata use inverse colors, adapting to
+both light and dark terminals without color detection or startup queries.
+Set `JARA_THEME=terminal` explicitly to select this behavior.
+
+The optional dark theme uses a midnight canvas, slate cards and an indigo selection that
 covers both title and metadata. A violet breadcrumb header, inset search field
 and bottom shortcut bar frame the list. Green accents identify live and working
 status. Desktop lists are centered at a readable width; phones use the available
 width, with compact spacing on short screens. Selection never changes row
 content. Search includes metadata and titles; long lists paginate to fit.
 
-Set `JARA_THEME=light` for the light palette. The default is the dark palette.
-Both themes paint complete backgrounds for consistent contrast, and `NO_COLOR`
+Set `JARA_THEME=light` for the light palette or `JARA_THEME=dark` for the dark palette.
+Both explicit palettes paint complete backgrounds for consistent contrast, and `NO_COLOR`
 disables styling. These settings apply where Jara runs: set them on the remote
 host for the SSH interface. The colored interface uses RGB terminal colors,
 which modern terminals including Termius support.

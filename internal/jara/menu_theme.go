@@ -10,13 +10,36 @@ import (
 type menuPalette struct{ canvas, surface, selection, text, muted, accent, green, brand string }
 
 func menuColors() menuPalette {
-	if os.Getenv("JARA_THEME") == "light" {
+	switch os.Getenv("JARA_THEME") {
+	case "light":
 		return menuPalette{"242;244;250", "230;234;244", "214;224;250", "30;39;60", "83;96;120", "61;75;180", "20;110;77", "75;48;155"}
+	case "dark":
+		return menuPalette{"15;19;30", "23;29;44", "42;53;83", "229;235;248", "143;157;184", "161;179;255", "108;222;172", "185;164;255"}
+	default:
+		return menuPalette{"default", "default", "reverse", "default", "default", "ansi:4", "ansi:2", "ansi:5"}
 	}
-	return menuPalette{"15;19;30", "23;29;44", "42;53;83", "229;235;248", "143;157;184", "161;179;255", "108;222;172", "185;164;255"}
 }
-func menuFG(rgb string) string { return "\x1b[38;2;" + rgb + "m" }
-func menuBG(rgb string) string { return "\x1b[48;2;" + rgb + "m" }
+func menuFG(color string) string {
+	if color == "default" {
+		return "\x1b[39m"
+	}
+	if index, ok := strings.CutPrefix(color, "ansi:"); ok {
+		return "\x1b[3" + index + "m"
+	}
+	return "\x1b[38;2;" + color + "m"
+}
+func menuBG(color string) string {
+	if color == "default" {
+		return "\x1b[27;49m"
+	}
+	if color == "reverse" {
+		return "\x1b[7m"
+	}
+	if index, ok := strings.CutPrefix(color, "ansi:"); ok {
+		return "\x1b[4" + index + "m"
+	}
+	return "\x1b[48;2;" + color + "m"
+}
 
 // Paint complete surfaces, including empty space, so the terminal's default
 // background cannot create stripes or change the selected card's contrast.
@@ -56,6 +79,9 @@ func styleMenuLines(lines []string, width int) []string {
 		case detail:
 			bg = palette.surface
 		}
+		if bg == "reverse" {
+			fg = palette.text
+		}
 		panel := min(100, max(1, width-1))
 		gutter := max(0, (width-1-panel)/2)
 		if len(line) >= gutter {
@@ -63,7 +89,7 @@ func styleMenuLines(lines []string, width int) []string {
 		}
 		padding := strings.Repeat(" ", max(0, panel-uniseg.StringWidth(line)))
 		painted := line
-		if detail || (bg == palette.surface && !row && i > 2) {
+		if bg != "reverse" && (detail || (bg == palette.surface && !row && i > 2)) {
 			parts := strings.Split(line, " · ")
 			for j, part := range parts {
 				if strings.Contains(part, "live") || part == "working" {

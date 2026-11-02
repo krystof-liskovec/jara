@@ -29,6 +29,8 @@ func Run(args []string) error {
 				return err
 			}
 			return remoteRPC(q)
+		case "_client-binary":
+			return streamClientBinary()
 		case "_terminal":
 			if len(args) != 2 {
 				return fmt.Errorf("invalid internal invocation")

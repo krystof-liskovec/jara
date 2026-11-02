@@ -8,12 +8,15 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
 
 func remoteRPC(q Request) error {
 	switch q.Op {
+	case "client-version":
+		return json.NewEncoder(os.Stdout).Encode(map[string]string{"version": Version, "goos": runtime.GOOS, "goarch": runtime.GOARCH})
 	case "codex-args-show":
 		args, err := configuredCodexArgs(nil)
 		if err != nil {

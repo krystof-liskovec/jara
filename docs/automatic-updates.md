@@ -5,7 +5,13 @@ container never receives the host Docker socket. The updater supports guided
 native Docker deployments and existing Compose deployments. A native deployment
 is detected from its manifest, so it does not need Compose. Optional DinD
 deployments use a separate nested daemon and require the Compose overlay flag.
-The local laptop client does not administer the host or install updates.
+The local client does not administer or update the host deployment.
+Guided Docker images also include a Jara client binary for the server's Linux
+architecture. `jara deployment upgrade` offers that binary when the server is
+newer than the local CLI. Accepting installs it locally and asks you to rerun
+the deployment upgrade with the new CLI. This requires a matching Linux client
+architecture and a writable local executable directory. Downgrading a server is
+refused unless you pass `--force-downgrade`.
 
 ## Behavior
 
