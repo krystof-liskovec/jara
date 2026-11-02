@@ -64,9 +64,9 @@ For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in
 the same folder reopens the workspace. For a host without an SSH alias, include
 `--port`, `--user`, and `--identity` in `remote add` as needed. The detailed
 steps below cover host keys, direct SSH access, and other setup options.
-Run `jara menu` to open an interactive client menu for workspaces, remotes,
-authentication, diagnostics, and guided deployments. Bare `jara` still opens
-the workspace for the current folder.
+Run `jara menu` for workspaces, remotes, credentials, and a searchable GitLab/Gitea
+repository browser using configured tokens. `jara clone URL` clones remotely and
+opens Codex; bare `jara` still opens the current folder's workspace.
 
 Use `jara workspace list [--remote NAME]` to inspect stored workspaces and
 `jara workspace delete ID [--remote NAME]` to permanently remove one. Deletion
@@ -471,7 +471,7 @@ the selected provider CLI and HTTPS Git credential helper. Install that CLI in
 the image first. Tokens are stored by the provider in the persistent agent home;
 they are not build arguments or image-layer inputs. Repeated startup with the
 same token is skipped. To rotate Tea's token, remove its managed `jara` login first.
-Direct token setup needs real-provider validation; automated tests use no tokens.
+Jara also stores the token with permissions 0600 for repository API browsing.
 
 ## Status and verification
 

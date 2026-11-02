@@ -57,7 +57,7 @@ func commandHelpKey(args []string) string {
 	switch command {
 	case "help", "--help", "-h":
 		return "root"
-	case "open", "resume", "new", "run", "connect", "sessions", "edit", "doctor", "forward", "reverse", "tunnel", "setup", "menu", "ui", "keygen", "environment", "migrate", "version":
+	case "open", "resume", "new", "run", "connect", "sessions", "clone", "edit", "doctor", "forward", "reverse", "tunnel", "setup", "menu", "ui", "keygen", "environment", "migrate", "version":
 		return command
 	case "sync", "tools":
 		return command
@@ -69,6 +69,11 @@ func commandHelpKey(args []string) string {
 			}
 		}
 		return command
+	case "docker":
+		if len(args) > 1 && args[1] == "cleanup" {
+			return "docker cleanup"
+		}
+		return "docker"
 	case "remote", "auth", "deployment", "workspace":
 		if len(args) > 1 {
 			key := command + " " + args[1]

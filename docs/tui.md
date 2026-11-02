@@ -17,6 +17,15 @@ shortcut bar. Desktop lists are centered at a readable width; phones use the
 available width, with compact spacing on short screens. Selection never
 changes row content. Search includes metadata and titles; long lists paginate.
 
+## GitLab and Gitea repositories
+
+Choose **Browse repositories** in `jara menu` to select a configured remote and
+provider, then search repositories available to its GitLab or Gitea token. Add a
+token with `jara auth gitlab` or `jara auth gitea`; the matching provider CLI must
+be installed on the remote. Selecting a repository clones it on that remote and
+opens Codex in the new workspace. `jara clone REPOSITORY_URL` does the same for
+an HTTPS or standard SSH URL, with `--remote NAME` to choose the Jara host.
+
 ## Projects and conversations
 
 The SSH entry point and `jara sessions` open Projects. Jara combines registered

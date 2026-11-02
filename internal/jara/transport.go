@@ -65,6 +65,9 @@ type Request struct {
 	ConversationCWD    string   `json:"conversation_cwd,omitempty"`
 	Conversation       string   `json:"conversation,omitempty"`
 	Op                 string   `json:"op"`
+	Provider           string   `json:"provider,omitempty"`
+	OlderThan          string   `json:"older_than,omitempty"`
+	Containers         []string `json:"containers,omitempty"`
 	Name               string   `json:"name,omitempty"`
 	ID                 string   `json:"id,omitempty"`
 	URL                string   `json:"url,omitempty"`

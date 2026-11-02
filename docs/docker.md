@@ -37,6 +37,14 @@ docker compose up -d
 docker run --rm -v "$PWD:/work" -w /work alpine ls
 ```
 
+## Clean stopped containers
+
+Use `jara docker cleanup` or **Clean stale Docker containers** in `jara menu` to
+review nested containers that have been exited for at least 24 hours. Jara asks
+before removing the listed containers. Use `--older-than 72h` to choose a longer
+age threshold. Running containers, images, and volumes are left alone; named and
+anonymous volumes remain available for later use.
+
 Docker-enabled environments launch Codex with
 `-c sandbox_workspace_write.network_access=true`, the supported
 [workspace sandbox networking setting](https://learn.chatgpt.com/docs/config-file/config-reference).

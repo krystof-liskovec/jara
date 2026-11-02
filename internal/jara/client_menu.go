@@ -41,6 +41,8 @@ func clientMenuItems(c Config) []menuItem {
 			menuItem{Title: "Open this workspace", Detail: "Attach or choose a session · " + remote, Kind: "workspace", Action: "open"},
 			menuItem{Title: "Choose checkout for this folder", Detail: "Link this folder to an existing remote checkout", Kind: "workspace", Action: "choose-workspace"},
 			menuItem{Title: "Projects", Detail: "Conversations and live terminals", Kind: "running", Action: "browse"},
+			menuItem{Title: "Browse repositories", Detail: "Search GitLab and Gitea repositories available to your tokens", Kind: "project", Action: "browse-repositories"},
+			menuItem{Title: "Clean stale Docker containers", Detail: "Remove exited containers stopped for at least 24h", Kind: "tools", Action: "docker-cleanup"},
 			menuItem{Title: "New conversation", Detail: "Codex", Kind: "new", Action: "new"},
 			menuItem{Title: "Connections", Detail: fmt.Sprintf("%d configured", len(c.Remotes)), Kind: "remote", Action: "remote"},
 			menuItem{Title: "Credentials", Detail: "Codex and Git", Kind: "tools", Action: "auth"},
@@ -70,6 +72,10 @@ func runClientMenuAction(c Config, action string) error {
 			return err
 		}
 		return Run([]string{"sessions", "--remote", name})
+	case "browse-repositories":
+		return browseRepositories(c)
+	case "docker-cleanup":
+		return dockerCleanupMenu(c)
 	case "new":
 		name, err := chooseMenuRemote(c, "Start a new session")
 		if err != nil || name == "" {
