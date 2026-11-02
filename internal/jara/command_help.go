@@ -319,9 +319,13 @@ var commandHelp = map[string]helpEntry{
 		examples: []string{"jara keygen", "jara keygen --out ~/.ssh/jara-work"},
 	},
 	"key": {
-		usage:    "jara key install [OPTIONS]",
-		summary:  "Install a public key on a guided Jara deployment.",
-		commands: []string{"install   Add an SSH public key to a remote deployment."},
+		usage:   "jara key install|list|remove [OPTIONS]",
+		summary: "Manage SSH public keys on a guided Jara deployment.",
+		commands: []string{
+			"install   Add a public key to a remote deployment.",
+			"list      Show its authorized key fingerprints.",
+			"remove    Revoke a key by fingerprint.",
+		},
 		examples: []string{"jara key install --remote work --public-key ~/.ssh/phone.pub"},
 	},
 	"key install": {
@@ -332,6 +336,17 @@ var commandHelp = map[string]helpEntry{
 			"--public-key FILE   Public key file containing one SSH key (required).",
 		},
 		examples: []string{"jara key install --remote work --public-key ~/.ssh/phone.pub"},
+	},
+	"key list": {
+		usage:    "jara key list [--remote NAME]",
+		summary:  "List authorized SSH key fingerprints on a guided deployment.",
+		examples: []string{"jara key list --remote work"},
+	},
+	"key remove": {
+		usage:    "jara key remove --fingerprint SHA256:... [--remote NAME]",
+		summary:  "Remove an authorized SSH key by fingerprint; at least one key must remain.",
+		options:  []string{"--fingerprint VALUE   Fingerprint shown by jara key list."},
+		examples: []string{"jara key remove --remote work --fingerprint SHA256:abc123..."},
 	},
 	"editor": {usage: "jara editor import vim|nvim [OPTIONS]", summary: "Import a local editor configuration into a remote workspace.", examples: []string{"jara editor import nvim --source ~/.config/nvim --remote jellyfish"}},
 	"editor import": {
