@@ -69,7 +69,7 @@ func commandHelpKey(args []string) string {
 			}
 		}
 		return command
-	case "remote", "auth", "deployment":
+	case "remote", "auth", "deployment", "workspace":
 		if len(args) > 1 {
 			key := command + " " + args[1]
 			if _, ok := commandHelp[key]; ok {

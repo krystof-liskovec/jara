@@ -2,7 +2,9 @@ package jara
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // Style the session on every attachment so reconnecting also updates older
@@ -15,6 +17,12 @@ func configureTmuxStatus(session string) error {
 	workspaceName := tmuxWorkspaceName(session)
 	if err := runTmux("set-option", "-t", session, "@jara_workspace_name", workspaceName); err != nil {
 		return fmt.Errorf("set workspace label: %w", err)
+	}
+	if err := runTmux("set-option", "-s", "set-titles", "on"); err != nil {
+		return fmt.Errorf("enable terminal titles: %w", err)
+	}
+	if err := runTmux("set-option", "-s", "set-titles-string", "Jara · #{@jara_workspace_name}"); err != nil {
+		return fmt.Errorf("set terminal title: %w", err)
 	}
 	if err := runTmux("set-window-option", "-t", session, "remain-on-exit", "off"); err != nil {
 		return fmt.Errorf("close exited terminal panes: %w", err)
@@ -59,7 +67,7 @@ func tmuxWorkspaceName(session string) string {
 	}
 	id := strings.TrimSpace(string(value))
 	if workspace, err := workspaceInfo(id); err == nil {
-		name := workspaceTitle(workspace)
+		name := workspaceTerminalTitle(workspace)
 		if name != "Copied workspace" {
 			return strings.ReplaceAll(name, "#", "＃")
 		}
@@ -69,6 +77,33 @@ func tmuxWorkspaceName(session string) string {
 		id = id[:8]
 	}
 	return id
+}
+
+func tmuxSessionName(workspace Workspace, id string) string {
+	label := strings.ToLower(workspaceTerminalTitle(workspace))
+	var slug strings.Builder
+	separator := false
+	for _, r := range label {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			slug.WriteRune(r)
+			separator = false
+		} else if slug.Len() > 0 && !separator {
+			slug.WriteByte('-')
+			separator = true
+		}
+	}
+	project := strings.Trim(slug.String(), "-")
+	if len(project) > 18 {
+		project = project[:18]
+	}
+	if project == "" {
+		project = "workspace"
+	}
+	shortID := strings.TrimPrefix(id, "w-")
+	if len(shortID) > 8 {
+		shortID = shortID[:8]
+	}
+	return "jara-" + project + "-" + shortID + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
 
 func tmuxStatusBackground(session string) (terminalRGB, error) {

@@ -2,8 +2,6 @@ package jara
 
 import (
 	"bufio"
-	"crypto/sha256"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -122,6 +120,9 @@ func Run(args []string) error {
 	}
 	if len(args) > 0 && args[0] == "remote" {
 		return remoteCommand(&c, args[1:])
+	}
+	if len(args) > 0 && args[0] == "workspace" {
+		return workspaceCommand(&c, args[1:])
 	}
 	if len(args) > 0 && args[0] == "config" {
 		return configCommand(&c, args[1:])
@@ -269,8 +270,21 @@ func Run(args []string) error {
 	if action == "sessions" {
 		return openSession(Request{})
 	}
-	key := chosen + "\n" + root
+	origin := ""
+	var originErr error
+	if isGit {
+		origin, originErr = gitRepositoryOrigin(root)
+	}
+	legacyKey := workspaceAssociationKey(chosen, root, "")
+	key := workspaceAssociationKey(chosen, root, origin)
 	b, exists := c.Associations[key]
+	if !exists && origin != "" {
+		if legacy, ok := c.Associations[legacyKey]; ok {
+			if existing, matches := workspaceForOrigin(r, legacy.Workspace, origin); matches && existing.Ready {
+				b, exists = legacy, true
+			}
+		}
+	}
 	var clonePromptReader *bufio.Reader
 	if !exists && !isGit && !*copyMode {
 		if action != "open" && action != "resume" {
@@ -292,38 +306,55 @@ func Run(args []string) error {
 				return openSession(Request{})
 			}
 		}
-		sum := sha256.Sum256([]byte(root))
-		id := "w-" + hex.EncodeToString(sum[:12])
+		id := workspaceID(root, origin)
 		q := Request{Op: "create", ID: id, Name: filepath.Base(root)}
 		if !*copyMode {
-			q.URL, err = gitOutput(root, "remote", "get-url", "origin")
-			if err != nil {
-				return fmt.Errorf("repository needs an origin remote; use --copy instead")
+			if originErr != nil {
+				return originErr
 			}
+			q.URL = origin
 			q.Commit, err = gitOutput(root, "rev-parse", "HEAD")
 			if err != nil {
 				return err
 			}
 			q.Branch, _ = gitOutput(root, "symbolic-ref", "--short", "-q", "HEAD")
-			if err = validateOrigin(q.URL); err != nil {
-				return err
-			}
-			if isSSHGitOrigin(q.URL) {
-				target, e := parseGitCredentialTarget(q.URL)
-				if e != nil {
-					return e
+		}
+		reusedExisting := false
+		if q.URL != "" {
+			legacyID := workspaceID(root, "")
+			if legacyID != id {
+				if existing, matches := workspaceForOrigin(r, legacyID, q.URL); matches {
+					id, q.ID = legacyID, legacyID
+					if existing.Ready {
+						reusedExisting = true
+						fmt.Fprintf(os.Stderr, "Reusing existing remote workspace %s; its checkout was left unchanged.\n", id)
+					}
 				}
-				q.URL = target.URL
 			}
 		}
-		if err = rpc(r, q, nil, nil); err != nil {
-			if q.URL != "" {
-				return fmt.Errorf("%w\nIf this is a private repository, run `jara auth git --remote %s` from the checkout and retry.", err, chosen)
+		if !reusedExisting {
+			if err = rpc(r, q, nil, nil); err != nil {
+				destinationExists := strings.Contains(err.Error(), "destination already exists; no files changed:")
+				if q.URL != "" && destinationExists {
+					var existing Workspace
+					if infoErr := rpc(r, Request{Op: "info", ID: id}, nil, &existing); infoErr == nil && existing.Ready && existing.ID == id && existing.URL == q.URL {
+						reusedExisting = true
+						fmt.Fprintf(os.Stderr, "Reusing existing remote workspace %s; its checkout was left unchanged.\n", id)
+					}
+				}
+				if !reusedExisting {
+					if destinationExists {
+						return fmt.Errorf("%w\nThe existing workspace could not be verified as a ready clone of this repository; no files were changed.", err)
+					}
+					if q.URL != "" {
+						return fmt.Errorf("%w\nIf this is a private repository, run `jara auth git --remote %s` from the checkout and retry.", err, chosen)
+					}
+					return err
+				}
 			}
-			return err
 		}
 		b = Binding{Remote: chosen, Workspace: id}
-		if !*copyMode {
+		if !*copyMode && !reusedExisting {
 			bundle, cleanup, e := repositoryBundle(root)
 			if e != nil {
 				return e
@@ -343,6 +374,10 @@ func Run(args []string) error {
 			rel = "."
 		}
 		c.Associations[key] = b
+	}
+	if origin != "" {
+		c.Associations[key] = b
+		c.Associations[legacyKey] = b
 	}
 	c.Bindings[root] = b
 	if err = saveConfig(c); err != nil {

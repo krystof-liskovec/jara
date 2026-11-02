@@ -65,10 +65,16 @@ Run `jara menu` to open an interactive client menu for workspaces, remotes,
 authentication, diagnostics, and guided deployments. Bare `jara` still opens
 the workspace for the current folder.
 
+Use `jara workspace list [--remote NAME]` to inspect stored workspaces and
+`jara workspace delete ID [--remote NAME]` to permanently remove one. Deletion
+asks for confirmation and refuses workspaces with running sessions.
+Jara terminal titles and tmux labels include the repository and host.
+
 Remove a host deployed by the guide with `jara deployment uninstall work`. It
 stops the container and removes deployment files while keeping workspace data,
-Codex login, and Git credentials in Docker volumes. Add `--volumes` only when you
-also want to permanently delete that data, for example
+Codex login, and Git credentials in Docker volumes. Local workspace links are
+kept for reuse after redeployment. Add `--volumes` only when you also want to
+permanently delete that data, for example
 `jara deployment uninstall work --volumes`. This also removes the server host
 key, so verify the new fingerprint after a later reinstall. Uninstall asks
 separately whether to remove a Jara-generated local

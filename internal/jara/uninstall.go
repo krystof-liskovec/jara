@@ -59,7 +59,7 @@ func uninstallCommand(c *Config, args []string) error {
 			return err
 		}
 	}
-	volumeMessage := "Workspace files, Codex login, Git credentials, history, and host keys in Docker volumes will be kept."
+	volumeMessage := "Workspace files, Codex login, Git credentials, history, and host keys in Docker volumes will be kept. Local workspace links will also be kept so a redeployment can reuse them."
 	volumeCommands := ""
 	lowerName := strings.ToLower(name)
 	if removeVolumes {
@@ -97,7 +97,11 @@ func uninstallCommand(c *Config, args []string) error {
 	if err = runBootstrapSSH(deployment.Admin, command, nil); err != nil {
 		return fmt.Errorf("remove Jara from host: %w", err)
 	}
-	forgetRemote(c, name)
+	if removeVolumes {
+		forgetRemote(c, name)
+	} else {
+		forgetRemotePreservingWorkspaces(c, name)
+	}
 	if err = saveConfig(*c); err != nil {
 		return err
 	}
@@ -146,16 +150,26 @@ func askYesFromStdin(prompt string, defaultYes bool) (bool, error) {
 }
 
 func forgetRemote(c *Config, name string) {
+	forgetRemoteConfig(c, name, false)
+}
+
+func forgetRemotePreservingWorkspaces(c *Config, name string) {
+	forgetRemoteConfig(c, name, true)
+}
+
+func forgetRemoteConfig(c *Config, name string, preserveWorkspaces bool) {
 	delete(c.Remotes, name)
 	delete(c.HostDeployments, name)
-	for path, binding := range c.Bindings {
-		if binding.Remote == name {
-			delete(c.Bindings, path)
+	if !preserveWorkspaces {
+		for path, binding := range c.Bindings {
+			if binding.Remote == name {
+				delete(c.Bindings, path)
+			}
 		}
-	}
-	for key, association := range c.Associations {
-		if association.Remote == name {
-			delete(c.Associations, key)
+		for key, association := range c.Associations {
+			if association.Remote == name {
+				delete(c.Associations, key)
+			}
 		}
 	}
 	if c.Default == name {

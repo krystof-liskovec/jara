@@ -85,7 +85,7 @@ Go, provider CLIs and editors. The client diagnoses missing tools and explains
 host updates. Guided setup can transfer its embedded deployment bundle and run
 Docker over SSH when Docker is already available to the host account. Guided
 uninstall stops that deployment and removes its staged files while preserving
-Docker volumes by default; volume deletion is explicit.
+Docker volumes and local workspace links by default; volume deletion is explicit.
 
 Project Node/Go versions can coexist inside that environment. Mise installs them
 in the persistent agent home; each Codex process receives its project's selected

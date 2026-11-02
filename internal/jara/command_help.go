@@ -15,7 +15,7 @@ var commandHelp = map[string]helpEntry{
 		commands: []string{
 			"open, resume, new, connect, sessions  Manage remote Codex sessions.",
 			"sync, edit, tools, doctor             Work with a remote workspace.",
-			"remote, config, auth                 Configure hosts and credentials.",
+			"remote, workspace, config, auth       Manage workspaces and credentials.",
 			"setup, deployment, host, uninstall   Set up and maintain Jara hosts.",
 			"forward, reverse, tunnel             Forward ports over SSH.",
 			"menu/ui, version, keygen, key         Client and SSH key tools.",
@@ -251,6 +251,29 @@ var commandHelp = map[string]helpEntry{
 	"remote list":   {usage: "jara remote list", summary: "List configured remotes; * marks the default.", examples: []string{"jara remote list"}},
 	"remote use":    {usage: "jara remote use NAME", summary: "Set the default remote.", examples: []string{"jara remote use jellyfish"}},
 	"remote remove": {usage: "jara remote remove NAME", summary: "Forget a manually configured remote.", examples: []string{"jara remote remove old-server"}},
+	"workspace": {
+		usage:   "jara workspace list|delete ID [OPTIONS]",
+		summary: "List or delete workspaces on a configured remote.",
+		commands: []string{
+			"list          Show workspace IDs, names and repository origins.",
+			"delete ID     Permanently remove a workspace and its managed worktrees.",
+		},
+		examples: []string{
+			"jara workspace list --remote jellyfish",
+			"jara workspace delete --remote jellyfish w-0123456789abcdef01234567",
+		},
+	},
+	"workspace list": {
+		usage:    "jara workspace list [--remote NAME]",
+		summary:  "List workspaces stored on a configured remote.",
+		examples: []string{"jara workspace list", "jara workspace list --remote jellyfish"},
+	},
+	"workspace delete": {
+		usage:    "jara workspace delete ID [--remote NAME]",
+		summary:  "Permanently delete one workspace after confirmation; active workspaces are refused.",
+		options:  []string{"--remote NAME   Select a configured host."},
+		examples: []string{"jara workspace delete --remote jellyfish w-0123456789abcdef01234567"},
+	},
 	"config": {
 		usage:   "jara config set|codex-args ...",
 		summary: "Configure client preferences and host-level Codex defaults.",
