@@ -18,7 +18,7 @@ var commandHelp = map[string]helpEntry{
 			"remote, config, auth                 Configure hosts and credentials.",
 			"setup, deployment, host, uninstall   Set up and maintain Jara hosts.",
 			"forward, reverse, tunnel             Forward ports over SSH.",
-			"menu/ui, version, keygen             Client tools.",
+			"menu/ui, version, keygen, key         Client and SSH key tools.",
 			"environment, migrate, help           Other commands.",
 		},
 		options: []string{
@@ -317,6 +317,21 @@ var commandHelp = map[string]helpEntry{
 		summary:  "Generate a Jara SSH key pair and print its public key.",
 		options:  []string{"--out FILE   Private key output path (default ~/.ssh/id_ed25519_jara)."},
 		examples: []string{"jara keygen", "jara keygen --out ~/.ssh/jara-work"},
+	},
+	"key": {
+		usage:    "jara key install [OPTIONS]",
+		summary:  "Install a public key on a guided Jara deployment.",
+		commands: []string{"install   Add an SSH public key to a remote deployment."},
+		examples: []string{"jara key install --remote work --public-key ~/.ssh/phone.pub"},
+	},
+	"key install": {
+		usage:   "jara key install [OPTIONS]",
+		summary: "Add a public SSH key to a guided deployment without restarting its container.",
+		options: []string{
+			"--remote NAME       Select a configured guided deployment.",
+			"--public-key FILE   Public key file containing one SSH key (required).",
+		},
+		examples: []string{"jara key install --remote work --public-key ~/.ssh/phone.pub"},
 	},
 	"editor": {usage: "jara editor import vim|nvim [OPTIONS]", summary: "Import a local editor configuration into a remote workspace.", examples: []string{"jara editor import nvim --source ~/.config/nvim --remote jellyfish"}},
 	"editor import": {

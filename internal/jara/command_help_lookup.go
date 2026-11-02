@@ -61,6 +61,14 @@ func commandHelpKey(args []string) string {
 		return command
 	case "sync", "tools":
 		return command
+	case "key":
+		if len(args) > 1 {
+			key := command + " " + args[1]
+			if _, ok := commandHelp[key]; ok {
+				return key
+			}
+		}
+		return command
 	case "remote", "auth", "deployment":
 		if len(args) > 1 {
 			key := command + " " + args[1]

@@ -80,6 +80,12 @@ func Run(args []string) error {
 			return environment(args[1:])
 		case "keygen":
 			return keygen(args[1:])
+		case "key":
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return keyCommand(c, args[1:])
 		case "host":
 			if len(args) > 1 && args[1] == "upgrade" {
 				// Keep the original spelling as a compatibility alias.

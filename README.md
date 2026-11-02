@@ -154,10 +154,11 @@ Existing SSH aliases and jump hosts work: `--host my-agent-alias`. `JARA_SSH_CON
 selects an alternative OpenSSH configuration file. The default configuration is
 `jara/config.json` in the OS user configuration directory; `JARA_CONFIG`
 overrides it.
-If you need a new key, run `jara keygen` first, add the displayed public key on the
-Compose host, then register using its private-key path. Passphrase setup is
-handled by OpenSSH. Concurrent configuration updates fail rather than overwrite
-each other's changes; retry the command. An interrupted config update may leave
+For a guided deployment, use `jara key install --remote work --public-key ~/.ssh/phone.pub`
+after generating the pair with `jara keygen --out ~/.ssh/phone`. Manual Compose
+deployments still use `deploy/authorized_keys`. Passphrase setup is handled by OpenSSH.
+Concurrent configuration updates fail rather than overwrite each other's changes; retry
+the command. An interrupted config update may leave
 a `config.json.lock` directory; remove it only after confirming no Jara writer runs.
 
 From a repository:
