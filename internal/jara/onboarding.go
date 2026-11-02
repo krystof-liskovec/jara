@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 )
 
 func guidedSetup(c Config) error {
@@ -184,12 +186,37 @@ func sshStartupError(output string) bool {
 }
 
 func askSetup(reader *bufio.Reader, prompt, defaultValue string) (string, error) {
-	if defaultValue != "" {
-		fmt.Fprintf(os.Stderr, "%s [%s]: ", prompt, defaultValue)
-	} else {
-		fmt.Fprintf(os.Stderr, "%s: ", prompt)
+	return askSetupPrompt(reader, prompt, defaultValue, false)
+}
+
+func askSetupPath(reader *bufio.Reader, prompt, defaultValue string) (string, error) {
+	return askSetupPrompt(reader, prompt, defaultValue, true)
+}
+
+func askSetupPrompt(reader *bufio.Reader, prompt, defaultValue string, completePaths bool) (string, error) {
+	if completePaths && term.IsTerminal(int(os.Stdin.Fd())) {
+		prompt += " (Tab completes paths)"
 	}
-	value, err := reader.ReadString('\n')
+	label := prompt + ": "
+	if defaultValue != "" {
+		label = fmt.Sprintf("%s [%s]: ", prompt, defaultValue)
+	}
+	fmt.Fprint(os.Stderr, label)
+	value := ""
+	var err error
+	if completePaths {
+		var handled bool
+		value, handled, err = readSetupPathLine(reader, int(os.Stdin.Fd()), os.Stderr, label)
+		if handled {
+			if err != nil {
+				return "", err
+			}
+		} else {
+			value, err = reader.ReadString('\n')
+		}
+	} else {
+		value, err = reader.ReadString('\n')
+	}
 	if err != nil && value == "" {
 		return "", err
 	}

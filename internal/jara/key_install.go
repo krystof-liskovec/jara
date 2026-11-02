@@ -287,7 +287,7 @@ func synchronizeAgentKeys(runner hostSSHRunner, manifest nativeDeployment, keys 
 	installScript := `set -eu
 source=/run/jara/authorized_keys
 directory=/etc/ssh/authorized_keys
-target=$directory/agent
+target=$directory/` + nativeSSHUser(manifest) + `
 test -f "$source"
 test ! -L "$source"
 test -d "$directory"
@@ -308,7 +308,7 @@ trap - EXIT
 }
 
 func verifyAgentKeys(runner hostSSHRunner, manifest nativeDeployment, keys []byte) error {
-	installed, err := runner.run(20*time.Second, "", []string{"docker", "exec", "--user", "root", manifest.Container, "cat", "/etc/ssh/authorized_keys/agent"}, nil, false)
+	installed, err := runner.run(20*time.Second, "", []string{"docker", "exec", "--user", "root", manifest.Container, "cat", "/etc/ssh/authorized_keys/" + nativeSSHUser(manifest)}, nil, false)
 	if err != nil {
 		return fmt.Errorf("could not read authorized keys from the running agent: %w", err)
 	}

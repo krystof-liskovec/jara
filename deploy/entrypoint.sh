@@ -1,5 +1,28 @@
 #!/bin/sh
 set -eu
+jara_ssh_user=${JARA_SSH_USER:-agent}
+case "$jara_ssh_user" in
+  [a-z_]*) ;;
+  *) echo 'JARA_SSH_USER must start with a lowercase letter or underscore.' >&2; exit 1 ;;
+esac
+case "$jara_ssh_user" in
+  *[!a-z0-9_-]*) echo 'JARA_SSH_USER contains unsupported characters.' >&2; exit 1 ;;
+esac
+if [ "${#jara_ssh_user}" -gt 32 ] || [ "$jara_ssh_user" = root ]; then
+  echo 'JARA_SSH_USER must be at most 32 characters and cannot be root.' >&2
+  exit 1
+fi
+if getent passwd "$jara_ssh_user" >/dev/null 2>&1; then
+  if [ "$(id -u "$jara_ssh_user")" != 1001 ]; then
+    echo 'JARA_SSH_USER conflicts with an existing container account.' >&2
+    exit 1
+  fi
+elif getent passwd agent >/dev/null 2>&1; then
+  usermod --login "$jara_ssh_user" agent
+else
+  echo 'The Jara service account is missing.' >&2
+  exit 1
+fi
 gateway_ports=${JARA_GATEWAY_PORTS:-no}
 case "$gateway_ports" in
   no|clientspecified) ;;
@@ -26,14 +49,14 @@ authorized_keys_tmp=$(mktemp /etc/ssh/authorized_keys/.agent-keys.XXXXXXXX)
 cp /run/jara/authorized_keys "$authorized_keys_tmp"
 chmod 644 "$authorized_keys_tmp"
 chown root:root "$authorized_keys_tmp"
-mv -f "$authorized_keys_tmp" /etc/ssh/authorized_keys/agent
+mv -f "$authorized_keys_tmp" "/etc/ssh/authorized_keys/$jara_ssh_user"
 # /tmp persists across docker restart. Reject symlinks and unexpected owners;
 # never repair this path with privileged chmod/chown that could follow a link.
 if [ -L /tmp/jara-cache ]; then
   echo 'Unsafe /tmp/jara-cache symlink; remove it from the trusted Docker host before restarting.' >&2
   exit 1
 elif [ -e /tmp/jara-cache ]; then
-  if [ ! -d /tmp/jara-cache ] || [ "$(stat -c %u /tmp/jara-cache)" != "$(id -u agent)" ]; then
+  if [ ! -d /tmp/jara-cache ] || [ "$(stat -c %u /tmp/jara-cache)" != "$(id -u "$jara_ssh_user")" ]; then
     echo 'Unsafe /tmp/jara-cache path or owner; remove it from the trusted Docker host before restarting.' >&2
     exit 1
   fi
@@ -41,19 +64,19 @@ else
   cache_tmp=$(mktemp -d /tmp/.jara-cache.XXXXXXXX)
   chmod 700 "$cache_tmp"
   mv -T "$cache_tmp" /tmp/jara-cache
-  chown agent:agent /tmp/jara-cache
+  chown "$jara_ssh_user":agent /tmp/jara-cache
 fi
 if [ ! -f /var/lib/jara/ssh/ssh_host_ed25519_key ]; then
   ssh-keygen -q -t ed25519 -N '' -f /var/lib/jara/ssh/ssh_host_ed25519_key
 fi
-chown agent:agent /home/agent
+chown "$jara_ssh_user":agent /home/agent
 umask 077
 if [ -s /run/secrets/gitlab_token ]; then
-  runuser -u agent -- jara _auth gitlab "${GITLAB_HOST:-gitlab.com}" < /run/secrets/gitlab_token
+  runuser -u "$jara_ssh_user" -- jara _auth gitlab "${GITLAB_HOST:-gitlab.com}" < /run/secrets/gitlab_token
 fi
 if [ -s /run/secrets/gitea_token ]; then
   : "${GITEA_URL:?Set GITEA_URL when supplying a Gitea token}"
-  runuser -u agent -- jara _auth gitea "$GITEA_URL" < /run/secrets/gitea_token
+  runuser -u "$jara_ssh_user" -- jara _auth gitea "$GITEA_URL" < /run/secrets/gitea_token
 fi
 mkdir -p /run/jara
 # SSH sessions do not inherit arbitrary Docker environment variables. Store the
@@ -65,7 +88,7 @@ if [ -n "$tmux_background" ]; then
   printf '%s' "$tmux_background" > /run/jara/tmux-background
   chmod 644 /run/jara/tmux-background
 fi
-printf 'GatewayPorts %s\n' "$gateway_ports" > /run/jara/sshd-env.conf
+printf 'GatewayPorts %s\nAllowUsers %s\n' "$gateway_ports" "$jara_ssh_user" > /run/jara/sshd-env.conf
 printf '%s' 'SetEnv PATH=/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin LANG=C.UTF-8 LC_CTYPE=C.UTF-8 GOTOOLCHAIN=local GOCACHE=/tmp/jara-cache/go-build GOMODCACHE=/tmp/jara-cache/go-mod NPM_CONFIG_CACHE=/tmp/jara-cache/npm' >> /run/jara/sshd-env.conf
 : > /run/jara/docker.env
 if [ "${JARA_DOCKER:-0}" = 1 ]; then

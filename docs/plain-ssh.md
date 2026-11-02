@@ -7,7 +7,8 @@ same persistent Codex terminals you use from your laptop.
 ## Termius setup
 
 1. Add a host with your deployment's reachable hostname, published SSH port
-   (2222 by default), username `agent`, and an authorized SSH key.
+   (2222 by default), the Jara SSH username, and an authorized SSH key. Guided
+   setup asks for this username; it defaults to `agent`.
 2. Verify the SSH host fingerprint through trusted host access, as described in
    the [deployment guide](../README.md#deploy-on-a-linux-docker-host).
 3. Connect and run `jara connect` to browse workspaces and running sessions.
@@ -32,6 +33,9 @@ on your phone is not the Docker host. Each environment has its own SSH port and
 host identity; save a separate Termius host for each.
 
 ## Commands after connecting
+
+The SSH examples use `agent`, the default username. Replace it with your selected
+Jara SSH username if you changed it during setup.
 
 ```sh
 jara connect                            # Workspace and running-session menu

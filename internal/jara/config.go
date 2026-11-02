@@ -48,6 +48,9 @@ type Config struct {
 }
 
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
+var sshUserRE = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
+
+func validSSHUser(name string) bool { return sshUserRE.MatchString(name) && name != "root" }
 
 func configPath() (string, error) {
 	if p := os.Getenv("JARA_CONFIG"); p != "" {

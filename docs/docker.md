@@ -23,6 +23,11 @@ As with ordinary Jara deployments, SSH binds to host loopback by default; adjust
 `JARA_SSH_BIND` or use your existing SSH jump host. Use a different project name
 and SSH port for each independent environment.
 
+The SSH login user defaults to `agent`. Choose another username when generating
+the environment file with `--ssh-user NAME`; guided setup asks for it during host
+deployment. The user's home directory remains `/home/agent` for existing workspace
+and tool data.
+
 `jara doctor` checks the enabled daemon. In an SSH shell, editor terminal or Codex:
 
 ```sh
