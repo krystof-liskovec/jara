@@ -13,12 +13,14 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/rivo/uniseg"
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 )
 
 func terminalMenu(title string, items []menuItem) (int, bool, error) {
+	return terminalMenuAt(title, items, 0)
+}
+func terminalMenuAt(title string, items []menuItem, initial int) (int, bool, error) {
 	input, output := int(os.Stdin.Fd()), int(os.Stdout.Fd())
 	if os.Getenv("TERM") == "dumb" || !term.IsTerminal(input) || !term.IsTerminal(output) {
 		return 0, false, nil
@@ -34,7 +36,7 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 	fmt.Print("\x1b[?1049h\x1b[?25l")
 	defer fmt.Print("\x1b[0m\x1b[?25h\x1b[?1049l")
 
-	selected, lastWidth, lastHeight := 0, 0, 0
+	selected, lastWidth, lastHeight := max(0, min(initial, len(items)-1)), 0, 0
 	filter, searching := "", false
 	redraw := true
 	escape := ""
@@ -42,6 +44,9 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 	for {
 		select {
 		case s := <-signals:
+			if s == os.Interrupt {
+				return 0, true, ErrUIQuit
+			}
 			return 0, true, fmt.Errorf("menu interrupted: %s", s)
 		default:
 		}
@@ -68,6 +73,9 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 		}
 		if redraw {
 			lines := menuLinesFiltered(title, visible, selected, width, height, filter, len(items))
+			for len(lines) < height {
+				lines = append(lines, "")
+			}
 			fmt.Print("\x1b[H\x1b[2J" + strings.Join(styleMenuLines(lines, width), "\r\n"))
 			lastWidth, lastHeight = width, height
 			redraw = false
@@ -113,6 +121,9 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 		}
 
 		ch := key[0]
+		if ch == 3 || ch == 4 {
+			return 0, true, ErrUIQuit
+		}
 		navigation := 0
 		if ch == 27 {
 			escape = "\x1b"
@@ -129,6 +140,10 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 				navigation = -1
 			case "\x1b[B", "\x1bOB":
 				navigation = 1
+			case "\x1b[C", "\x1bOC":
+				navigation = 4
+			case "\x1b[D", "\x1bOD":
+				navigation = -4
 			case "\x1b[5~":
 				navigation = -2
 			case "\x1b[6~":
@@ -143,14 +158,20 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 			}
 			escape = ""
 		}
+		if navigation == -4 || (ch == 8 || ch == 127) && (!searching || filter == "") {
+			return 0, true, io.EOF
+		}
 		if height < 7 || width < 16 {
-			if ch == 'q' || ch == 3 || ch == 4 || navigation == 0 && ch == 27 {
+			if ch == 'q' || navigation == 0 && ch == 27 {
 				return 0, true, io.EOF
 			}
 			continue
 		}
-		if ch == 3 || ch == 4 {
-			return 0, true, io.EOF
+		if navigation == 4 {
+			if len(matches) > 0 {
+				return matches[selected], true, nil
+			}
+			continue
 		}
 		if navigation != 0 {
 			switch navigation {
@@ -196,7 +217,7 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 			}
 			continue
 		}
-		if ch == 'q' || ch == 3 || ch == 4 {
+		if ch == 'q' {
 			return 0, true, io.EOF
 		}
 		if ch == '/' {
@@ -227,46 +248,4 @@ func terminalMenu(title string, items []menuItem) (int, bool, error) {
 		}
 		redraw = true
 	}
-}
-
-func styleMenuLines(lines []string, width int) []string {
-	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
-		return lines
-	}
-	styled := make([]string, len(lines))
-	for i, line := range lines {
-		color := ""
-		switch {
-		case strings.HasPrefix(line, "JARA ·"):
-			color = "\x1b[1;36m"
-		case line == "PREVIEW":
-			color = "\x1b[1;36m"
-		case strings.HasPrefix(line, "> "):
-			padding := max(0, width-1-uniseg.StringWidth(line))
-			line += strings.Repeat(" ", padding)
-			color = "\x1b[1;7m"
-		case strings.Contains(line, "─"):
-			color = "\x1b[90m"
-		case strings.HasPrefix(line, "  ●"):
-			color = "\x1b[32m"
-		case strings.HasPrefix(line, "  ○"):
-			color = "\x1b[36m"
-		case strings.HasPrefix(line, "  +"):
-			color = "\x1b[35m"
-		case strings.HasPrefix(line, "  ?"):
-			color = "\x1b[33m"
-		case strings.HasPrefix(line, "Search"):
-			color = "\x1b[1;34m"
-		case strings.Contains(line, "·") && i > 0:
-			color = "\x1b[90m"
-		case i >= len(lines)-2:
-			color = "\x1b[90m"
-		}
-		if color != "" {
-			styled[i] = color + line + "\x1b[0m"
-		} else {
-			styled[i] = line
-		}
-	}
-	return styled
 }

@@ -1,7 +1,6 @@
 package jara
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,7 +26,7 @@ func tmux(args ...string) *exec.Cmd {
 
 func sessions() ([]Session, error) {
 	// has-session distinguishes an absent server from malformed output.
-	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}|#{@jara_created_at}|#{@jara_last_attached}|#{@jara_session_label}")
+	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}|#{@jara_created_at}|#{@jara_last_attached}|#{@jara_session_label}|#{@jara_codex_thread}")
 	b, err := probe.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -52,6 +51,9 @@ func sessions() ([]Session, error) {
 		}
 		if len(p) > 7 {
 			session.Label = decodeSessionMenuLabel(p[7])
+		}
+		if len(p) > 8 {
+			session.Conversation = p[8]
 		}
 		ss = append(ss, session)
 	}
@@ -192,39 +194,16 @@ func remoteOpen(q Request) error {
 		return err
 	}
 	if q.ID == "" {
-		ss, err := sessions()
-		if err != nil {
-			return err
-		}
-		files, err := filepath.Glob(filepath.Join(dataRoot(), "workspaces", "*.json"))
-		if err != nil {
-			return err
-		}
-		sort.Strings(files)
-		var workspaces []Workspace
-		for _, f := range files {
-			b, e := os.ReadFile(f)
-			if e != nil {
-				return e
-			}
-			var w Workspace
-			if e = json.Unmarshal(b, &w); e != nil {
-				return e
-			}
-			workspaces = append(workspaces, w)
-		}
-		items := append([]menuItem{{Title: "Browse Codex sessions", Detail: "Codex resume picker · all workspaces", Kind: "history"}}, workspaceMenuItems(workspaces, ss)...)
-		items = append(items, menuItem{Title: "Setup diagnostics", Detail: "Check tools, storage and authentication", Kind: "tools"})
-		n, err := selectMenu("Sessions & workspaces", items)
+		selected, err := browseProjects()
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		selected := items[n]
+
 		if selected.Kind == "tools" {
-			return remoteRPC(Request{Op: "doctor"})
+			return showHostDiagnostics()
 		}
 		if selected.Kind == "history" {
 			if q.Background {
@@ -233,12 +212,22 @@ func remoteOpen(q Request) error {
 			command := codexResumeAllCommand(codexArgs)
 			return interactive(exec.Command(command[0], command[1:]...))
 		}
-		if selected.Kind == "group" {
+		if selected.Kind == "conversation" {
 			if q.Background {
-				return fmt.Errorf("choose a workspace to start a background run")
+				return fmt.Errorf("select a workspace for a background run")
 			}
-			warnRunningCodexArgs(q.CodexArgs)
-			return attach(Session{Name: selected.Action}, q.Takeover)
+			if selected.Workspace == "" {
+				command, e := resumeConversationCommand(selected.Agent, selected.Action, selected.Path, codexArgs)
+				if e != nil {
+					return e
+				}
+				return interactive(exec.Command(command[0], command[1:]...))
+			}
+			q.Conversation = selected.Action
+			q.Agent = selected.Agent
+			q.ConversationCWD = selected.Path
+			q.ResumeLatest = false
+			q.New = true
 		}
 		if q.Background && (selected.Kind == "terminal" || selected.Kind == "background") && selected.Workspace == "" {
 			return fmt.Errorf("this session has no workspace link; choose a workspace to start a background run")
@@ -247,10 +236,7 @@ func remoteOpen(q Request) error {
 			warnRunningCodexArgs(q.CodexArgs)
 			return attach(Session{Name: selected.Action, Workspace: selected.Workspace}, q.Takeover)
 		}
-		if selected.Kind == "workspace" && selected.Action != "" && !q.Background && !q.New {
-			warnRunningCodexArgs(q.CodexArgs)
-			return attach(Session{Name: selected.Action, Workspace: selected.Workspace}, q.Takeover)
-		}
+
 		q.ID = selected.Workspace
 		q.New = q.New || selected.Kind == "new"
 	}
@@ -396,6 +382,12 @@ func remoteOpen(q Request) error {
 		_ = tmux("kill-session", "-t", name).Run()
 		return err
 	}
+	if q.Conversation != "" {
+		if err = runTmux("set-option", "-t", name, "@jara_codex_thread", q.Conversation); err != nil {
+			_ = tmux("kill-session", "-t", name).Run()
+			return err
+		}
+	}
 	var args []string
 	if q.Background {
 		if err = runTmux("set-option", "-t", name, "@jara_background", "1"); err != nil {
@@ -409,6 +401,13 @@ func remoteOpen(q Request) error {
 		args = []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_background", token(q)}
 	} else {
 		terminalCommand := codexCommand(q.Resume, codexArgs)
+		if q.Conversation != "" {
+			terminalCommand, err = resumeConversationCommand(q.Agent, q.Conversation, q.ConversationCWD, codexArgs)
+			if err != nil {
+				_ = tmux("kill-session", "-t", name).Run()
+				return err
+			}
+		}
 		if q.ResumeLatest {
 			terminalCommand = codexResumeLatestCommand(codexArgs)
 		}

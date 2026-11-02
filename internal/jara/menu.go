@@ -18,6 +18,8 @@ import (
 type menuItem struct {
 	Title, Detail, Workspace string
 	Group                    string
+	Path                     string
+	Agent                    string
 	Kind                     string
 	Action                   string
 	Indent                   int
@@ -59,116 +61,62 @@ func fitMenu(s string, cells int) string {
 	return b.String() + "…"
 }
 func menuPageSize(width, height int) int {
-	if width >= 90 {
-		return max(1, height-6)
+	if height < 14 {
+		return max(1, min(9, (height-5)/2))
 	}
-	lines := 1
-	if width < 60 {
-		lines = 2
-	}
-	return max(1, min(9, (height-6)/lines))
+	return max(1, min(9, (height-7)/3))
 }
 
-// Each line is bounded in terminal cells, leaving the last column unused to
-// prevent automatic wrapping. Short screens retain navigation and pagination.
 func menuLines(title string, items []menuItem, selected, width, height int) []string {
 	return menuLinesFiltered(title, items, selected, width, height, "", len(items))
 }
 
+// The layout stays fixed when selection changes; only its highlight moves.
 func menuLinesFiltered(title string, items []menuItem, selected, width, height int, filter string, total int) []string {
 	width = max(1, width-1)
-	if height < 7 || width+1 < 16 {
+	if height < 7 || width < 15 {
 		return []string{fitMenu("Enlarge terminal · q exits", width)}
 	}
 	if len(items) == 0 {
 		return emptyMenuLines(title, width, height, filter, total)
 	}
 	selected = max(0, min(selected, len(items)-1))
-	if width >= 90 && height >= 14 && title != "Sessions & workspaces" && title != "Running sessions" {
-		return menuPanelLines(title, items, selected, width, height, filter, total)
-	}
 	size := menuPageSize(width+1, height)
 	start := selected / size * size
 	end := min(start+size, len(items))
-	lines := []string{fitMenu("JARA · "+title, width), fitMenu(menuCount(start, end, len(items), total, filter), width), fitMenu(menuSearchLabel(filter), width)}
+	panel := min(width, 100)
+	gutter := strings.Repeat(" ", max(0, (width-panel)/2))
+	count := menuCount(start, end, len(items), total, filter)
+	lines := []string{fitMenu(" JARA  /  "+title, panel), fitMenu(" "+count+" · n/p page", panel), fitMenu(menuSearchLabel(filter), panel)}
+	spacious := height >= 14
+	if spacious {
+		lines = append(lines, strings.Repeat("─", panel))
+	}
 	for i := start; i < end; i++ {
 		mark := "  "
 		if i == selected {
-			mark = "> "
+			mark = "▸ "
 		}
-		prefix := mark + menuKindIcon(items[i].Kind) + " " + strings.Repeat("  ", items[i].Indent)
-		if width+1 < 60 {
-			lines = append(lines, fitMenu(prefix+items[i].Title, width), fitMenu("    "+items[i].Detail, width))
-		} else {
-			titleCells := min(38, width/2)
-			name := fitMenu(items[i].Title, titleCells)
-			padding := strings.Repeat(" ", max(1, titleCells-uniseg.StringWidth(name)+2))
-			lines = append(lines, fitMenu(prefix+name+padding+items[i].Detail, width))
+		icon := menuKindIcon(items[i].Kind)
+		lines = append(lines, fitMenu(mark+fmt.Sprint(i-start+1)+" "+icon+"  "+items[i].Title, panel), fitMenu("       "+items[i].Detail, panel))
+		if spacious {
+			lines = append(lines, "")
 		}
 	}
-	identity := ""
-	if items[selected].Workspace != "" {
-		identity = fitMenu("ID: "+items[selected].Workspace, width)
-	} else if items[selected].Kind != "" {
-		identity = fitMenu("Selected: "+menuKindLabel(items[selected].Kind), width)
+	if spacious {
+		for len(lines) < height-3 {
+			lines = append(lines, "")
+		}
+		lines = append(lines, strings.Repeat("─", panel))
 	}
-	openHelp, moveHelp := "1-9 open · / search · j/k move · n/p page", "Enter open · q back · Esc quit"
 	if filter != "" {
-		openHelp, moveHelp = "Backspace edit · Ctrl-U clear", "Enter open · Esc clear · Ctrl-C back"
+		lines = append(lines, fitMenu(" Backspace edit · → open", panel), fitMenu(" ← back · Ctrl-C quit", panel))
+	} else {
+		lines = append(lines, fitMenu(" ↑↓ move · →/Enter open", panel), fitMenu(" ←/⌫ back · Ctrl-C quit", panel))
 	}
-	if width < 55 && filter == "" {
-		openHelp, moveHelp = "1-9 open · / search · n/p page", "j/k move · Enter open · q back"
+	for i := range lines {
+		lines[i] = gutter + lines[i]
 	}
-	if width < 29 && filter == "" {
-		openHelp, moveHelp = "1-9 open · / search", "Enter open · q back"
-	}
-	if height >= 9 {
-		lines = append(lines, identity)
-	}
-	lines = append(lines, fitMenu(openHelp, width), fitMenu(moveHelp, width))
-	return lines
-}
-
-func menuPanelLines(title string, items []menuItem, selected, width, height int, filter string, total int) []string {
-	pageSize := menuPageSize(width+1, height)
-	start := selected / pageSize * pageSize
-	end := min(start+pageSize, len(items))
-	leftWidth := (width - 3) * 52 / 100
-	rightWidth := width - leftWidth - 3
-	lines := []string{
-		fitMenu("JARA · "+title, width),
-		fitMenu(menuCount(start, end, len(items), total, filter), width),
-		fitMenu(menuSearchLabel(filter), width),
-		strings.Repeat("─", leftWidth) + "┬" + strings.Repeat("─", rightWidth),
-	}
-	preview := []string{"PREVIEW", fitMenu(items[selected].Title, rightWidth), menuKindLabel(items[selected].Kind), fitMenu(items[selected].Detail, rightWidth)}
-	if items[selected].Workspace != "" {
-		preview = append(preview, fitMenu("ID: "+items[selected].Workspace, rightWidth))
-	}
-	preview = append(preview, "", "Enter opens this item", "/ filters the list")
-	rowCount := height - 6
-	for row := 0; row < rowCount; row++ {
-		index := start + row
-		left := ""
-		if index < end {
-			mark := "  "
-			if index == selected {
-				mark = "> "
-			}
-			left = mark + menuKindIcon(items[index].Kind) + " " + strings.Repeat("  ", items[index].Indent) + items[index].Title
-		}
-		right := ""
-		if row < len(preview) {
-			right = preview[row]
-		}
-		lines = append(lines, fitMenu(left, leftWidth)+" │ "+fitMenu(right, rightWidth))
-	}
-	lines = append(lines, strings.Repeat("─", leftWidth)+"┴"+strings.Repeat("─", rightWidth))
-	help := "↑/↓ or j/k move · n/p page · Enter open · / search · q back · Esc quit"
-	if filter != "" {
-		help = "Backspace edit · Ctrl-U clear · Enter open · Ctrl-C back"
-	}
-	lines = append(lines, fitMenu(help, width))
 	return lines
 }
 
@@ -184,23 +132,27 @@ func menuCount(start, end, count, total int, filter string) string {
 
 func menuSearchLabel(filter string) string {
 	if filter == "" {
-		return "Search  / type to filter"
+		return " /  Search…"
 	}
-	return "Search  /" + filter + "_"
+	return " /  " + filter + "▏"
 }
 
 func menuKindIcon(kind string) string {
 	switch kind {
+	case "conversation":
+		return "○"
+	case "terminals":
+		return "▤"
 	case "running":
 		return "●"
 	case "terminal", "background":
 		return "●"
-	case "workspace":
-		return "○"
+	case "project", "workspace":
+		return "◇"
 	case "new":
 		return "+"
 	case "tools":
-		return "?"
+		return "✦"
 	case "group":
 		return "…"
 	case "history":
@@ -246,20 +198,20 @@ func menuMatches(items []menuItem, filter string) []int {
 }
 
 func emptyMenuLines(title string, width, height int, filter string, total int) []string {
-	lines := []string{
-		fitMenu("JARA · "+title, width),
-		fitMenu(fmt.Sprintf("0 matches · %d total", total), width),
-		fitMenu(menuSearchLabel(filter), width),
-		fitMenu("No matches. Edit the filter or press Esc to clear.", width),
+	panel := min(width, 100)
+	gutter := strings.Repeat(" ", max(0, (width-panel)/2))
+	lines := []string{" JARA  /  " + title, fmt.Sprintf(" 0 matches · %d total", total), menuSearchLabel(filter), " No conversations or items found", " Try a shorter search", " Backspace edit · Ctrl-U clear", " ← back · Ctrl-C quit"}
+	for i := range lines {
+		lines[i] = gutter + fitMenu(lines[i], panel)
 	}
-	lines = append(lines, fitMenu("Backspace edits · Ctrl-U clears · Ctrl-C backs out", width))
 	return lines
 }
-func selectMenu(title string, items []menuItem) (int, error) {
+func selectMenu(title string, items []menuItem) (int, error) { return selectMenuAt(title, items, 0) }
+func selectMenuAt(title string, items []menuItem, initial int) (int, error) {
 	if len(items) == 0 {
 		return 0, io.EOF
 	}
-	if n, handled, err := terminalMenu(title, items); handled {
+	if n, handled, err := terminalMenuAt(title, items, initial); handled {
 		return n, err
 	}
 	fmt.Println(menuText(title))

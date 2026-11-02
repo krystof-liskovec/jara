@@ -26,14 +26,15 @@ type Diagnosis struct {
 }
 
 type Session struct {
-	Name       string
-	Workspace  string
-	Attached   int
-	Background bool
-	Dead       bool
-	CreatedAt  int64
-	LastAttach int64
-	Label      string
+	Conversation string
+	Name         string
+	Workspace    string
+	Attached     int
+	Background   bool
+	Dead         bool
+	CreatedAt    int64
+	LastAttach   int64
+	Label        string
 }
 
 func dataRoot() string {
