@@ -2,6 +2,8 @@ package jara
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -22,6 +24,7 @@ func keyCommand(c Config, args []string) error {
 	remoteName := f.String("remote", "", "guided deployment name")
 	publicKeyPath := f.String("public-key", "", "public SSH key file")
 	fingerprint := f.String("fingerprint", "", "SHA256 fingerprint from jara key list")
+	connectOnly := f.Bool("connect-only", false, "force this key to open Jara's workspace menu")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -31,14 +34,14 @@ func keyCommand(c Config, args []string) error {
 	switch action {
 	case "install":
 		if *publicKeyPath == "" || *fingerprint != "" {
-			return fmt.Errorf("use jara key install --public-key FILE [--remote NAME]")
+			return fmt.Errorf("use jara key install --public-key FILE [--connect-only] [--remote NAME]")
 		}
 	case "list":
-		if *publicKeyPath != "" || *fingerprint != "" {
+		if *publicKeyPath != "" || *fingerprint != "" || *connectOnly {
 			return fmt.Errorf("use jara key list [--remote NAME]")
 		}
 	case "remove":
-		if *fingerprint == "" || *publicKeyPath != "" {
+		if *fingerprint == "" || *publicKeyPath != "" || *connectOnly {
 			return fmt.Errorf("use jara key remove --fingerprint SHA256:... [--remote NAME]")
 		}
 	}
@@ -79,11 +82,23 @@ func keyCommand(c Config, args []string) error {
 	return withGuidedKeyStore(name, deployment, func(runner hostSSHRunner, manifest nativeDeployment, keysPath string, keys []byte) error {
 		switch action {
 		case "install":
-			updated := appendAuthorizedKey(keys, key)
+			connectEntry := hasConnectOnlyAuthorizedKey(keys, key)
+			if hasPublicKey(keys, key) && connectEntry != *connectOnly {
+				return fmt.Errorf("this key already has different SSH access; use a separate phone key to keep VS Code unrestricted")
+			}
+			entry := key
+			if *connectOnly {
+				entry = connectOnlyKeyPrefix + key
+			}
+			updated := appendAuthorizedKey(keys, entry)
 			if err := updateGuidedKeys(runner, manifest, keysPath, keys, updated); err != nil {
 				return err
 			}
-			fmt.Printf("Installed %s on guided deployment %s.\n", keyFingerprint, name)
+			access := ""
+			if *connectOnly {
+				access = " with Jara connect-only access"
+			}
+			fmt.Printf("Installed %s%s on guided deployment %s.\n", keyFingerprint, access, name)
 			return nil
 		case "list":
 			if err := verifyAgentKeys(runner, manifest, keys); err != nil {
@@ -196,16 +211,16 @@ func readPublicKey(filename string) (string, string, error) {
 }
 
 func publicKeyFingerprint(key string) (string, error) {
-	fields := strings.Fields(key)
-	if len(fields) < 2 {
-		return "", fmt.Errorf("public key must contain an SSH key type and key data")
+	fields, keyIndex, err := authorizedKeyFields(key)
+	if err != nil {
+		return "", err
 	}
 	temp, err := os.CreateTemp("", "jara-public-key-*.pub")
 	if err != nil {
 		return "", err
 	}
 	defer os.Remove(temp.Name())
-	if _, err = temp.WriteString(key + "\n"); err != nil {
+	if _, err = temp.WriteString(fields[keyIndex] + " " + fields[keyIndex+1] + "\n"); err != nil {
 		_ = temp.Close()
 		return "", err
 	}
@@ -236,18 +251,70 @@ func appendAuthorizedKey(keys []byte, key string) []byte {
 }
 
 func hasPublicKey(data []byte, key string) bool {
-	wanted := strings.Fields(key)
-	if len(wanted) < 2 {
+	wanted, wantedIndex, err := authorizedKeyFields(key)
+	if err != nil {
 		return false
 	}
 	for _, line := range strings.Split(string(data), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] == wanted[0] && fields[1] == wanted[1] {
+		fields, keyIndex, err := authorizedKeyFields(line)
+		if err == nil && fields[keyIndex] == wanted[wantedIndex] && fields[keyIndex+1] == wanted[wantedIndex+1] {
 			return true
 		}
 	}
 	return false
 }
+
+func hasConnectOnlyAuthorizedKey(data []byte, key string) bool {
+	wanted, wantedIndex, err := authorizedKeyFields(key)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, connectOnlyKeyPrefix) {
+			continue
+		}
+		fields, keyIndex, err := authorizedKeyFields(strings.TrimPrefix(line, connectOnlyKeyPrefix))
+		if err == nil && fields[keyIndex] == wanted[wantedIndex] && fields[keyIndex+1] == wanted[wantedIndex+1] {
+			return true
+		}
+	}
+	return false
+}
+
+func authorizedKeyFields(line string) ([]string, int, error) {
+	fields := strings.Fields(line)
+	for i := 0; i+1 < len(fields); i++ {
+		if !isAuthorizedKeyType(fields[i]) {
+			continue
+		}
+		if validAuthorizedKeyData(fields[i], fields[i+1]) {
+			return fields, i, nil
+		}
+	}
+	return nil, 0, fmt.Errorf("public key must contain an SSH key type and key data")
+}
+
+func validAuthorizedKeyData(keyType, encoded string) bool {
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		data, err = base64.RawStdEncoding.DecodeString(encoded)
+	}
+	if err != nil || len(data) < 4 {
+		return false
+	}
+	typeLength := binary.BigEndian.Uint32(data[:4])
+	if uint64(typeLength) > uint64(len(data)-4) {
+		return false
+	}
+	return string(data[4:4+int(typeLength)]) == keyType
+}
+
+func isAuthorizedKeyType(value string) bool {
+	return strings.HasPrefix(value, "ssh-") || strings.HasPrefix(value, "ecdsa-sha2-") || strings.HasPrefix(value, "sk-")
+}
+
+const connectOnlyKeyPrefix = `command="/usr/local/bin/jara connect",no-port-forwarding `
 
 func updateGuidedKeys(runner hostSSHRunner, manifest nativeDeployment, keysPath string, previous, updated []byte) error {
 	if !bytes.Equal(previous, updated) {
@@ -334,10 +401,10 @@ func parseAuthorizedKeys(data []byte) ([]listedKey, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cannot read an authorized key entry: %w", err)
 		}
-		fields := strings.Fields(line)
+		fields, keyIndex, _ := authorizedKeyFields(line)
 		comment := ""
-		if len(fields) > 2 {
-			comment = safeKeyComment(strings.Join(fields[2:], " "))
+		if len(fields) > keyIndex+2 {
+			comment = safeKeyComment(strings.Join(fields[keyIndex+2:], " "))
 		}
 		keys = append(keys, listedKey{fingerprint: fingerprint, comment: comment})
 	}

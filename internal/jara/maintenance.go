@@ -48,13 +48,21 @@ func admitWorkspace() error {
 
 func updateBusy() (maintenanceStatus, error) {
 	// Count every session on Jara's socket, including sessions without metadata.
-	b, err := tmux("list-sessions", "-F", "#{session_name}").Output()
+	b, err := tmux("list-sessions", "-F", "#{session_name}|#{@jara_background}|#{pane_dead}").Output()
 	if err != nil {
 		if _, e := sessions(); e != nil {
 			return maintenanceStatus{}, e
 		}
-	} else if strings.TrimSpace(string(b)) != "" {
-		return maintenanceStatus{true, "tmux sessions exist (including detached or idle sessions)"}, nil
+	} else {
+		for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			fields := strings.Split(line, "|")
+			if len(fields) == 3 && fields[1] == "1" && fields[2] == "1" {
+				continue
+			}
+			if line != "" {
+				return maintenanceStatus{true, "tmux sessions exist (including detached or idle sessions)"}, nil
+			}
+		}
 	}
 	locks, err := filepath.Glob(filepath.Join(dataRoot(), "workspaces", "*.lock"))
 	if err != nil {

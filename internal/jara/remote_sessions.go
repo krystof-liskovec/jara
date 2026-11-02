@@ -27,7 +27,7 @@ func tmux(args ...string) *exec.Cmd {
 
 func sessions() ([]Session, error) {
 	// has-session distinguishes an absent server from malformed output.
-	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}")
+	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}")
 	b, err := probe.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -39,13 +39,101 @@ func sessions() ([]Session, error) {
 	var ss []Session
 	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 		p := strings.Split(line, "|")
-		if len(p) != 3 || p[1] == "" {
+		if len(p) != 5 || p[1] == "" {
 			continue
 		}
 		n, _ := strconv.Atoi(p[2])
-		ss = append(ss, Session{p[0], p[1], n})
+		ss = append(ss, Session{Name: p[0], Workspace: p[1], Attached: n, Background: p[3] == "1", Dead: p[4] == "1"})
 	}
 	return ss, nil
+}
+
+func activeSessions() ([]Session, error) {
+	all, err := sessions()
+	if err != nil {
+		return nil, err
+	}
+	active := make([]Session, 0, len(all))
+	for _, session := range all {
+		if session.Background && session.Dead {
+			continue
+		}
+		active = append(active, session)
+	}
+	return active, nil
+}
+
+const defaultMaxSessions = 500
+
+func maxSessions() (int, error) {
+	raw := strings.TrimSpace(os.Getenv("JARA_MAX_SESSIONS"))
+	if raw == "" {
+		return defaultMaxSessions, nil
+	}
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit < 1 || limit > defaultMaxSessions {
+		return 0, fmt.Errorf("JARA_MAX_SESSIONS must be an integer from 1 to %d", defaultMaxSessions)
+	}
+	return limit, nil
+}
+
+func checkSessionLimit() error {
+	limit, err := maxSessions()
+	if err != nil {
+		return err
+	}
+	count, err := tmuxSessionCount()
+	if err != nil {
+		return err
+	}
+	if count >= limit {
+		return fmt.Errorf("session limit reached (%d); list sessions with `tmux -L jara list-sessions` and close one with `tmux -L jara kill-session -t NAME`", limit)
+	}
+	return nil
+}
+
+func tmuxSessionCount() (int, error) {
+	b, err := tmux("list-sessions", "-F", "#{session_name}").Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && (strings.Contains(string(exitErr.Stderr), "no server running") || strings.Contains(string(exitErr.Stderr), "No such file")) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("list sessions: %w", err)
+	}
+	output := strings.TrimSpace(string(b))
+	if output == "" {
+		return 0, nil
+	}
+	return strings.Count(output, "\n") + 1, nil
+}
+
+func sessionCountCommand(args []string) error {
+	if len(args) != 0 {
+		return fmt.Errorf("invalid session count invocation")
+	}
+	count, err := tmuxSessionCount()
+	if err != nil {
+		fmt.Fprintln(os.Stdout, "Sessions ?")
+		return nil
+	}
+	limit, err := maxSessions()
+	if err != nil {
+		fmt.Fprintln(os.Stdout, "Sessions ?")
+		return nil
+	}
+	fmt.Fprintf(os.Stdout, "Sessions %d/%d\n", count, limit)
+	return nil
+}
+
+func sessionUtilityCommand(command string, args []string) error {
+	if command == "_session-count" {
+		return sessionCountCommand(args)
+	}
+	if len(args) != 1 {
+		return fmt.Errorf("invalid session attachment invocation")
+	}
+	return recordSessionAttachment(args[0])
 }
 
 // connectCommand runs inside the environment, without client configuration or SSH.
@@ -75,6 +163,20 @@ func connectCommand(args []string) error {
 }
 
 func remoteOpen(q Request) error {
+	if q.Background && strings.TrimSpace(q.Prompt) == "" {
+		return fmt.Errorf("background Codex runs require a prompt")
+	}
+	if len(q.Prompt) > maxBackgroundPrompt {
+		return fmt.Errorf("prompt exceeds 64 KiB")
+	}
+	backgroundPromptHandedOff := false
+	defer func() {
+		if q.BackgroundPromptID != "" && !backgroundPromptHandedOff {
+			if path, err := backgroundPromptPath(q.BackgroundPromptID); err == nil {
+				_ = os.Remove(path)
+			}
+		}
+	}()
 	codexArgs, err := configuredCodexArgs(q.CodexArgs)
 	if err != nil {
 		return err
@@ -136,14 +238,18 @@ func remoteOpen(q Request) error {
 			return err
 		}
 		if n < len(ss) {
-			warnRunningCodexArgs(q.CodexArgs)
-			return attach(ss[n], q.Takeover)
+			if !q.Background {
+				warnRunningCodexArgs(q.CodexArgs)
+				return attach(ss[n], q.Takeover)
+			}
+			q.ID = ss[n].Workspace
+		} else {
+			if n == len(items)-1 {
+				return remoteRPC(Request{Op: "doctor"})
+			}
+			q.ID = ws[n-len(ss)].ID
+			q.New = q.New || modes[n-len(ss)]
 		}
-		if n == len(items)-1 {
-			return remoteRPC(Request{Op: "doctor"})
-		}
-		q.ID = ws[n-len(ss)].ID
-		q.New = q.New || modes[n-len(ss)]
 	}
 
 	unlock, err := lockWorkspace(q.ID)
@@ -169,7 +275,7 @@ func remoteOpen(q Request) error {
 	}
 	var matches []Session
 	for _, s := range ss {
-		if s.Workspace == q.ID {
+		if s.Workspace == q.ID && !(q.ResumeLatest && s.Background && s.Dead) {
 			matches = append(matches, s)
 		}
 	}
@@ -193,8 +299,21 @@ func remoteOpen(q Request) error {
 		warnRunningCodexArgs(q.CodexArgs)
 		return attach(matches[i], q.Takeover)
 	}
+	if q.New && !q.Worktree && !q.Background && len(matches) > 0 {
+		yes, e := confirm("Another agent uses these files. Start another in the same workspace?")
+		if e != nil {
+			return e
+		}
+		if !yes {
+			return nil
+		}
+	}
+	if err = checkSessionLimit(); err != nil {
+		return err
+	}
 	path := w.Path
 	name := tmuxSessionName(w, q.ID)
+	worktreeRoot := ""
 	if q.Worktree {
 		path = filepath.Join(dataRoot(), "worktrees", name)
 		if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -203,14 +322,7 @@ func remoteOpen(q Request) error {
 		if err = runGit(w.Path, "worktree", "add", "-b", name, path, "HEAD"); err != nil {
 			return fmt.Errorf("worktree requires a Git repository: %w", err)
 		}
-	} else if q.New && len(matches) > 0 {
-		yes, e := confirm("Another agent uses these files. Start another in the same workspace?")
-		if e != nil {
-			return e
-		}
-		if !yes {
-			return nil
-		}
+		worktreeRoot = path
 	}
 	if q.Subdir != "" && q.Subdir != "." {
 		path, err = safePath(path, q.Subdir)
@@ -224,28 +336,88 @@ func remoteOpen(q Request) error {
 	if err = prepareToolsQuiet(path); err != nil {
 		return err
 	}
-	background, err := detectTerminalBackground()
+	background, err := terminalBackground()
+	if !q.Background {
+		background, err = detectTerminalBackground()
+	}
 	if err != nil {
 		return err
 	}
+	lifecycleUnlock, err := lockLifecycle()
+	if err != nil {
+		return err
+	}
+	lifecycleLocked := true
+	defer func() {
+		if lifecycleLocked {
+			lifecycleUnlock()
+		}
+	}()
+	if err = admitWorkspace(); err != nil {
+		return err
+	}
+	if err = checkSessionLimit(); err != nil {
+		if worktreeRoot != "" {
+			_ = runGit(w.Path, "worktree", "remove", "--force", worktreeRoot)
+			_ = runGit(w.Path, "branch", "-D", name)
+		}
+		return err
+	}
+	if q.Background {
+		if err = writeBackgroundPrompt(name, q.Prompt); err != nil {
+			return err
+		}
+		q.BackgroundPromptID = name
+		q.Prompt = ""
+	}
 	if err = runTmux("new-session", "-d", "-s", name, "-c", path, "/bin/sleep", "infinity"); err != nil {
 		return fmt.Errorf("prepare terminal: %w", err)
+	}
+	if err = initializeSessionLifecycle(name); err != nil {
+		_ = tmux("kill-session", "-t", name).Run()
+		return err
 	}
 	if err = configureTmuxBackground(name, background); err != nil {
 		_ = tmux("kill-session", "-t", name).Run()
 		return err
 	}
-	args := []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_terminal", token(codexCommand(q.Resume, codexArgs))}
-	if err = runTmux(args...); err != nil {
-		_ = tmux("kill-session", "-t", name).Run()
-		return fmt.Errorf("start terminal: %w", err)
-	}
 	if err = runTmux("set-option", "-t", name, "@jara_workspace", q.ID); err != nil {
 		_ = tmux("kill-session", "-t", name).Run()
 		return err
 	}
+	var args []string
+	if q.Background {
+		if err = runTmux("set-option", "-t", name, "@jara_background", "1"); err != nil {
+			_ = tmux("kill-session", "-t", name).Run()
+			return err
+		}
+		if err = runTmux("set-window-option", "-t", name, "remain-on-exit", "on"); err != nil {
+			_ = tmux("kill-session", "-t", name).Run()
+			return err
+		}
+		args = []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_background", token(q)}
+	} else {
+		terminalCommand := codexCommand(q.Resume, codexArgs)
+		if q.ResumeLatest {
+			terminalCommand = codexResumeLatestCommand(codexArgs)
+		}
+		args = []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_terminal", token(terminalCommand)}
+	}
+	if err = runTmux(args...); err != nil {
+		_ = tmux("kill-session", "-t", name).Run()
+		return fmt.Errorf("start terminal: %w", err)
+	}
+	if q.Background {
+		backgroundPromptHandedOff = true
+	}
+	lifecycleUnlock()
+	lifecycleLocked = false
 	unlock()
 	locked = false
+	if q.Background {
+		fmt.Fprintf(os.Stdout, "Started background Codex run in session %s. Use `jara sessions` to attach.\n", name)
+		return nil
+	}
 	return attach(Session{Name: name, Workspace: q.ID}, q.Takeover)
 }
 
@@ -259,6 +431,9 @@ func configureTmuxBackground(session string, background terminalRGB) error {
 func runTmux(args ...string) error { cmd := tmux(args...); cmd.Stderr = os.Stderr; return cmd.Run() }
 
 func attach(s Session, takeover bool) error {
+	if err := markSessionAttached(s.Name); err != nil {
+		return err
+	}
 	if err := configureTmuxStatus(s.Name); err != nil {
 		return err
 	}

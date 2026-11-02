@@ -13,13 +13,13 @@ var commandHelp = map[string]helpEntry{
 		usage:   "jara [COMMAND] [OPTIONS]",
 		summary: "Open the current repository or browse persistent Codex workspaces.",
 		commands: []string{
-			"open, resume, new, connect, sessions  Manage remote Codex sessions.",
-			"sync, edit, tools, doctor             Work with a remote workspace.",
-			"remote, workspace, config, auth       Manage workspaces and credentials.",
-			"setup, deployment, host, uninstall   Set up and maintain Jara hosts.",
-			"forward, reverse, tunnel             Forward ports over SSH.",
-			"menu/ui, version, keygen, key         Client and SSH key tools.",
-			"environment, migrate, help           Other commands.",
+			"open, resume, new, run, connect, sessions\tManage remote Codex sessions.",
+			"sync, edit, tools, doctor\tWork with a remote workspace.",
+			"remote, workspace, config, auth\tManage workspaces and credentials.",
+			"setup, deployment, host, uninstall\tSet up and maintain Jara hosts.",
+			"forward, reverse, tunnel\tForward ports over SSH.",
+			"menu/ui, version, keygen, key\tClient and SSH key tools.",
+			"environment, migrate, help\tOther commands.",
 		},
 		options: []string{
 			"--remote NAME       Select a configured host.",
@@ -56,8 +56,9 @@ var commandHelp = map[string]helpEntry{
 	},
 	"resume": {
 		usage:   "jara resume [WORKSPACE OPTIONS] [-- CODEX_ARGS...]",
-		summary: "Resume the current workspace without selecting Codex's --last session.",
+		summary: "Resume a Codex session in the current workspace.",
 		options: []string{
+			"--latest            Resume Codex's latest session instead of opening its picker.",
 			"--remote NAME       Select a configured host.",
 			"--source DIR        Use another local folder.",
 			"--codex-arg VALUE   Add a Codex argument; repeatable.",
@@ -65,8 +66,27 @@ var commandHelp = map[string]helpEntry{
 		},
 		examples: []string{
 			"jara resume --remote jellyfish",
+			"jara resume --latest",
 			"jara resume -- --all",
 			"jara resume --codex-arg=--model --codex-arg=gpt-6.1-sol",
+		},
+	},
+	"run": {
+		usage:   "jara run [--resume-latest] [WORKSPACE OPTIONS] PROMPT [-- CODEX_ARGS...]",
+		summary: "Run a Codex prompt in the background in the current workspace.",
+		options: []string{
+			"--resume-latest     Continue Codex's latest session with this prompt.",
+			"--worktree          Run in a separate Git worktree.",
+			"--clone, --copy     Create a remote workspace from this repository or folder.",
+			"--source DIR        Use another local folder.",
+			"--remote NAME       Select a configured host.",
+			"--codex-arg VALUE   Add a Codex argument; repeatable.",
+			"-- CODEX_ARGS       Pass remaining arguments directly to Codex.",
+		},
+		examples: []string{
+			`jara run "Review this repository and report the top risks"`,
+			`jara run --resume-latest "Apply the changes we discussed"`,
+			`jara run --worktree --codex-arg=--full-auto "Implement the requested change"`,
 		},
 	},
 	"new": {
@@ -255,8 +275,8 @@ var commandHelp = map[string]helpEntry{
 		usage:   "jara workspace list|delete ID [OPTIONS]",
 		summary: "List or delete workspaces on a configured remote.",
 		commands: []string{
-			"list          Show workspace IDs, names and repository origins.",
-			"delete ID     Permanently remove a workspace and its managed worktrees.",
+			"list\tShow workspace IDs, names and repository origins.",
+			"delete ID\tPermanently remove a workspace and its managed worktrees.",
 		},
 		examples: []string{
 			"jara workspace list --remote jellyfish",
@@ -345,9 +365,9 @@ var commandHelp = map[string]helpEntry{
 		usage:   "jara key install|list|remove [OPTIONS]",
 		summary: "Manage SSH public keys on a guided Jara deployment.",
 		commands: []string{
-			"install   Add a public key to a remote deployment.",
-			"list      Show its authorized key fingerprints.",
-			"remove    Revoke a key by fingerprint.",
+			"install\tAdd a public key to a remote deployment.",
+			"list\tShow its authorized key fingerprints.",
+			"remove\tRevoke a key by fingerprint.",
 		},
 		examples: []string{"jara key install --remote work --public-key ~/.ssh/phone.pub"},
 	},
@@ -357,8 +377,9 @@ var commandHelp = map[string]helpEntry{
 		options: []string{
 			"--remote NAME       Select a configured guided deployment.",
 			"--public-key FILE   Public key file containing one SSH key (required).",
+			"--connect-only      Force this key to open Jara's workspace menu.",
 		},
-		examples: []string{"jara key install --remote work --public-key ~/.ssh/phone.pub"},
+		examples: []string{"jara key install --remote work --public-key ~/.ssh/phone.pub", "jara key install --remote work --public-key ~/.ssh/termius.pub --connect-only"},
 	},
 	"key list": {
 		usage:    "jara key list [--remote NAME]",
@@ -443,6 +464,8 @@ var commandHelp = map[string]helpEntry{
 		options: []string{
 			"--out FILE          Output path (created without overwriting).",
 			"--ssh-user NAME     SSH username inside the environment (default agent).",
+			"--max-sessions N    Maximum concurrent terminals (1-500, default 500).",
+			"--session-idle-timeout DURATION  Close detached sessions after this long (default 24h; 0 disables).",
 			"--codex-version VER Exact Codex version; defaults to latest stable.",
 			"--node-version VER  Exact Node version.",
 			"--go-version VER    Optional exact Go version.",

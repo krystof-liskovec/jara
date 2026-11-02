@@ -24,6 +24,7 @@ else
   exit 1
 fi
 gateway_ports=${JARA_GATEWAY_PORTS:-no}
+session_idle_timeout=${JARA_SESSION_IDLE_TIMEOUT:-24h}
 case "$gateway_ports" in
   no|clientspecified) ;;
   *) echo 'JARA_GATEWAY_PORTS must be no or clientspecified.' >&2; exit 1 ;;
@@ -34,6 +35,10 @@ if [ -n "$tmux_background" ]; then
     \#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;;
     *) echo 'JARA_TMUX_BACKGROUND must be a six-digit RGB color such as #262626.' >&2; exit 1 ;;
   esac
+fi
+if ! jara _validate-session-settings; then
+  echo 'Jara session settings are invalid.' >&2
+  exit 1
 fi
 if [ ! -s /run/jara/authorized_keys ] || [ ! -f /run/jara/authorized_keys ]; then
   echo 'Supply a nonempty deploy/authorized_keys file containing your public SSH key(s).' >&2
@@ -101,5 +106,8 @@ if [ "${JARA_DOCKER:-0}" = 1 ]; then
 fi
 printf '\n' >> /run/jara/sshd-env.conf
 chmod 644 /run/jara/sshd-env.conf /run/jara/docker.env
+if [ "$session_idle_timeout" != 0 ]; then
+  runuser -u "$jara_ssh_user" -- env HOME=/home/agent JARA_SESSION_IDLE_TIMEOUT="$session_idle_timeout" /usr/local/bin/jara _session-janitor &
+fi
 /usr/sbin/sshd -t
 exec /usr/sbin/sshd -D -e

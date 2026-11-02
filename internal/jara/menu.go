@@ -378,6 +378,13 @@ func workspaceBadge(w Workspace) string {
 	return id
 }
 func sessionItem(w Workspace, s Session, number int) menuItem {
+	state := fmt.Sprintf("Running #%d", number)
+	if s.Background {
+		state = fmt.Sprintf("Background #%d", number)
+		if s.Dead {
+			state = fmt.Sprintf("Completed #%d", number)
+		}
+	}
 	viewers := fmt.Sprintf("%d viewers", s.Attached)
 	if s.Attached == 1 {
 		viewers = "1 viewer"
@@ -385,5 +392,5 @@ func sessionItem(w Workspace, s Session, number int) menuItem {
 	if s.Attached == 0 {
 		viewers = "detached"
 	}
-	return menuItem{Title: workspaceTitle(w), Detail: fmt.Sprintf("Running #%d · %s · %s", number, viewers, workspaceBadge(w)), Workspace: w.ID, Kind: "running"}
+	return menuItem{Title: workspaceTitle(w), Detail: fmt.Sprintf("%s · %s · %s", state, viewers, workspaceBadge(w)), Workspace: w.ID, Kind: "running"}
 }

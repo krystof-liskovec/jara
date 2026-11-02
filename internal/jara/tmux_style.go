@@ -24,8 +24,15 @@ func configureTmuxStatus(session string) error {
 	if err := runTmux("set-option", "-s", "set-titles-string", "Jara · #{@jara_workspace_name}"); err != nil {
 		return fmt.Errorf("set terminal title: %w", err)
 	}
-	if err := runTmux("set-window-option", "-t", session, "remain-on-exit", "off"); err != nil {
-		return fmt.Errorf("close exited terminal panes: %w", err)
+	if err := runTmux("set-option", "-s", "status-interval", "15"); err != nil {
+		return fmt.Errorf("set status refresh interval: %w", err)
+	}
+	remainOnExit := "off"
+	if background, err := tmux("show-option", "-v", "-t", session, "@jara_background").Output(); err == nil && strings.TrimSpace(string(background)) == "1" {
+		remainOnExit = "on"
+	}
+	if err := runTmux("set-window-option", "-t", session, "remain-on-exit", remainOnExit); err != nil {
+		return fmt.Errorf("configure exited terminal panes: %w", err)
 	}
 	bg, fg := background.hex(), background.foreground().hex()
 	accent := "#008080"
@@ -37,14 +44,16 @@ func configureTmuxStatus(session string) error {
 		return fmt.Errorf("set terminal Escape delay: %w", err)
 	}
 	options := [][2]string{
+		{"mouse", "on"},
+		{"history-limit", "10000"},
 		{"status", "on"},
 		{"status-position", "bottom"},
 		{"status-style", base},
 		{"status-justify", "left"},
 		{"status-left-length", "36"},
 		{"status-left", "#[fg=" + accent + ",bold] JARA #[default] #{=24:@jara_workspace_name}  "},
-		{"status-right-length", "40"},
-		{"status-right", "#{?#{>=:#{client_width},80},%H:%M  ,}Ctrl-b d detach "},
+		{"status-right-length", "72"},
+		{"status-right", "#{?#{>=:#{client_width},80},%H:%M  ,}#(/usr/local/bin/jara _session-count)"},
 		{"window-status-format", ""},
 		{"window-status-style", base},
 		{"window-status-current-format", ""},
