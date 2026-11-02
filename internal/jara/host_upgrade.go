@@ -31,15 +31,20 @@ func deploymentUpgradeCommand(c Config, args []string) error {
 		for candidate := range c.HostDeployments {
 			name = candidate
 		}
+	} else {
+		name = c.Default
 	}
 	if !nameRE.MatchString(name) {
 		return fmt.Errorf("choose a guided deployment with `jara deployment upgrade NAME`")
 	}
 	deployment, ok := c.HostDeployments[name]
 	if !ok {
-		return fmt.Errorf("%q was not deployed by guided setup; host code upgrades currently require its saved Docker-host connection", name)
+		if _, connected := c.Remotes[name]; !connected {
+			return fmt.Errorf("unknown remote %q; run jara setup to connect it", name)
+		}
+		return fmt.Errorf("%q is connected, but this computer has no saved Docker host connection for upgrades; run jara setup, enter remote name %q, and enable host management", name, name)
 	}
-	if !validGuidedDeploymentDirectory(name, deployment.Directory) {
+	if !validGuidedDeploymentDirectory(deploymentName(name, deployment), deployment.Directory) {
 		return fmt.Errorf("saved deployment directory is invalid; refusing to upgrade it")
 	}
 	if err := validateRemote(deployment.Admin); err != nil {
@@ -49,6 +54,7 @@ func deploymentUpgradeCommand(c Config, args []string) error {
 }
 
 func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desiredVersion string, log io.Writer) error {
+	name = deploymentName(name, saved)
 	if len(bundle) == 0 {
 		return fmt.Errorf("deployment source bundle is empty")
 	}

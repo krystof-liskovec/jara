@@ -132,6 +132,7 @@ func keyCommand(c Config, args []string) error {
 }
 
 func withGuidedKeyStore(name string, deployment HostDeployment, action func(hostSSHRunner, nativeDeployment, string, []byte) error) error {
+	name = deploymentName(name, deployment)
 	if !nameRE.MatchString(name) || !validGuidedDeploymentDirectory(name, deployment.Directory) {
 		return fmt.Errorf("saved deployment directory is invalid; refusing key management")
 	}

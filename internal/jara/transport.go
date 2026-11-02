@@ -69,6 +69,8 @@ type Request struct {
 	ID                 string   `json:"id,omitempty"`
 	URL                string   `json:"url,omitempty"`
 	Branch             string   `json:"branch,omitempty"`
+	SourceHost         string   `json:"source_host,omitempty"`
+	SourcePath         string   `json:"source_path,omitempty"`
 	Commit             string   `json:"commit,omitempty"`
 	Subdir             string   `json:"subdir,omitempty"`
 	Resume             bool     `json:"resume,omitempty"`

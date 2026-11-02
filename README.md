@@ -40,8 +40,8 @@ The installer refreshes the deployment source bundle embedded in the CLI.
 
 Run `jara setup` to reuse a saved remote, connect to a Jara server, or deploy
 a new Linux Docker host. Choose `connect` to enter its SSH address and key;
-SSH config or agent can supply other details. Setup checks the host and only
-asks for Codex sign-in if needed. New deployments run over SSH when your account can run Docker
+Setup also offers to register Docker host access for upgrades, reusing your key
+when authorized. Rerun setup with the same remote name to add it later. New deployments run over SSH when your account can run Docker
 and the host has `tar`. The guide can generate a dedicated service key or use
 an existing SSH key, transfers the source bundled in the CLI, and uses native
 `docker build` and `docker run`; no Git
@@ -59,7 +59,7 @@ jara remote add work --host my-agent-alias
 jara auth codex --remote work
 ```
 
-From a Git repository, run `jara --remote work --clone` to open it remotely.
+From a Git repository, run `jara --remote work` to reuse a checkout or clone it.
 For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in
 the same folder reopens the workspace. For a host without an SSH alias, include
 `--port`, `--user`, and `--identity` in `remote add` as needed. The detailed
@@ -175,8 +175,8 @@ a `config.json.lock` directory; remove it only after confirming no Jara writer r
 From a repository:
 
 ```sh
-jara                 # Offer initial clone, subsequently reopen
-jara --clone         # Skip initial clone confirmation
+jara                 # Offer an existing checkout or clone, subsequently reopen
+jara --clone         # Skip workspace discovery and clone confirmation
 jara resume --latest   # Resume Codex's latest session
 jara run "Review this repository" # Background prompt; --resume-latest continues latest
 jara --remote work   # Select and remember this remote for this checkout

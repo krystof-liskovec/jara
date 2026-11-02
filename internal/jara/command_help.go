@@ -23,7 +23,8 @@ var commandHelp = map[string]helpEntry{
 		},
 		options: []string{
 			"--remote NAME       Select a configured host.",
-			"--clone             Clone the current Git repository to the host.",
+			"--clone             Skip workspace discovery and clone confirmation.",
+			"--choose-workspace  Choose a checkout even if this folder is already linked.",
 			"--copy              Copy the current folder to the host.",
 			"--source DIR        Use another local folder.",
 			"--codex-arg VALUE   Add a Codex argument; repeatable.",
@@ -42,7 +43,8 @@ var commandHelp = map[string]helpEntry{
 		summary: "Open or create the session associated with the current folder.",
 		options: []string{
 			"--remote NAME       Select a configured host.",
-			"--clone             Clone the current Git repository.",
+			"--clone             Skip workspace discovery and clone confirmation.",
+			"--choose-workspace  Link this folder to another existing checkout.",
 			"--copy              Copy the current folder.",
 			"--source DIR        Use another local folder.",
 			"--codex-arg VALUE   Add a Codex argument; repeatable.",
@@ -229,7 +231,7 @@ var commandHelp = map[string]helpEntry{
 	},
 	"setup": {
 		usage:   "jara setup",
-		summary: "Interactively connect to a Jara host or deploy one on Docker.",
+		summary: "Connect to Jara, register Docker host management, or deploy a new host.",
 		examples: []string{
 			"jara setup",
 			"jara setup  # follow the prompts to configure Codex, Git access, and a workspace",
