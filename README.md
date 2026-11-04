@@ -2,9 +2,8 @@
 
 **Just Another Remote Agent**
 
-Persistent remote Codex workspaces over standard OpenSSH. The host runs Docker;
-Compose remains an option for manual deployments and Docker-in-Docker. The local
-Go CLI remembers environments and workspace associations.
+Persistent remote Codex workspaces over standard OpenSSH, hosted with Docker or
+Compose. The Go CLI remembers environments and workspace associations.
 
 Jara launches Codex inside tmux. Its own [conversation interface](docs/conversation-interface.md)
 is available with `jara new --interface jara`: streamed replies, saved sessions,
@@ -62,6 +61,8 @@ For a noninteractive client setup, use:
 jara remote add work --host my-agent-alias
 jara auth codex --remote work
 ```
+
+Configure commit name/email separately with [Git identity settings](docs/git-identity.md).
 
 From a Git repository, run `jara --remote work` to reuse a checkout or clone it.
 For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in
