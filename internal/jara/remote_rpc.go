@@ -17,6 +17,8 @@ func remoteRPC(q Request) error {
 	switch q.Op {
 	case "client-version":
 		return json.NewEncoder(os.Stdout).Encode(map[string]string{"version": Version, "goos": runtime.GOOS, "goarch": runtime.GOARCH})
+	case "git-identity-show", "git-identity-set", "git-identity-clear":
+		return gitIdentityRPC(q.Op, os.Stdin, os.Stdout)
 	case "codex-args-show":
 		args, err := configuredCodexArgs(nil)
 		if err != nil {
@@ -70,6 +72,12 @@ func remoteRPC(q Request) error {
 		return applyUpdate(root, u)
 	case "doctor":
 		d := Diagnosis{Protocol: Protocol, Version: Version, Root: dataRoot(), OK: true}
+		identity, identityErr := readGitIdentity()
+		if identityErr != nil || identity.Name == "" || identity.Email == "" {
+			d.Checks = append(d.Checks, "SETUP Git commit identity: run jara config git-identity set --local --name NAME --email EMAIL in the environment, or configure it from your client with --remote NAME")
+		} else {
+			d.Checks = append(d.Checks, "OK Git commit identity configured")
+		}
 		for _, tool := range []string{"git", "tmux", "codex", "ssh", "mise"} {
 			if _, err := exec.LookPath(tool); err != nil {
 				d.OK = false

@@ -10,7 +10,7 @@ var boolHelpOptions = map[string]bool{
 	"clone": true, "copy": true, "worktree": true, "takeover": true,
 	"force": true, "include-ignored": true, "delete": true, "resume": true,
 	"new": true, "latest": true, "resume-latest": true, "check": true, "native": true, "vim": true, "nvim": true,
-	"docker": true, "token-stdin": true, "volumes": true,
+	"docker": true, "token-stdin": true, "volumes": true, "local": true,
 }
 
 func showCommandHelp(args []string) bool {
@@ -88,6 +88,8 @@ func commandHelpKey(args []string) string {
 			if args[1] == "set" && len(args) > 2 {
 				key += " " + args[2]
 			} else if args[1] == "codex-args" && len(args) > 2 {
+				key += " " + args[2]
+			} else if args[1] == "git-identity" && len(args) > 2 {
 				key += " " + args[2]
 			}
 			if _, ok := commandHelp[key]; ok {

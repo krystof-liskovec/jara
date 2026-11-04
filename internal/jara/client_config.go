@@ -84,6 +84,9 @@ func remoteCommand(c *Config, args []string) error {
 }
 
 func configCommand(c *Config, args []string) error {
+	if len(args) > 0 && args[0] == "git-identity" {
+		return gitIdentityConfigCommand(*c, args[1:])
+	}
 	if len(args) > 0 && args[0] == "codex-args" {
 		return codexArgsConfigCommand(*c, args[1:])
 	}
