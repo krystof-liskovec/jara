@@ -1,12 +1,10 @@
 package jara
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +50,19 @@ func chatText(s string) string {
 	}, s)
 }
 func (u *chatUI) print(s string) { fmt.Fprint(u.out, chatText(s)) }
+func (u *chatUI) printRole(role, s string) {
+	s = chatText(s)
+	if writer, ok := u.out.(interface{ WriteChatRole(string, string) }); ok {
+		writer.WriteChatRole(role, s)
+		return
+	}
+	fmt.Fprint(u.out, s)
+}
+func (u *chatUI) recordRole(role, s string) {
+	if writer, ok := u.out.(interface{ WriteChatRole(string, string) }); ok {
+		writer.WriteChatRole(role, chatText(s))
+	}
+}
 func (u *chatUI) request(method string, params any) error {
 	id, err := u.c.request(method, params)
 	if err != nil {
@@ -210,7 +221,7 @@ func (u *chatUI) response(m appMessage) error {
 		for _, t := range r.Thread.Turns {
 			for _, item := range t.Items {
 				if item.Type == "agentMessage" {
-					u.print(item.Text + "\n")
+					u.printRole("assistant", item.Text+"\n")
 				}
 			}
 		}
@@ -288,16 +299,20 @@ func (u *chatUI) event(m appMessage) error {
 			return u.interrupt()
 		}
 	case "item/agentMessage/delta", "item/commandExecution/outputDelta":
-		u.print(p.Delta)
+		role := "assistant"
+		if m.Method == "item/commandExecution/outputDelta" {
+			role = "tool"
+		}
+		u.printRole(role, p.Delta)
 	case "item/started", "item/completed":
 		var item struct{ ID, Type, Command, Status string }
 		_ = json.Unmarshal(p.Item, &item)
 		u.items[item.ID] = p.Item
 		if m.Method == "item/started" && item.Type == "commandExecution" {
-			u.print("\n$ " + item.Command + "\n")
+			u.printRole("tool", "\n$ "+item.Command+"\n")
 		}
 		if item.Type == "fileChange" {
-			u.print("\nFile changes: " + string(p.Item) + "\n")
+			u.printRole("tool", "\nFile changes: "+string(p.Item)+"\n")
 		}
 	case "turn/completed":
 		if err := u.cancelQuestionRequests("Turn ended before the question was answered."); err != nil {
@@ -319,77 +334,4 @@ func (u *chatUI) event(m appMessage) error {
 		u.print("\nCodex: " + string(m.Params) + "\n")
 	}
 	return nil
-}
-func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id string) error {
-	u := &chatUI{c: c, out: output, cwd: cwd, thread: id, busy: true, startedAt: time.Now(), pending: map[string]chatPending{}, items: map[string]json.RawMessage{}}
-	defer clearChatAgentState()
-	u.setAgentState("starting")
-	u.print("Jara conversation · /help for commands · Ctrl-C cancels a turn\n")
-	if err := u.request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}); err != nil {
-		return err
-	}
-	lines := make(chan string)
-	inputErrors := make(chan error, 1)
-	stop := make(chan struct{})
-	defer close(stop)
-	go func() {
-		scanner := bufio.NewScanner(input)
-		scanner.Buffer(make([]byte, 4096), maxBackgroundPrompt)
-		for scanner.Scan() {
-			select {
-			case lines <- scanner.Text():
-			case <-stop:
-				return
-			}
-		}
-		inputErrors <- scanner.Err()
-	}()
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt)
-	defer signal.Stop(signals)
-	timer := time.NewTicker(time.Second)
-	defer timer.Stop()
-	for {
-		select {
-		case m := <-c.messages:
-			if err := u.event(m); err != nil {
-				return err
-			}
-		case err := <-c.errors:
-			return fmt.Errorf("Codex app-server disconnected: %w", err)
-		case line := <-lines:
-			quit, err := u.line(line)
-			if err != nil {
-				return err
-			}
-			if quit {
-				return nil
-			}
-		case err := <-inputErrors:
-			u.setAgentState("idle")
-			return err
-		case <-signals:
-			if u.busy {
-				if err := u.interrupt(); err != nil {
-					return err
-				}
-			} else {
-				return nil
-			}
-		case now := <-timer.C:
-			for id, p := range u.pending {
-				if now.After(p.deadline) {
-					if p.method == "thread/list" {
-						u.expireChatSessionRequest(id)
-						continue
-					}
-					if p.method == "model/list" {
-						u.expireChatModelRequest(id)
-						continue
-					}
-					return fmt.Errorf("Codex app-server timed out during %s", p.method)
-				}
-			}
-		}
-	}
 }

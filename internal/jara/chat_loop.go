@@ -1,0 +1,97 @@
+package jara
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"time"
+)
+
+func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id string) error {
+	u := &chatUI{
+		c: c, out: output, cwd: cwd, thread: id, busy: true, startedAt: time.Now(),
+		pending: map[string]chatPending{}, pendingTurnModels: map[string]chatTurnRequest{},
+		items: map[string]json.RawMessage{},
+	}
+	defer clearChatAgentState()
+	if terminalIn, terminalOut, ok := chatInteractiveFiles(input, output); ok {
+		return chatTerminalLoop(u, terminalIn, terminalOut)
+	}
+	return chatPlainLoop(u, input, output)
+}
+
+func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
+	u.out = output
+	u.setAgentState("starting")
+	u.print("Jara conversation · /help for commands · Ctrl-C cancels a turn\n")
+	if err := u.request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}); err != nil {
+		return err
+	}
+	lines := make(chan string)
+	inputErrors := make(chan error, 1)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		scanner := bufio.NewScanner(input)
+		scanner.Buffer(make([]byte, 4096), maxBackgroundPrompt)
+		for scanner.Scan() {
+			select {
+			case lines <- scanner.Text():
+			case <-stop:
+				return
+			}
+		}
+		inputErrors <- scanner.Err()
+	}()
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt)
+	defer signal.Stop(signals)
+	timer := time.NewTicker(time.Second)
+	defer timer.Stop()
+	for {
+		select {
+		case message := <-u.c.messages:
+			if err := u.event(message); err != nil {
+				return err
+			}
+		case err := <-u.c.errors:
+			return fmt.Errorf("Codex app-server disconnected: %w", err)
+		case line := <-lines:
+			quit, err := u.line(line)
+			if err != nil {
+				return err
+			}
+			if quit {
+				return nil
+			}
+		case err := <-inputErrors:
+			u.setAgentState("idle")
+			return err
+		case <-signals:
+			if u.busy {
+				if err := u.interrupt(); err != nil {
+					return err
+				}
+			} else {
+				return nil
+			}
+		case now := <-timer.C:
+			for id, pending := range u.pending {
+				if now.After(pending.deadline) {
+					if pending.method == "thread/list" {
+						u.expireChatSessionRequest(id)
+						continue
+					}
+					if pending.method == "model/list" {
+						u.expireChatModelRequest(id)
+						continue
+					}
+					return fmt.Errorf("Codex app-server timed out during %s", pending.method)
+				}
+			}
+		}
+	}
+}

@@ -150,7 +150,7 @@ type chatMobilePTY struct {
 func TestChatMobileConversationOn40ColumnPTY(t *testing.T) {
 	command := exec.Command(os.Args[0], "-test.run=^TestChatMobilePTYChild$")
 	command.Env = chatMobileTestEnv(map[string]string{
-		chatMobileChildEnv: "1", "TERM": "xterm-256color", "NO_COLOR": "1", "TMUX": "", "TMUX_PANE": "",
+		chatMobileChildEnv: "1", "TERM": "xterm-256color", "NO_COLOR": "1", "TMUX": "", "TMUX_PANE": "", "JARA_CHAT_PLAIN": "1",
 	})
 	terminal, err := pty.StartWithSize(command, &pty.Winsize{Cols: 40, Rows: 20})
 	if err != nil {
