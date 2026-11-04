@@ -154,6 +154,7 @@ func connectCommand(args []string) error {
 	f := flag.NewFlagSet("connect", flag.ContinueOnError)
 	var codexArgs codexArgList
 	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
+	chatInterface := f.String("interface", "codex", "conversation interface: codex or jara")
 	resume := f.Bool("resume", false, "use plain codex resume when starting a terminal")
 	fresh := f.Bool("new", false, "start another Codex terminal")
 	worktree := f.Bool("worktree", false, "start a new terminal in a Git worktree")
@@ -171,10 +172,16 @@ func connectCommand(args []string) error {
 			return fmt.Errorf("invalid workspace ID")
 		}
 	}
-	return remoteOpen(Request{ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
+	if err := validateChatInterface(*chatInterface); err != nil {
+		return err
+	}
+	return remoteOpen(Request{UserInterface: *chatInterface, ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
 }
 
 func remoteOpen(q Request) error {
+	if err := validateChatInterface(q.UserInterface); err != nil {
+		return err
+	}
 	if q.Background && strings.TrimSpace(q.Prompt) == "" {
 		return fmt.Errorf("background Codex runs require a prompt")
 	}
@@ -192,6 +199,11 @@ func remoteOpen(q Request) error {
 	codexArgs, err := configuredCodexArgs(q.CodexArgs)
 	if err != nil {
 		return err
+	}
+	if q.UserInterface == "jara" {
+		if _, err := chatServerArgs(codexArgs); err != nil {
+			return err
+		}
 	}
 	if q.ID == "" {
 		selected, err := browseProjects()
@@ -220,6 +232,14 @@ func remoteOpen(q Request) error {
 				command, e := resumeConversationCommand(selected.Agent, selected.Action, selected.Path, codexArgs)
 				if e != nil {
 					return e
+				}
+				if q.UserInterface == "jara" {
+					q.Conversation = selected.Action
+					q.CodexArgs = codexArgs
+					if err := os.Chdir(selected.Path); err != nil {
+						return err
+					}
+					return runJaraChat(q)
 				}
 				return interactive(exec.Command(command[0], command[1:]...))
 			}
@@ -411,7 +431,12 @@ func remoteOpen(q Request) error {
 		if q.ResumeLatest {
 			terminalCommand = codexResumeLatestCommand(codexArgs)
 		}
-		args = []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_terminal", token(terminalCommand)}
+		if q.UserInterface == "jara" {
+			terminalCommand = chatTerminalCommand(q, codexArgs)
+			args = append([]string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--"}, terminalCommand...)
+		} else {
+			args = []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_terminal", token(terminalCommand)}
+		}
 	}
 	if err = runTmux(args...); err != nil {
 		_ = tmux("kill-session", "-t", name).Run()
