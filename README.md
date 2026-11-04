@@ -6,16 +6,20 @@ Persistent remote Codex workspaces over standard OpenSSH. The host runs Docker;
 Compose remains an option for manual deployments and Docker-in-Docker. The local
 Go CLI remembers environments and workspace associations.
 
-Jara launches the actual Codex terminal interface inside tmux. [Jara conversation interface preview](docs/conversation-interface.md) is available with `jara new --interface jara`. It is not an agent
-harness. Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain
+Jara launches Codex inside tmux. Its own [conversation interface](docs/conversation-interface.md)
+is available with `jara new --interface jara`: streamed replies, saved sessions,
+multiline prompts, explicit approvals and questions, and agent activity tracking.
+Codex continues to own inference, authentication, tools, and sandboxing.
+Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain
 available to the environment owner.
 
 Codex startup arguments are configurable through `JARA_CODEX_ARGS` in the
 container and arguments forwarded by the local Jara client. No extra Codex flags
 are enabled by default. Deployments allow up to 500 concurrent terminals by
 default; lower `JARA_MAX_SESSIONS` to reduce that cap. Detached sessions expire
-24 hours after their most recent attachment; configure `JARA_SESSION_IDLE_TIMEOUT`
-or set it to `0` to disable expiration.
+24 hours after their most recent attachment, except verified active agents in
+Jara's conversation interface. Configure `JARA_SESSION_IDLE_TIMEOUT` or set it to
+`0` to disable expiration. Native Codex terminals have no reliable busy signal.
 
 **Security status:** a focused review found a startup privilege escalation,
 which has been fixed and regression tested. Treat this as a development prototype
@@ -479,14 +483,9 @@ Native conversation migration is **unavailable**, with an explicit error and no
 source changes. See [migration findings](docs/migration.md). No summary fallback
 is substituted automatically.
 
-```sh
-go test -race ./...
-go vet ./...
-docker build -f deploy/Dockerfile --build-arg CODEX_VERSION=0.166.0 -t jara-agent:validation .
-python3 scripts/e2e.py
-# Also exercise editor configuration import with the optional-tool image:
-# JARA_TEST_IMAGE=jara-agent:tools-validation python3 scripts/e2e.py
-```
+Run `go test ./...` and `go vet ./...` for local checks; use `go test -race ./...`
+when a C compiler is available. Container build and transport test commands are
+in the [verification guide](docs/verification.md#repeat-the-tests).
 
 The transport smoke test uses temporary keys and a fake Codex process. For the
 actual Compose deployment, real Codex UI, disconnect/reconnect, sandbox execution

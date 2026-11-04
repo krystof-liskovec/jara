@@ -21,6 +21,8 @@ type managedSession struct {
 	hookInstalled bool
 	background    bool
 	paneDead      bool
+	agentState    string
+	agentPID      int
 }
 
 func parseSessionIdleTimeout(raw string) (time.Duration, error) {
@@ -125,6 +127,14 @@ func expireDetachedSessions(now time.Time, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
+	metadata := make([]agentMetadata, 0, len(sessions))
+	for _, session := range sessions {
+		metadata = append(metadata, agentMetadata{session: session.name, state: session.agentState, pid: session.agentPID})
+	}
+	liveAgents, err := liveAgentStates(metadata)
+	if err != nil {
+		return fmt.Errorf("verify agent processes before session cleanup: %w", err)
+	}
 	for _, session := range sessions {
 		if !session.hookInstalled {
 			if err := installSessionAttachHook(session.name); err != nil {
@@ -142,16 +152,29 @@ func expireDetachedSessions(now time.Time, timeout time.Duration) error {
 		if session.background && !session.paneDead {
 			continue
 		}
+		if agentStateProtectsFromCleanup(liveAgents[session.name]) {
+			continue
+		}
 		if session.attached != 0 || now.Sub(time.Unix(0, session.lastAttached)) < timeout {
 			continue
 		}
-		current, err := tmux("display-message", "-p", "-t", session.name, "#{session_attached}\t#{@jara_last_attached}").Output()
+		current, err := tmux("display-message", "-p", "-t", session.name, "#{session_attached}\t#{@jara_last_attached}\t#{@jara_agent_state}\t#{@jara_agent_pid}").Output()
 		if err != nil {
 			continue
 		}
-		fields := strings.Split(strings.TrimSpace(string(current)), "\t")
-		if len(fields) != 2 || fields[0] != "0" || fields[1] != strconv.FormatInt(session.lastAttached, 10) {
+		fields := strings.Split(strings.TrimRight(string(current), "\r\n"), "\t")
+		if len(fields) != 4 || fields[0] != "0" || fields[1] != strconv.FormatInt(session.lastAttached, 10) {
 			continue
+		}
+		latestMetadata, ok := parseAgentMetadata(session.name, fields[2], fields[3])
+		if ok {
+			latestAgents, err := liveAgentStates([]agentMetadata{latestMetadata})
+			if err != nil {
+				return fmt.Errorf("verify agent process for session %s: %w", session.name, err)
+			}
+			if agentStateProtectsFromCleanup(latestAgents[session.name]) {
+				continue
+			}
 		}
 		if err := tmux("kill-session", "-t", session.name).Run(); err != nil {
 			continue
@@ -162,7 +185,7 @@ func expireDetachedSessions(now time.Time, timeout time.Duration) error {
 }
 
 func listManagedSessions() ([]managedSession, error) {
-	output, err := tmux("list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{@jara_workspace}\t#{@jara_last_attached}\t#{@jara_idle_hook}\t#{@jara_background}\t#{pane_dead}").Output()
+	output, err := tmux("list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{@jara_workspace}\t#{@jara_last_attached}\t#{@jara_idle_hook}\t#{@jara_background}\t#{pane_dead}\t#{@jara_agent_state}\t#{@jara_agent_pid}").Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) && (strings.Contains(string(exitErr.Stderr), "no server running") || strings.Contains(string(exitErr.Stderr), "No such file")) {
@@ -173,7 +196,7 @@ func listManagedSessions() ([]managedSession, error) {
 	var sessions []managedSession
 	for _, line := range strings.Split(strings.TrimRight(string(output), "\n"), "\n") {
 		fields := strings.Split(line, "\t")
-		if len(fields) != 7 || fields[2] == "" {
+		if len(fields) != 9 || fields[2] == "" {
 			continue
 		}
 		attached, err := strconv.Atoi(fields[1])
@@ -181,6 +204,7 @@ func listManagedSessions() ([]managedSession, error) {
 			continue
 		}
 		lastAttached, _ := strconv.ParseInt(fields[3], 10, 64)
+		agent, _ := parseAgentMetadata(fields[0], fields[7], fields[8])
 		sessions = append(sessions, managedSession{
 			name:          fields[0],
 			attached:      attached,
@@ -189,6 +213,8 @@ func listManagedSessions() ([]managedSession, error) {
 			hookInstalled: fields[4] == "1",
 			background:    fields[5] == "1",
 			paneDead:      fields[6] == "1",
+			agentState:    agent.state,
+			agentPID:      agent.pid,
 		})
 	}
 	return sessions, nil

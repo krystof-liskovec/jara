@@ -102,6 +102,14 @@ connection leaves Codex running in tmux. A container restart stops its processes
 workspace files and conversation history persist, and `--resume` opens Codex's
 own session selector. Ctrl-C is passed to Codex as usual.
 
+For Jara's own conversation UI, use
+`jara connect --new --interface jara WORKSPACE_ID` from an ordinary SSH shell.
+It uses plain scrolling text and typed commands: `/compose` and `/send` for
+multiline prompts, `/status` to check activity, `/sessions` to browse history,
+and `/answer` for agent questions. Ctrl-C interrupts a running turn and exits
+when idle. See [conversation controls](conversation-interface.md) for approval
+and cancellation behavior. Existing terminals retain the UI they started with.
+
 Connections using an ordinary key retain normal SSH behavior, so VS Code and
 SFTP continue to work. The connect-only Termius key forces `jara connect` and
 cannot run shell commands or SFTP. You can use `vim`/`nvim` over SSH when those

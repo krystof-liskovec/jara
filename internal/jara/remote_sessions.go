@@ -26,7 +26,7 @@ func tmux(args ...string) *exec.Cmd {
 
 func sessions() ([]Session, error) {
 	// has-session distinguishes an absent server from malformed output.
-	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}|#{@jara_created_at}|#{@jara_last_attached}|#{@jara_session_label}|#{@jara_codex_thread}")
+	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}|#{@jara_created_at}|#{@jara_last_attached}|#{@jara_session_label}|#{@jara_codex_thread}|#{@jara_agent_state}|#{@jara_agent_pid}")
 	b, err := probe.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -36,6 +36,7 @@ func sessions() ([]Session, error) {
 		return nil, fmt.Errorf("list sessions: %w", err)
 	}
 	var ss []Session
+	metadata := []agentMetadata{}
 	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
 		p := strings.Split(line, "|")
 		if len(p) < 5 {
@@ -55,7 +56,16 @@ func sessions() ([]Session, error) {
 		if len(p) > 8 {
 			session.Conversation = p[8]
 		}
+		if len(p) > 10 {
+			if agent, ok := parseAgentMetadata(session.Name, p[9], p[10]); ok {
+				metadata = append(metadata, agent)
+			}
+		}
 		ss = append(ss, session)
+	}
+	liveStates, _ := liveAgentStates(metadata)
+	for i := range ss {
+		ss[i].AgentState = liveStates[ss[i].Name]
 	}
 	return ss, nil
 }
