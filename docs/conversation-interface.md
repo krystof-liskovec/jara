@@ -23,6 +23,29 @@ credentials, sandbox, tools, configuration, and saved conversations. This previe
 uses the app-server shipped with Codex 0.166.0. It adds no inference proxy or
 new authentication flow.
 
+## Interactive terminal
+
+Interactive terminals use a full-screen conversation view with a persistent
+workspace/model/activity header, styled user/agent/tool messages, and a bordered
+composer. The transcript scrolls independently of your draft and reflows when
+the terminal is resized. Narrow terminals use the same controls with a compact
+layout. Plain output remains available for pipes and `TERM=dumb` terminals.
+
+Type `/` in the composer to open command suggestions. Filter by typing, navigate
+with the arrow keys, and accept a suggestion with Tab or Enter. Acceptance fills
+the composer; it does not execute the command. Escape dismisses the dropdown.
+`/model ` and `/resume ` offer contextual choices from the most recently loaded
+`/models` and `/sessions` results. Normal Enter submits the completed input.
+
+Bracketed paste inserts text, including multiple lines, without submitting it.
+Input history and cursor editing work in the composer. Text typed while an agent
+is streaming remains a draft if submission is unavailable; control commands such
+as `/cancel`, `/answer`, and `/approve` remain usable during a turn.
+
+The theme follows the terminal background; `JARA_THEME=dark` or
+`JARA_THEME=light` selects an explicit palette on the environment. `NO_COLOR`
+retains the layout with monochrome styling.
+
 ## Conversation controls
 
 Enter one line of text to send a message. Replies and command output stream into
@@ -100,9 +123,9 @@ This also applies to host defaults configured through `jara config codex-args`.
 
 ## Preview limitations
 
-This interface uses a line-oriented composer and plain text output.
-It does not provide Codex's full-screen editing, rich Markdown,
-image attachments, or secret question entry. Use the Codex interface
+The plain fallback uses a line-oriented composer. The interactive view styles
+common Markdown headings, lists, and fenced code blocks; it does not implement
+HTML, image attachments, or secret question entry. Use the Codex interface
 for those workflows. Native Codex history remains the fallback from the project
 browser's **All Codex conversations** action. Conversations outside managed
 workspaces run directly and do not survive an SSH disconnect.

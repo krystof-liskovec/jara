@@ -177,6 +177,7 @@ func (u *chatUI) sendPrompt(message string) error {
 		u.print("No conversation is open. Use /resume ID or /new first.\nYou> ")
 		return nil
 	}
+	u.recordRole("user", message)
 	u.busy = true
 	u.cancel = false
 	u.setAgentState("running")
