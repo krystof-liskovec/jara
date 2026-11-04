@@ -43,6 +43,24 @@ type Baseline struct {
 
 func signature(f File) string { return fmt.Sprintf("%s:%o:%s", f.Hash, f.Mode, f.Link) }
 
+// filesEquivalent applies Git's tracked-file semantics: contents, executable
+// status, and symlink target matter; ordinary permission bits do not.
+func filesEquivalent(a, b File) bool {
+	if a.Hash != b.Hash || a.Link != b.Link {
+		return false
+	}
+	if a.Link != "" {
+		return true
+	}
+	return (a.Mode&0111 != 0) == (b.Mode&0111 != 0)
+}
+
+func snapshotFilesEquivalent(a, b Snapshot, name string) bool {
+	aFile, aExists := a[name]
+	bFile, bExists := b[name]
+	return aExists == bExists && (!aExists || filesEquivalent(aFile, bFile))
+}
+
 func sig(s Snapshot, p string) string {
 	f, ok := s[p]
 	if !ok {

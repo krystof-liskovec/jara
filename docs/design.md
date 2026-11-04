@@ -70,6 +70,15 @@ explicit source choice. Preserve destination-only files by default. Propagating
 deletions requires an explicit option. Refuse transfer into an environment with
 a running Jara-managed agent unless explicitly overridden.
 
+Sync compares file content, symlink targets, and executable status. Ordinary
+read/write permission differences (such as 0600 versus 0644 after editing in a
+container) do not constitute different workspace content. The original modes
+remain on transfer manifests and expected-value checks, so a concurrent change
+is still detected before writing. Before prompting to push, compare pending
+local changes with the remote manifest and acknowledge converged files in the
+sync baseline. A shared Git commit alone cannot prove convergence: uncommitted
+edits and untracked files still need to be checked.
+
 ## Authentication, tools and editor configuration
 
 Host configuration authorizes public SSH keys. Private keys remain on clients;
