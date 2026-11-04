@@ -6,7 +6,7 @@ Persistent remote Codex workspaces over standard OpenSSH. The host runs Docker;
 Compose remains an option for manual deployments and Docker-in-Docker. The local
 Go CLI remembers environments and workspace associations.
 
-Jara launches the actual Codex terminal interface inside tmux. It is not an agent
+Jara launches the actual Codex terminal interface inside tmux. [Jara conversation interface preview](docs/conversation-interface.md) is available with `jara new --interface jara`. It is not an agent
 harness. Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain
 available to the environment owner.
 

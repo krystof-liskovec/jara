@@ -52,13 +52,16 @@ func Run(args []string) error {
 				return err
 			}
 			return runCodexTerminal(codexArgs)
-		case "_background":
+		case "_background", "_chat":
 			if len(args) != 2 {
 				return fmt.Errorf("invalid background Codex invocation")
 			}
 			var q Request
 			if err := decode(args[1], &q); err != nil {
 				return err
+			}
+			if args[0] == "_chat" {
+				return runJaraChat(q)
 			}
 			return runBackgroundCodex(q)
 		case "help", "--help", "-h":
@@ -195,6 +198,7 @@ func Run(args []string) error {
 	args, tail := splitCodexArgs(args)
 	var codexArgs codexArgList
 	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
+	chatInterface := f.String("interface", "codex", "conversation interface: codex or jara")
 	remoteName := f.String("remote", "", "named remote")
 	clone := f.Bool("clone", false, "skip workspace discovery and clone confirmation")
 	chooseWorkspace := f.Bool("choose-workspace", false, "choose an existing checkout for this local folder")
@@ -225,6 +229,12 @@ func Run(args []string) error {
 	}
 	if err = f.Parse(args); err != nil {
 		return err
+	}
+	if err = validateChatInterface(*chatInterface); err != nil {
+		return err
+	}
+	if *chatInterface == "jara" && action != "open" && action != "new" && action != "resume" && action != "sessions" {
+		return fmt.Errorf("--interface jara requires open, new, resume, or sessions")
 	}
 	prompt := ""
 	if action == "run" {
@@ -304,6 +314,7 @@ func Run(args []string) error {
 	}
 	openSession := func(q Request) error {
 		q.CodexArgs = codexArgs
+		q.UserInterface = *chatInterface
 		if action == "resume" {
 			q.ResumeLatest = *latest
 		}
