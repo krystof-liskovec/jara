@@ -37,6 +37,7 @@ type Session struct {
 	CreatedAt    int64
 	LastAttach   int64
 	Label        string
+	AgentState   string
 }
 
 func dataRoot() string {

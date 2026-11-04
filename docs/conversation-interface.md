@@ -28,19 +28,67 @@ new authentication flow.
 Enter one line of text to send a message. Replies and command output stream into
 the terminal. `/help` lists the controls:
 
+- `/compose` starts a multiline message; `/send` submits it and `/discard`
+  clears it. Blank lines and indentation are preserved. `/help`, `/status`,
+  and `/quit` remain available while composing. Start a literal slash line
+  with `//` (for example, `//path` sends `/path`).
 - `/new` starts another saved conversation in the same terminal.
-- `/resume ID` resumes a saved conversation in the current working directory.
+- `/sessions [query]` lists recent saved conversations in the current folder.
+  Search matches names, previews, and IDs. Results load asynchronously, show
+  at most eight choices, and report when the search is incomplete.
+- `/resume ID` resumes a saved conversation in the current working directory;
+  `/resume N` opens a numbered result from the last `/sessions` list.
+- `/status` shows the connection, conversation, turn state and pending approvals,
+  including while a turn is running. A live terminal alone does not mean the
+  agent is working.
+- `/models` loads the runtime's model catalog without interrupting a turn.
+  When idle, `/model N` selects a listed model, and `/model ID` selects an
+  explicit model. The selection applies to the next and subsequent turns in
+  this conversation; it does not change account-wide defaults.
 - `/cancel` or Ctrl-C interrupts a running turn. Ctrl-C while idle exits.
 - `/approve` approves the oldest pending command or file approval once.
 - `/deny` rejects that approval; the agent can continue.
+- `/answer Q VALUE` answers question number `Q` in the current question set.
+  Use an option number or, when offered, free text. For example, `/answer 1 2`
+  chooses option 2 for question 1. Nothing is preselected or sent until every
+  question in that request has an explicit answer.
 - `/quit` exits and stops this app-server process.
 
+Use `/help` to discover commands without leaving the conversation. Commands are
+written on separate lines so they remain readable in narrow SSH terminals.
+For a phone SSH client, use `/compose`, paste or type the message, then enter
+`/send` on its own line. Outside compose mode, unknown slash commands display
+help guidance instead of sending an accidental prompt.
+
+## Agent activity and detached sessions
+
+Jara's conversation interface publishes `starting`, `running`, `waiting` (for
+approval or an answer), and `idle` activity to its managed terminal. Terminal listings show
+this separately from the number of connected viewers. Native Codex terminals
+without this integration retain an unknown agent state.
+
+Detached-session expiration preserves a known active Jara agent, including one
+waiting for approval. Activity metadata is trusted only while the recorded
+Jara conversation process is alive beneath a pane in the same tmux session.
+Stale metadata cannot keep a dead agent alive indefinitely. Idle conversations
+remain subject to the configured expiration policy; use
+`JARA_SESSION_IDLE_TIMEOUT=0` to disable expiration entirely.
+
 Approval requests show the request details and available file-change data.
-Only an explicit `/approve` grants approval. Unsupported interactive requests,
-including structured user questions and MCP elicitation, receive a protocol
-error instead of being silently approved. Turn failures are displayed with their
+Only an explicit `/approve` grants approval. Structured non-secret questions
+show numbered options and queue additional question sets. `/cancel` rejects
+pending questions and interrupts the turn. Secret questions and unsupported
+interactions such as MCP elicitation receive a protocol error instead of being
+silently accepted. Turn failures are displayed with their
 reported status. Unanswered protocol requests time out after 30 seconds;
 streaming inference turns have no fixed timeout.
+
+Explicit server rejections of a new turn, new conversation, or resume request
+are displayed without closing the interface. A failed switch keeps the previous
+loaded conversation selected. If no conversation has opened yet, use `/new` or
+`/resume ID` before sending a prompt. Runtime disconnections and uncertain turn
+submission timeouts still stop the interface; do not assume a timeout proves
+that no work started.
 
 `--model`, `--sandbox`, `--ask-for-approval`, `--search`, `-c`/`--config`,
 `--enable`, and `--disable` arguments are translated or forwarded to app-server.
@@ -52,9 +100,9 @@ This also applies to host defaults configured through `jara config codex-args`.
 
 ## Preview limitations
 
-This first interface uses a line-oriented composer and plain text output.
-It does not provide Codex's full-screen editing, rich Markdown, slash-command
-catalog, image attachments, or structured question forms. Use the Codex interface
+This interface uses a line-oriented composer and plain text output.
+It does not provide Codex's full-screen editing, rich Markdown,
+image attachments, or secret question entry. Use the Codex interface
 for those workflows. Native Codex history remains the fallback from the project
 browser's **All Codex conversations** action. Conversations outside managed
 workspaces run directly and do not survive an SSH disconnect.
@@ -64,4 +112,30 @@ preview. Offline subprocess tests cover handshake, streamed replies, approval
 rejection, interruption, resumption, and shutdown without using account tokens
 or making model calls.
 
+Additional offline checks cover multiline submission, draft limits and discard,
+status/help during active turns, approval scope visibility, and early input
+during initialization. Question tests cover explicit multi-question replies,
+queued request IDs, cancellation, secret rejection, and Unicode wrapping at
+40 columns. History tests cover folder filtering, bounded search, incomplete
+results, and numbered choices. A subprocess regression verifies continued use
+after a rejected resume. An isolated real tmux server verifies live-agent
+retention, stale metadata expiration, legacy session expiration, and cleanup
+refusing to proceed when process inspection fails.
+
+A 40×20 PTY subprocess test exercises canonical terminal input, a burst-pasted
+multiline draft, streamed replies, numbered questions, explicit approvals,
+Ctrl-C interruption, and exit. The installed Codex 0.166.0 metadata smoke test
+passes initialization, exact-folder history filtering, and model metadata:
+
+```sh
+JARA_REAL_CODEX_TEST=1 go test ./internal/jara \
+  -run '^TestInstalledCodexAppServerMetadataSmoke$' -count=1 -timeout=40s
+```
+
+It starts no inference turns and prints no account or conversation data. These
+checks cover terminal behavior and protocol metadata; physical phone apps and
+live inference remain outside their verified scope.
+
 Reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).
+Runtime ownership and future adapter requirements are described in
+[agent providers](agent-providers.md).

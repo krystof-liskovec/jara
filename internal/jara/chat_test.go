@@ -137,7 +137,7 @@ func TestChatUnsupportedRequestPreservesID(t *testing.T) {
 	var wire, output bytes.Buffer
 	c := &appConnection{encoder: json.NewEncoder(&wire)}
 	u := &chatUI{c: c, out: &output}
-	if err := u.event(appMessage{ID: json.RawMessage(`"question-1"`), Method: "item/tool/requestUserInput", Params: json.RawMessage(`{}`)}); err != nil {
+	if err := u.event(appMessage{ID: json.RawMessage(`"question-1"`), Method: "mcpServer/elicitation/request", Params: json.RawMessage(`{}`)}); err != nil {
 		t.Fatal(err)
 	}
 	var response struct {

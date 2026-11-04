@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,13 +17,29 @@ type chatPending struct {
 	deadline time.Time
 }
 type chatUI struct {
-	c                 *appConnection
-	out               io.Writer
-	cwd, thread, turn string
-	busy, cancel      bool
-	pending           map[string]chatPending
-	approvals         []appMessage
-	items             map[string]json.RawMessage
+	c                        *appConnection
+	out                      io.Writer
+	cwd, thread, turn        string
+	busy, cancel             bool
+	threadReady              bool
+	connected                bool
+	composing                bool
+	draft                    []string
+	draftBytes               int
+	startedAt                time.Time
+	turnStartedAt            time.Time
+	lastAgentState           string
+	effectiveModel           string
+	nextModel                string
+	nextModelLabel           string
+	modelSelectionGeneration uint64
+	pending                  map[string]chatPending
+	pendingTurnModels        map[string]chatTurnRequest
+	approvals                []appMessage
+	questionRequests         []chatQuestionRequest
+	sessions                 *chatSessionBrowser
+	models                   *chatModelBrowser
+	items                    map[string]json.RawMessage
 }
 
 // Text from the model and tools is untrusted terminal content.
@@ -43,8 +60,41 @@ func (u *chatUI) request(method string, params any) error {
 	u.pending[id] = chatPending{method, time.Now().Add(30 * time.Second)}
 	return nil
 }
+func (u *chatUI) setAgentState(state string) {
+	if state == "resuming" {
+		state = "starting"
+	}
+	if u.lastAgentState == state {
+		return
+	}
+	u.lastAgentState = state
+	publishChatAgentState(state)
+}
+func publishChatAgentState(state string) {
+	if os.Getenv("TMUX") == "" {
+		return
+	}
+	pane := os.Getenv("TMUX_PANE")
+	if pane == "" {
+		return
+	}
+	_ = tmux("set-option", "-t", pane, "@jara_agent_pid", strconv.Itoa(os.Getpid())).Run()
+	_ = tmux("set-option", "-t", pane, "@jara_agent_state", state).Run()
+}
+func clearChatAgentState() {
+	if os.Getenv("TMUX") == "" {
+		return
+	}
+	pane := os.Getenv("TMUX_PANE")
+	if pane == "" {
+		return
+	}
+	_ = tmux("set-option", "-u", "-t", pane, "@jara_agent_state").Run()
+	_ = tmux("set-option", "-u", "-t", pane, "@jara_agent_pid").Run()
+}
 func (u *chatUI) open(id string) error {
 	u.busy = true
+	u.setAgentState("starting")
 	params := map[string]any{"cwd": u.cwd}
 	method := "thread/start"
 	if id != "" {
@@ -54,6 +104,15 @@ func (u *chatUI) open(id string) error {
 	return u.request(method, params)
 }
 func (u *chatUI) interrupt() error {
+	for _, p := range u.pending {
+		if p.method == "initialize" || p.method == "thread/start" || p.method == "thread/resume" {
+			u.print("Conversation is still starting. Wait for it to open before cancelling a turn.\n")
+			return nil
+		}
+	}
+	if err := u.cancelQuestionRequests("Question request cancelled because the turn was interrupted."); err != nil {
+		return err
+	}
 	u.cancel = true
 	for _, m := range u.approvals {
 		if err := u.c.reply(m.ID, map[string]string{"decision": "cancel"}); err != nil {
@@ -63,7 +122,13 @@ func (u *chatUI) interrupt() error {
 	u.approvals = nil
 	if u.turn != "" {
 		u.cancel = false
+		u.setAgentState("running")
 		return u.request("turn/interrupt", map[string]string{"threadId": u.thread, "turnId": u.turn})
+	}
+	if u.busy {
+		u.setAgentState("running")
+	} else {
+		u.setAgentState("idle")
 	}
 	return nil
 }
@@ -74,10 +139,41 @@ func (u *chatUI) response(m appMessage) error {
 	}
 	delete(u.pending, string(m.ID))
 	if m.Error != nil {
+		if p.method == "thread/list" {
+			err := fmt.Errorf("Codex app-server rejected thread/list: %s", chatText(m.Error.Message))
+			if !u.failChatSessionRequest(err) {
+				u.print("\nSaved session lookup failed: " + chatText(m.Error.Message) + "\n")
+				if !u.busy {
+					u.print("You> ")
+				}
+			}
+			return nil
+		}
+		if p.method == "model/list" {
+			err := fmt.Errorf("Codex app-server rejected model/list: %s", chatText(m.Error.Message))
+			if !u.failChatModelRequest(err) {
+				u.print("\nModel lookup failed: " + chatText(m.Error.Message) + "\n")
+				if !u.busy {
+					u.print("You> ")
+				}
+			}
+			return nil
+		}
+		if p.method == "turn/start" {
+			request, tracked := u.pendingTurnModels[string(m.ID)]
+			delete(u.pendingTurnModels, string(m.ID))
+			if tracked && request.thread != u.thread {
+				return nil
+			}
+		}
+		if recoverChatRequestError(u, p, m) {
+			return nil
+		}
 		return fmt.Errorf("%s: %s", p.method, chatText(m.Error.Message))
 	}
 	switch p.method {
 	case "initialize":
+		u.connected = true
 		if err := u.c.encoder.Encode(map[string]string{"method": "initialized"}); err != nil {
 			return err
 		}
@@ -88,6 +184,7 @@ func (u *chatUI) response(m appMessage) error {
 				ID    string `json:"id"`
 				Turns []struct{ Items []struct{ Type, Text string } }
 			}
+			Model string `json:"model"`
 		}
 		if err := json.Unmarshal(m.Result, &r); err != nil {
 			return err
@@ -95,8 +192,16 @@ func (u *chatUI) response(m appMessage) error {
 		if r.Thread.ID == "" {
 			return fmt.Errorf("app-server returned an empty thread ID")
 		}
+		previousThread := u.thread
 		u.thread = r.Thread.ID
+		if previousThread != "" && previousThread != u.thread {
+			u.nextModel = ""
+			u.nextModelLabel = ""
+		}
+		u.setEffectiveModel(r.Model)
+		u.threadReady = true
 		u.busy = false
+		u.setAgentState("idle")
 		// Explicit metadata links this terminal to its saved conversation.
 		if os.Getenv("TMUX") != "" {
 			_ = tmux("set-option", "-t", os.Getenv("TMUX_PANE"), "@jara_codex_thread", u.thread).Run()
@@ -110,13 +215,32 @@ func (u *chatUI) response(m appMessage) error {
 			}
 		}
 		u.print("\nYou> ")
+	case "thread/list":
+		return u.acceptChatSessionPage(m.Result)
+	case "model/list":
+		return u.acceptChatModelPage(m.Result)
 	case "turn/start":
 		var r struct{ Turn struct{ ID string } }
 		if err := json.Unmarshal(m.Result, &r); err != nil {
 			return err
 		}
+		if request, ok := u.pendingTurnModels[string(m.ID)]; ok {
+			delete(u.pendingTurnModels, string(m.ID))
+			if request.thread != u.thread {
+				return nil
+			}
+			if request.model != "" {
+				u.setEffectiveModel(request.model)
+				if request.generation == u.modelSelectionGeneration {
+					u.nextModel = ""
+					u.nextModelLabel = ""
+				}
+			}
+		}
 		if u.busy {
 			u.turn = r.Turn.ID
+			u.turnStartedAt = time.Now()
+			u.setAgentState(u.currentState())
 			if u.cancel {
 				return u.interrupt()
 			}
@@ -145,8 +269,11 @@ func (u *chatUI) event(m appMessage) error {
 		switch m.Method {
 		case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 			u.approvals = append(u.approvals, m)
-			u.print("\nApproval requested: " + m.Method + "\n" + string(u.items[p.ItemID]) + "\n" + string(m.Params) + "\nType /approve to allow once or /deny to reject.\n")
+			u.setAgentState("waiting")
+			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%sType /approve to allow once or /deny to reject.\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID])))
 			return nil
+		case "item/tool/requestUserInput":
+			return u.handleQuestionRequest(m)
 		default:
 			u.print("\nUnsupported interaction: " + m.Method + "\n")
 			return u.c.unsupported(m)
@@ -155,6 +282,8 @@ func (u *chatUI) event(m appMessage) error {
 	switch m.Method {
 	case "turn/started":
 		u.turn = p.Turn.ID
+		u.turnStartedAt = time.Now()
+		u.setAgentState(u.currentState())
 		if u.cancel {
 			return u.interrupt()
 		}
@@ -171,11 +300,16 @@ func (u *chatUI) event(m appMessage) error {
 			u.print("\nFile changes: " + string(p.Item) + "\n")
 		}
 	case "turn/completed":
+		if err := u.cancelQuestionRequests("Turn ended before the question was answered."); err != nil {
+			return err
+		}
 		u.busy = false
 		u.turn = ""
+		u.turnStartedAt = time.Time{}
 		u.cancel = false
 		u.approvals = nil
 		u.items = map[string]json.RawMessage{}
+		u.setAgentState("idle")
 		u.print("\n[" + p.Turn.Status + "]\n")
 		if p.Turn.Error != nil {
 			u.print(p.Turn.Error.Message + "\n")
@@ -186,47 +320,11 @@ func (u *chatUI) event(m appMessage) error {
 	}
 	return nil
 }
-func (u *chatUI) line(line string) (bool, error) {
-	line = strings.TrimSpace(line)
-	switch {
-	case line == "/quit":
-		return true, nil
-	case line == "/cancel":
-		return false, u.interrupt()
-	case line == "/approve" || line == "/deny":
-		if len(u.approvals) == 0 {
-			u.print("No approval is pending.\n")
-			return false, nil
-		}
-		decision := "decline"
-		if line == "/approve" {
-			decision = "accept"
-		}
-		m := u.approvals[0]
-		u.approvals = u.approvals[1:]
-		return false, u.c.reply(m.ID, map[string]string{"decision": decision})
-	case u.busy:
-		u.print("A turn is running. Use /cancel or wait for it to finish.\n")
-		return false, nil
-	case strings.HasPrefix(line, "/resume "):
-		return false, u.open(strings.TrimSpace(strings.TrimPrefix(line, "/resume ")))
-	case line == "/new":
-		return false, u.open("")
-	case line == "/help":
-		u.print("/new · /resume ID · /cancel · /approve · /deny · /quit\n\nYou> ")
-		return false, nil
-	case line == "":
-		u.print("You> ")
-		return false, nil
-	default:
-		u.busy = true
-		u.cancel = false
-		return false, u.request("turn/start", map[string]any{"threadId": u.thread, "input": []any{map[string]any{"type": "text", "text": line}}})
-	}
-}
 func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id string) error {
-	u := &chatUI{c: c, out: output, cwd: cwd, thread: id, pending: map[string]chatPending{}, items: map[string]json.RawMessage{}}
-	u.print("Jara conversation preview · /help for commands · Ctrl-C cancels a turn\n")
+	u := &chatUI{c: c, out: output, cwd: cwd, thread: id, busy: true, startedAt: time.Now(), pending: map[string]chatPending{}, items: map[string]json.RawMessage{}}
+	defer clearChatAgentState()
+	u.setAgentState("starting")
+	u.print("Jara conversation · /help for commands · Ctrl-C cancels a turn\n")
 	if err := u.request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}); err != nil {
 		return err
 	}
@@ -268,6 +366,7 @@ func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id strin
 				return nil
 			}
 		case err := <-inputErrors:
+			u.setAgentState("idle")
 			return err
 		case <-signals:
 			if u.busy {
@@ -278,8 +377,16 @@ func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id strin
 				return nil
 			}
 		case now := <-timer.C:
-			for _, p := range u.pending {
+			for id, p := range u.pending {
 				if now.After(p.deadline) {
+					if p.method == "thread/list" {
+						u.expireChatSessionRequest(id)
+						continue
+					}
+					if p.method == "model/list" {
+						u.expireChatModelRequest(id)
+						continue
+					}
 					return fmt.Errorf("Codex app-server timed out during %s", p.method)
 				}
 			}
