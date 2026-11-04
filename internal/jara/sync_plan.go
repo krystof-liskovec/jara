@@ -10,12 +10,12 @@ func planUpdate(source, dest, baseSource, baseDest Snapshot, force bool) (Update
 	u := Update{Files: Snapshot{}, Expected: map[string]string{}}
 	var conflicts []string
 	for name, f := range source {
-		if sig(source, name) == sig(dest, name) {
+		if snapshotFilesEquivalent(source, dest, name) {
 			continue
 		}
 		// A destination-only edit is left in place, rather than overwritten by an unchanged source.
-		sourceChanged := sig(source, name) != sig(baseSource, name)
-		destChanged := sig(dest, name) != sig(baseDest, name)
+		sourceChanged := !snapshotFilesEquivalent(source, baseSource, name)
+		destChanged := !snapshotFilesEquivalent(dest, baseDest, name)
 		if !sourceChanged && !force {
 			continue
 		}
@@ -45,7 +45,7 @@ func planDeletes(u *Update, source, dest, baseSource, baseDest Snapshot, force b
 		if _, ok := dest[p]; !ok {
 			continue
 		}
-		if sig(dest, p) != sig(baseDest, p) && !force {
+		if !snapshotFilesEquivalent(dest, baseDest, p) && !force {
 			return fmt.Errorf("deletion conflicts with destination edit: %s; nothing transferred", p)
 		}
 		u.Deletes[p] = sig(dest, p)

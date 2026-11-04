@@ -3,8 +3,11 @@ package jara
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -28,6 +31,188 @@ func TestTransferConflictAndDestinationEdits(t *testing.T) {
 	if err != nil || string(u.Files["a"].Data) != "local" {
 		t.Fatal("explicit source choice failed")
 	}
+}
+
+func TestGitFileEquivalenceIgnoresOrdinaryPermissionsOnly(t *testing.T) {
+	content := file("same")
+	for _, modes := range [][2]uint32{{0600, 0644}, {0400, 0664}, {0700, 0755}, {0711, 0750}} {
+		left, right := content, content
+		left.Mode, right.Mode = modes[0], modes[1]
+		if !filesEquivalent(left, right) {
+			t.Errorf("Git-equivalent modes %04o and %04o differ", modes[0], modes[1])
+		}
+	}
+	nonExecutable, executable := content, content
+	nonExecutable.Mode, executable.Mode = 0644, 0755
+	if filesEquivalent(nonExecutable, executable) {
+		t.Fatal("executable-bit change was ignored")
+	}
+	changedContent := file("different")
+	changedContent.Mode = nonExecutable.Mode
+	if filesEquivalent(nonExecutable, changedContent) {
+		t.Fatal("content change was ignored")
+	}
+	linkA := File{Link: "target", Hash: "same-link", Mode: 0}
+	linkB := File{Link: "target", Hash: "same-link", Mode: 0777}
+	if !filesEquivalent(linkA, linkB) || filesEquivalent(linkA, File{Link: "other", Hash: "same-link"}) {
+		t.Fatal("symlink equivalence did not preserve link target")
+	}
+	if !snapshotFilesEquivalent(Snapshot{}, Snapshot{}, "missing") || snapshotFilesEquivalent(Snapshot{}, Snapshot{"missing": content}, "missing") {
+		t.Fatal("snapshot equivalence mishandled absence")
+	}
+}
+
+func TestPlanUpdateUsesGitEquivalenceButKeepsRawRaceSignatures(t *testing.T) {
+	baseSource, baseDest := file("base"), file("base")
+	baseSource.Mode, baseDest.Mode = 0644, 0600
+	source, dest := file("base"), file("base")
+	source.Mode, dest.Mode = 0600, 0644
+	update, err := planUpdate(Snapshot{"a": source}, Snapshot{"a": dest}, Snapshot{"a": baseSource}, Snapshot{"a": baseDest}, false)
+	if err != nil || len(update.Files) != 0 {
+		t.Fatalf("permission-only differences prompted sync: files=%v err=%v", update.Files, err)
+	}
+
+	source = file("new content")
+	source.Mode = 0755
+	dest.Mode = 0600
+	update, err = planUpdate(Snapshot{"a": source}, Snapshot{"a": dest}, Snapshot{"a": baseSource}, Snapshot{"a": baseDest}, false)
+	if err != nil || len(update.Files) != 1 || update.Expected["a"] != signature(dest) {
+		t.Fatalf("executable update or raw expected signature lost: update=%+v err=%v", update, err)
+	}
+	physical := t.TempDir()
+	if err := os.WriteFile(filepath.Join(physical, "a"), dest.Data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(physical, "a"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyUpdate(physical, update); err == nil {
+		t.Fatal("raw expected signature failed to catch a destination race")
+	}
+
+	deleteUpdate := Update{Files: Snapshot{}, Expected: map[string]string{}}
+	deleteDest, deleteBase := file("same content"), file("same content")
+	deleteDest.Mode, deleteBase.Mode = 0600, 0644
+	if err := planDeletes(&deleteUpdate, Snapshot{}, Snapshot{"gone": deleteDest}, Snapshot{"gone": deleteBase}, Snapshot{"gone": deleteBase}, false, nil); err != nil {
+		t.Fatalf("permission-only deletion difference conflicted: %v", err)
+	}
+	if deleteUpdate.Deletes["gone"] != signature(deleteDest) {
+		t.Fatal("deletion race guard did not preserve the raw destination signature")
+	}
+	deleteRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(deleteRoot, "gone"), deleteDest.Data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(deleteRoot, "gone"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyUpdate(deleteRoot, deleteUpdate); err == nil {
+		t.Fatal("raw deletion signature failed to catch a destination race")
+	}
+
+	source = file("source edit")
+	dest = file("destination edit")
+	base := file("base")
+	if _, err := planUpdate(Snapshot{"a": source}, Snapshot{"a": dest}, Snapshot{"a": base}, Snapshot{"a": base}, false); err == nil {
+		t.Fatal("divergent content changes stopped conflicting")
+	}
+	source, dest, base = file("same link"), file("same link"), file("same link")
+	source.Link, dest.Link, base.Link = "source", "destination", "old"
+	if _, err := planUpdate(Snapshot{"a": source}, Snapshot{"a": dest}, Snapshot{"a": base}, Snapshot{"a": base}, false); err == nil {
+		t.Fatal("divergent symlink target changes stopped conflicting")
+	}
+}
+
+func TestGitPushPullWithRemotePermissionDifferencesDoesNotPromptSync(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Git permission semantics require Unix modes")
+	}
+	baseDir := t.TempDir()
+	bare := filepath.Join(baseDir, "origin.git")
+	remoteWork := filepath.Join(baseDir, "remote-develop")
+	localWork := filepath.Join(baseDir, "local")
+	gitSyncTestCommand(t, "", "init", "--bare", "--initial-branch=main", bare)
+	gitSyncTestCommand(t, "", "clone", bare, remoteWork)
+	gitSyncTestCommand(t, remoteWork, "config", "user.name", "Sync Test")
+	gitSyncTestCommand(t, remoteWork, "config", "user.email", "sync@example.invalid")
+	if err := os.MkdirAll(filepath.Join(remoteWork, "src"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	const count = 12
+	for i := 0; i < count; i++ {
+		name := filepath.Join(remoteWork, "src", fmt.Sprintf("module_%02d.go", i))
+		if err := os.WriteFile(name, []byte(fmt.Sprintf("package module%d\nconst value%d = %d\n", i, i, i)), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitSyncTestCommand(t, remoteWork, "add", ".")
+	gitSyncTestCommand(t, remoteWork, "commit", "-m", "base")
+	gitSyncTestCommand(t, remoteWork, "push", "-u", "origin", "main")
+	gitSyncTestCommand(t, "", "clone", bare, localWork)
+
+	for i := 0; i < count; i++ {
+		name := filepath.Join(remoteWork, "src", fmt.Sprintf("module_%02d.go", i))
+		if err := os.Chmod(name, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	baseLocal, err := snapshot(localWork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseRemote, err := snapshot(remoteWork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < count; i++ {
+		name := filepath.Join(remoteWork, "src", fmt.Sprintf("module_%02d.go", i))
+		if err := os.WriteFile(name, []byte(fmt.Sprintf("package module%d\nconst value%d = %d // remote\n", i, i, i+1)), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gitSyncTestCommand(t, remoteWork, "add", ".")
+	gitSyncTestCommand(t, remoteWork, "commit", "-m", "remote develop changes")
+	gitSyncTestCommand(t, remoteWork, "push")
+	gitSyncTestCommand(t, localWork, "pull", "--ff-only")
+	for i := 0; i < count; i++ {
+		name := filepath.Join(remoteWork, "src", fmt.Sprintf("module_%02d.go", i))
+		if err := os.Chmod(name, 0600); err != nil {
+			t.Fatal(err)
+		}
+		name = filepath.Join(localWork, "src", fmt.Sprintf("module_%02d.go", i))
+		if err := os.Chmod(name, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	local, err := snapshot(localWork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := snapshot(remoteWork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local["src/module_00.go"].Mode == remote["src/module_00.go"].Mode {
+		t.Fatalf("test setup did not produce distinct ordinary permission modes: local=%04o remote=%04o", local["src/module_00.go"].Mode, remote["src/module_00.go"].Mode)
+	}
+	update, err := planUpdate(remote, local, baseRemote, baseLocal, false)
+	if err != nil || len(update.Files) != 0 {
+		t.Fatalf("clean Git pull was reported as Jara sync changes: files=%d err=%v", len(update.Files), err)
+	}
+}
+
+func gitSyncTestCommand(t *testing.T, dir string, args ...string) []byte {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s failed: %v", args[0], err)
+	}
+	return output
 }
 func TestTransferPreservesDestinationOnlyFiles(t *testing.T) {
 	u, err := planUpdate(Snapshot{"new": file("new")}, Snapshot{"only": file("keep")}, Snapshot{}, Snapshot{}, false)
@@ -123,6 +308,9 @@ func TestExplicitDeletionProtectsEditsAndExcludedFiles(t *testing.T) {
 	}
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, "gone"), []byte("base"), 0644)
+	if err := os.Chmod(filepath.Join(root, "gone"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	if err := applyUpdate(root, u); err != nil {
 		t.Fatal(err)
 	}

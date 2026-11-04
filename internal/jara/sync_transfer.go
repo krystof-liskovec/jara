@@ -137,7 +137,7 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 		all[p] = true
 	}
 	for p := range all {
-		if sig(local, p) != sig(remote, p) {
+		if !snapshotFilesEquivalent(local, remote, p) {
 			if f, ok := baseline.Local[p]; ok {
 				next.Local[p] = f
 			} else {
@@ -250,7 +250,7 @@ func localPushChangesSummary(b Binding, root string, includeIgnored, isGit bool)
 	}
 	changed := make([]string, 0)
 	for name := range local {
-		if sig(local, name) != sig(baseline.Local, name) {
+		if !snapshotFilesEquivalent(local, baseline.Local, name) {
 			pending = true
 			changed = append(changed, name)
 		}

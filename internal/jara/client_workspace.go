@@ -43,6 +43,17 @@ func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string,
 	if !pending {
 		return nil
 	}
+	// A Git pull may already have brought the remote's changes into this
+	// checkout while the saved sync baseline still describes the prior state.
+	// Only contact the remote after the local summary found something pending.
+	if reconciledPending, reconciledDeletions, reconciledSize, reconcileErr := reconcileLocalPushChanges(r, b, root, includeIgnored, isGit); reconcileErr == nil {
+		pending, deletions, size = reconciledPending, reconciledDeletions, reconciledSize
+	} else {
+		fmt.Fprintf(os.Stderr, "Could not check remote sync state; using the local pending summary: %v\n", reconcileErr)
+	}
+	if !pending {
+		return nil
+	}
 	if reader == nil {
 		reader = bufio.NewReader(os.Stdin)
 	}
