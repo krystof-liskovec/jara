@@ -64,6 +64,24 @@ func Run(args []string) error {
 				return runJaraChat(q)
 			}
 			return runBackgroundCodex(q)
+		case "_chat-server":
+			if len(args) != 2 {
+				return fmt.Errorf("invalid remote app-server invocation")
+			}
+			var q Request
+			if err := decode(args[1], &q); err != nil {
+				return err
+			}
+			return runRemoteChatServer(q)
+		case "_chat-daemon":
+			if len(args) != 2 {
+				return fmt.Errorf("invalid persistent Jara session invocation")
+			}
+			var q Request
+			if err := decode(args[1], &q); err != nil {
+				return err
+			}
+			return runChatDaemon(q)
 		case "help", "--help", "-h":
 			printHelpEntry("root", commandHelp["root"])
 			return nil
@@ -327,25 +345,13 @@ func Run(args []string) error {
 		}
 		return openRemote(r, q)
 	}
-	if action == "doctor" {
-		return doctor(chosen, r)
-	}
-	if action == "forward" || action == "reverse" {
-		return forward(r, action, port, *target, *bind)
-	}
-	if action == "tunnel" {
-		forwards, e := parsePortSpecs(tunnelForwards)
-		if e != nil {
-			return fmt.Errorf("--forward: %w", e)
-		}
-		reverses, e := parsePortSpecs(tunnelReverses)
-		if e != nil {
-			return fmt.Errorf("--reverse: %w", e)
-		}
-		return openTunnel(r, forwards, reverses, *forwardTarget, *reverseTarget, *localBind, *remoteBind)
-	}
-	if action == "sessions" {
-		return openSession(Request{})
+	if err = (earlyClientAction{
+		action: action, remote: r, remoteName: chosen, port: port,
+		target: target, bind: bind, forwards: tunnelForwards, reverses: tunnelReverses,
+		forwardTarget: forwardTarget, reverseTarget: reverseTarget, localBind: localBind,
+		remoteBind: remoteBind, openSession: openSession,
+	}).run(); err != nil {
+		return err
 	}
 	origin := ""
 	var originErr error
@@ -421,7 +427,7 @@ func Run(args []string) error {
 		return err
 	}
 	if action == "open" || action == "new" || action == "resume" || action == "run" {
-		if err = syncLocalChangesBeforeSession(r, b, root, chosen, *includeIgnored, isGit, clonePromptReader); err != nil {
+		if err = syncLocalChangesBeforeSession(r, b, root, chosen, *includeIgnored, isGit, clonePromptReader, *chatInterface == "jara" && action != "run"); err != nil {
 			return err
 		}
 	}

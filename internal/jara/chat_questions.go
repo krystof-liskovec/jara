@@ -80,6 +80,7 @@ func (u *chatUI) handleQuestionRequest(m appMessage) error {
 	}
 	request := chatQuestionRequest{message: m, params: params, answers: map[string][]string{}}
 	u.questionRequests = append(u.questionRequests, request)
+	u.activityLabel = "Waiting for input"
 	u.setAgentState("waiting")
 	if len(u.questionRequests) > 1 {
 		u.print("\n" + chatWrappedLines("", fmt.Sprintf("Another input request is queued (%d pending). Answer the current set first.", len(u.questionRequests)), chatQuestionLineWidth))
@@ -246,6 +247,9 @@ func (u *chatUI) answerQuestion(line string) error {
 	}
 	u.questionRequests = u.questionRequests[1:]
 	u.setAgentState(u.currentState())
+	if len(u.questionRequests) == 0 && len(u.approvals) == 0 {
+		u.activityLabel = "Thinking"
+	}
 	u.print("\nAnswers sent to the agent.\n")
 	if len(u.questionRequests) > 0 {
 		renderChatQuestions(u)

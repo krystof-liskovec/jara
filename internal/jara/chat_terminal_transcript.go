@@ -2,6 +2,7 @@ package jara
 
 import (
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -23,6 +24,7 @@ type chatTerminalOutput struct {
 
 type chatTerminalEntry struct {
 	role    string
+	at      time.Time
 	text    strings.Builder
 	bytes   int
 	lines   []chatViewLine
@@ -42,11 +44,21 @@ func (o *chatTerminalOutput) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-func (o *chatTerminalOutput) WriteChatRole(role, text string) { o.append(role, text) }
+func (o *chatTerminalOutput) WriteChatRole(role, text string) {
+	o.appendAt(role, text, time.Now())
+}
+
+func (o *chatTerminalOutput) WriteChatRoleAt(role, text string, at time.Time) {
+	o.appendAt(role, text, at)
+}
 
 func (o *chatTerminalOutput) InteractiveChat() bool { return true }
 
 func (o *chatTerminalOutput) append(role, text string) {
+	o.appendAt(role, text, time.Now())
+}
+
+func (o *chatTerminalOutput) appendAt(role, text string, at time.Time) {
 	text = chatText(text)
 	if text == "" {
 		return
@@ -59,7 +71,7 @@ func (o *chatTerminalOutput) append(role, text string) {
 	if count := len(o.entries); count > 0 && o.entries[count-1].role == role {
 		entry = o.entries[count-1]
 	} else {
-		entry = &chatTerminalEntry{role: role}
+		entry = &chatTerminalEntry{role: role, at: at}
 		o.entries = append(o.entries, entry)
 	}
 	entry.text.WriteString(text)
@@ -155,7 +167,7 @@ func (o *chatTerminalOutput) transcriptLines(width int) []chatViewLine {
 		)
 	}
 	for _, entry := range o.entries {
-		header := expandChatTranscript([]chatViewMessage{{Role: entry.role}}, width)
+		header := expandChatTranscript([]chatViewMessage{{Role: entry.role, At: entry.at}}, width)
 		lines = append(lines, header...)
 		lines = append(lines, entry.lines...)
 		if entry.hasLine {

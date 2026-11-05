@@ -2,12 +2,14 @@ package jara
 
 import (
 	"strings"
+	"time"
 
 	"github.com/rivo/uniseg"
 )
 
 type chatViewMessage struct {
 	Role, Title, Text string
+	At                time.Time
 }
 
 type chatViewModel struct {
@@ -19,6 +21,11 @@ type chatViewModel struct {
 	CursorLine              int
 	CursorColumn            int
 	Suggestions             []chatCompletionChoice
+	Activity                string
+	ActivityElapsed         string
+	ActivityFrame           int
+	ControlModel            string
+	ControlReasoning        string
 	ScrollOffset            int
 	Hints                   []string
 }
@@ -46,20 +53,33 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 
 	headerRows, footerRows := 2, 1
+	controlModel := compactChatModelText(menuText(model.ControlModel), 24)
+	controlReasoning := compactChatModelText(menuText(model.ControlReasoning), 20)
+	controls := "◈ Model " + controlModel + " (F2)  ◉ Reasoning " + controlReasoning + " (F3)"
+	controlLines := []string{controls}
+	controlRows := 1
+	if height >= 8 && uniseg.StringWidth(" "+controls) > width {
+		controlRows = 2
+		controlLines = []string{
+			"◈ Model " + controlModel + " (F2)",
+			"◉ Reasoning " + controlReasoning + " (F3)",
+		}
+	}
 	composerText := sanitizeChatViewText(model.Composer)
 	composerLines, cursorLine, cursorColumn := wrapChatComposer(composerText, model.CursorLine, model.CursorColumn, max(1, width-4))
-	maxInputRows := max(1, min(4, height-headerRows-footerRows-3))
+	maxInputRows := max(1, min(4, height-headerRows-footerRows-controlRows-2))
 	inputRows := max(1, min(maxInputRows, len(composerLines)))
 	composerRows := inputRows + 2
-	spare := max(0, height-headerRows-footerRows-composerRows-1)
+	spare := max(0, height-headerRows-footerRows-controlRows-composerRows-1)
 	completionRows := min(min(6, len(model.Suggestions)), spare)
-	transcriptRows := max(1, height-headerRows-footerRows-composerRows-completionRows)
+	activityRows := 0
+	if model.Activity != "" && spare > completionRows {
+		activityRows = 1
+	}
+	transcriptRows := max(0, height-headerRows-footerRows-controlRows-composerRows-completionRows-activityRows)
 	transcript := model.TranscriptLines
 	if transcript == nil {
 		transcript = expandChatTranscript(model.Messages, width-4)
-	}
-	if len(model.Suggestions) > 0 && completionRows == 0 {
-		transcriptRows = max(1, height-headerRows-footerRows-composerRows)
 	}
 	if len(transcript) == 0 {
 		transcript = chatWelcomeTranscript(transcriptRows, width-2)
@@ -77,6 +97,11 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 			line = visibleTranscript[i]
 		}
 		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, line.role, false, width, palette, color)
+		row++
+	}
+	if activityRows > 0 {
+		line := chatActivityViewLine(model)
+		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, "", false, width, palette, color)
 		row++
 	}
 	choiceStart := chatCompletionWindow(model.Suggestions, completionRows)
@@ -108,6 +133,10 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 	frame.Lines[row] = paintChatViewLine(chatComposerBorder(width, "╰", "╯", " Enter send ", visibleStart+inputRows < len(composerLines)), "composer-border", "", false, width, palette, color)
 	row++
+	for _, control := range controlLines {
+		frame.Lines[row] = paintChatViewLine(" "+fitChatView(control, width-2), "controls", "", false, width, palette, color)
+		row++
+	}
 	frame.Lines[height-1] = paintChatViewLine(chatFooter(model, width, clippedAbove, clippedBelow), "footer", "", false, width, palette, color)
 
 	if cursorLine >= visibleStart && cursorLine < visibleStart+inputRows {
@@ -250,23 +279,63 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		return frame
 	}
 	frame.Lines[0] = paintChatViewLine("JARA / "+menuText(model.Workspace), "header", "", false, width, palette, color)
-	if height > 2 {
-		content := []chatViewLine{}
-		if model.Model != "" || model.State != "" {
-			content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
+	composerRows, controlRows := 1, 0
+	controlModel := compactChatModelText(menuText(model.ControlModel), 24)
+	controlReasoning := compactChatModelText(menuText(model.ControlReasoning), 20)
+	if height > 1 {
+		controlRows = 1
+		combined := "M:" + controlModel + " · R:" + controlReasoning + " (F2/F3)"
+		if height > 3 && uniseg.StringWidth(combined) > width {
+			controlRows = 2
 		}
-		transcript := model.TranscriptLines
-		if transcript == nil {
-			transcript = expandChatTranscript(model.Messages, width)
+	}
+	available := max(0, height-1-composerRows-controlRows)
+	completionRows := min(4, min(len(model.Suggestions), available))
+	activityRows := 0
+	if model.Activity != "" && available > completionRows {
+		activityRows = 1
+	}
+	transcriptRows := max(0, available-completionRows-activityRows)
+	content := []chatViewLine{}
+	if model.Model != "" || model.State != "" {
+		content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
+	}
+	transcript := model.TranscriptLines
+	if transcript == nil {
+		transcript = expandChatTranscript(model.Messages, width)
+	}
+	content = append(content, transcript...)
+	if len(transcript) == 0 {
+		content = append(content, chatWelcomeTranscript(max(0, transcriptRows-len(content)), width)...)
+	}
+	visibleHistory, _, _ := chatTranscriptWindow(content, transcriptRows, model.ScrollOffset)
+	row := 1
+	for index := 0; index < transcriptRows; index++ {
+		line := chatViewLine{kind: "blank"}
+		if index < len(visibleHistory) {
+			line = visibleHistory[index]
 		}
-		content = append(content, transcript...)
-		if len(transcript) == 0 {
-			content = append(content, chatWelcomeTranscript(height-2, width)...)
+		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, line.role, false, width, palette, color)
+		row++
+	}
+	if activityRows > 0 {
+		line := chatActivityViewLine(model)
+		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, "", false, width, palette, color)
+		row++
+	}
+	choiceStart := chatCompletionWindow(model.Suggestions, completionRows)
+	for index := 0; index < completionRows; index++ {
+		choice := model.Suggestions[choiceStart+index]
+		text := "  " + menuText(choice.Value)
+		if choice.Description != "" {
+			text += "  ·  " + menuText(choice.Description)
 		}
-		visible, _, _ := chatTranscriptWindow(content, height-2, model.ScrollOffset)
-		for index, line := range visible {
-			frame.Lines[index+1] = paintChatViewLine(fitChatView(line.text, width), line.kind, line.role, false, width, palette, color)
+		marker := "  "
+		if choice.Selected {
+			marker = "› "
 		}
+		frame.Lines[row] = paintChatViewLine(marker+fitChatView(text, width-2), "completion", "", choice.Selected, width, palette, color)
+		row++
 	}
 	composerLines, cursorLine, cursorColumn := wrapChatComposer(model.Composer, model.CursorLine, model.CursorColumn, max(1, width-2))
 	if len(composerLines) == 0 {
@@ -278,10 +347,27 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	if width < 2 {
 		prefix = ">"
 	}
-	frame.Lines[height-1] = paintChatViewLine(prefix+visible, "composer", "", false, width, palette, color)
-	frame.CursorRow = height - 1
+	composerRow := height - controlRows - 1
+	if controlRows == 1 {
+		controls := "M:" + controlModel + " · R:" + controlReasoning + " (F2/F3)"
+		frame.Lines[height-1] = paintChatViewLine(fitChatView(controls, width), "controls", "", false, width, palette, color)
+	} else if controlRows == 2 {
+		frame.Lines[height-2] = paintChatViewLine(fitChatView("Model: "+controlModel+" (F2)", width), "controls", "", false, width, palette, color)
+		frame.Lines[height-1] = paintChatViewLine(fitChatView("Reasoning: "+controlReasoning+" (F3)", width), "controls", "", false, width, palette, color)
+	}
+	frame.Lines[composerRow] = paintChatViewLine(prefix+visible, "composer", "", false, width, palette, color)
+	frame.CursorRow = composerRow
 	frame.CursorCol = min(width-1, uniseg.StringWidth(prefix)+cursorColumn-start+btoi(leftMore))
 	return frame
+}
+
+func chatActivityViewLine(model chatViewModel) chatViewLine {
+	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	text := spinner[max(0, model.ActivityFrame)%len(spinner)] + "  " + menuText(model.Activity)
+	if model.ActivityElapsed != "" {
+		text += "  ·  " + menuText(model.ActivityElapsed)
+	}
+	return chatViewLine{text: text, kind: "activity"}
 }
 
 func chatViewWindow(text string, width, cursor int) (string, int, bool) {

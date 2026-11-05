@@ -46,6 +46,14 @@ func (u *chatUI) status() string {
 	if u.nextModel != "" {
 		fmt.Fprintf(&b, "Next turns model: %s (selected)\n", u.nextModelLabel)
 	}
+	currentReasoning := u.effectiveReasoning
+	if currentReasoning == "" {
+		currentReasoning = "model default"
+	}
+	fmt.Fprintf(&b, "Reasoning: %s\n", chatReasoningEffortLabel(currentReasoning))
+	if u.nextReasoning != "" {
+		fmt.Fprintf(&b, "Next turns reasoning: %s (selected)\n", chatReasoningEffortLabel(u.nextReasoning))
+	}
 	if u.turn != "" {
 		elapsed := "unknown"
 		if !u.turnStartedAt.IsZero() {
@@ -66,7 +74,7 @@ func (u *chatUI) status() string {
 }
 
 func (u *chatUI) help() string {
-	return "Commands\n/new             Start a new conversation\n/sessions [query] Browse saved sessions in this folder\n/resume [N or ID]  Browse recent sessions or resume an ID\n/models          List available Codex models\n/model ID or N   Select a model for this conversation\n/compose         Write a multi-line message\n/send            Send the composed message\n/discard         Discard the composed message\n/status          Show connection, runtime, and turn state\n/answer N X      Answer question N with option X or text\n/cancel          Stop the current turn\n/approve         Allow the oldest pending request\n/deny            Reject the oldest pending request\n/quit            Exit the conversation\n/help            Show available commands\n\nModel selection applies to this and future turns in this conversation; it does not change Codex defaults.\nType a message to send it to the agent. In /compose, prefix a literal slash line with //.\n"
+	return "Commands\n/new             Start a new conversation\n/sessions [query] Browse saved sessions in this folder\n/resume [N or ID]  Browse recent sessions or resume an ID\n/models          Browse and select available Codex models\n/model [ID or N] Browse models or select one directly\n/reasoning [EFFORT] Select reasoning or browse supported efforts\n/compose         Write a multi-line message\n/send            Send the composed message\n/discard         Discard the composed message\n/status          Show connection, runtime, and turn state\n/answer N X      Answer question N with option X or text\n/cancel          Stop the current turn\n/approve         Allow the oldest pending request\n/deny            Reject the oldest pending request\n/detach          Disconnect and leave the remote session running\n/quit            Stop idle sessions; leave active agents running\n/stop            Stop the remote session and release the workspace\n/help            Show available commands\n\nF2 opens model selection; F3 opens reasoning selection. Choices apply to this and future turns in this conversation; they do not change Codex defaults.\nType a message to send it to the agent. In /compose, prefix a literal slash line with //.\n"
 }
 
 func chatApprovalSummary(m appMessage) (itemID, command string) {

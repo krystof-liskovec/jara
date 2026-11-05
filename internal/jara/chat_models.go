@@ -17,11 +17,18 @@ const (
 )
 
 type codexModel struct {
-	ID          string `json:"id"`
-	Model       string `json:"model"`
-	DisplayName string `json:"displayName"`
-	Hidden      bool   `json:"hidden"`
-	IsDefault   bool   `json:"isDefault"`
+	ID                        string                      `json:"id"`
+	Model                     string                      `json:"model"`
+	DisplayName               string                      `json:"displayName"`
+	Hidden                    bool                        `json:"hidden"`
+	IsDefault                 bool                        `json:"isDefault"`
+	DefaultReasoningEffort    string                      `json:"defaultReasoningEffort"`
+	SupportedReasoningEfforts []chatReasoningEffortOption `json:"supportedReasoningEfforts"`
+}
+
+type chatReasoningEffortOption struct {
+	Value       string `json:"reasoningEffort"`
+	Description string `json:"description"`
 }
 
 type chatModelBrowser struct {
@@ -36,9 +43,11 @@ type chatModelBrowser struct {
 }
 
 type chatTurnRequest struct {
-	model      string
-	generation uint64
-	thread     string
+	model            string
+	effort           string
+	modelGeneration  uint64
+	effortGeneration uint64
+	thread           string
 }
 
 func newChatModelBrowser() *chatModelBrowser {
@@ -290,6 +299,7 @@ func (u *chatUI) finishChatModelList(err error) {
 	if u.models == nil {
 		return
 	}
+	u.pickerRequested = ""
 	u.print("\n" + u.models.fail(err))
 	if !u.busy {
 		u.print("You> ")
@@ -298,6 +308,9 @@ func (u *chatUI) finishChatModelList(err error) {
 
 func (u *chatUI) printChatModels() {
 	if u.models == nil {
+		return
+	}
+	if u.pickerRequested != "" && chatUIIsInteractive(u) {
 		return
 	}
 	u.print("\n" + u.models.render())
@@ -324,6 +337,25 @@ func (u *chatUI) chooseChatModel(value string) error {
 	u.nextModel = model
 	u.nextModelLabel = label
 	u.modelSelectionGeneration++
+	catalogModel := u.modelByID(model)
+	if catalogModel == nil {
+		if u.nextReasoning != "" {
+			u.nextReasoning = ""
+			u.reasoningSelectionGeneration++
+		}
+	} else {
+		effort := u.nextReasoning
+		if effort == "" {
+			effort = u.effectiveReasoning
+		}
+		if !chatSupportsReasoning(catalogModel, effort) {
+			effort = catalogModel.DefaultReasoningEffort
+		}
+		if effort != u.nextReasoning {
+			u.nextReasoning = effort
+			u.reasoningSelectionGeneration++
+		}
+	}
 	return nil
 }
 
@@ -342,7 +374,11 @@ func (u *chatUI) requestTurn(params map[string]any) error {
 	request := chatTurnRequest{thread: u.thread}
 	if u.nextModel != "" {
 		request.model = u.nextModel
-		request.generation = u.modelSelectionGeneration
+		request.modelGeneration = u.modelSelectionGeneration
+	}
+	if u.nextReasoning != "" {
+		request.effort = u.nextReasoning
+		request.effortGeneration = u.reasoningSelectionGeneration
 	}
 	u.pendingTurnModels[id] = request
 	return nil

@@ -11,8 +11,9 @@ type chatCompletionOption struct {
 }
 
 type chatCompletionContext struct {
-	Models   []chatCompletionOption
-	Sessions []chatCompletionOption
+	Models    []chatCompletionOption
+	Reasoning []chatCompletionOption
+	Sessions  []chatCompletionOption
 }
 
 type chatEditorCandidate struct {
@@ -34,6 +35,7 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/resume", description: "Choose a recent saved session", arguments: true},
 	{name: "/model", description: "Select a model for this conversation", arguments: true},
 	{name: "/models", description: "List available Codex models"},
+	{name: "/reasoning", description: "Select a reasoning effort", arguments: true},
 	{name: "/compose", description: "Compose a multi-line message"},
 	{name: "/send", description: "Send the composed message"},
 	{name: "/discard", description: "Discard the composed message"},
@@ -42,7 +44,9 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/cancel", description: "Stop the current turn"},
 	{name: "/approve", description: "Approve the oldest pending request"},
 	{name: "/deny", description: "Reject the oldest pending request"},
-	{name: "/quit", description: "Exit the conversation"},
+	{name: "/detach", description: "Disconnect and leave the remote session running"},
+	{name: "/quit", description: "Stop an idle session; leave an active agent running"},
+	{name: "/stop", description: "Stop the remote session and release the workspace"},
 	{name: "/help", description: "Show available commands"},
 }
 
@@ -65,6 +69,13 @@ func chatCompletionContextFromUI(u *chatUI) chatCompletionContext {
 				label = id
 			}
 			context.Models = append(context.Models, chatCompletionOption{Value: id, Description: label})
+		}
+		if model := u.reasoningModel(); model != nil {
+			for _, option := range model.SupportedReasoningEfforts {
+				context.Reasoning = append(context.Reasoning, chatCompletionOption{
+					Value: option.Value, Description: option.Description,
+				})
+			}
 		}
 	}
 	if u.sessions != nil && u.sessions.complete {
@@ -169,6 +180,8 @@ func argumentOptions(command string, context chatCompletionContext) []chatComple
 		return context.Models
 	case "/resume":
 		return context.Sessions
+	case "/reasoning":
+		return context.Reasoning
 	default:
 		return nil
 	}

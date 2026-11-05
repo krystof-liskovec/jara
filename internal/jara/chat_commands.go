@@ -1,6 +1,9 @@
 package jara
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 func (u *chatUI) line(line string) (bool, error) {
 	if u.composing {
@@ -21,7 +24,18 @@ func (u *chatUI) line(line string) (bool, error) {
 			u.print("\n" + u.status() + "Compose> ")
 			return false, nil
 		case "/quit":
-			return true, nil
+			return true, u.quitSession()
+		case "/detach":
+			if !u.persistentSession {
+				u.print("This conversation cannot be detached from its current session.\nCompose> ")
+				return false, nil
+			}
+			return true, u.sendPersistentExit("jara/detach")
+		case "/stop":
+			if err := u.cancelQuestionRequests("Question request cancelled because the session was stopped."); err != nil {
+				return false, err
+			}
+			return true, u.sendPersistentExit("jara/close")
 		default:
 			if strings.HasPrefix(trimmed, "//") {
 				leading := len(line) - len(strings.TrimLeft(line, " \t"))
@@ -43,10 +57,18 @@ func (u *chatUI) line(line string) (bool, error) {
 	line = strings.TrimSpace(line)
 	switch {
 	case line == "/quit":
-		if err := u.cancelQuestionRequests("User exited the conversation."); err != nil {
+		return true, u.quitSession()
+	case line == "/stop":
+		if err := u.cancelQuestionRequests("Question request cancelled because the session was stopped."); err != nil {
 			return false, err
 		}
-		return true, nil
+		return true, u.sendPersistentExit("jara/close")
+	case line == "/detach":
+		if !u.persistentSession {
+			u.print("This conversation cannot be detached from its current session.\nYou> ")
+			return false, nil
+		}
+		return true, u.sendPersistentExit("jara/detach")
 	case line == "/cancel":
 		return false, u.interrupt()
 	case line == "/approve" || line == "/deny":
@@ -60,6 +82,13 @@ func (u *chatUI) line(line string) (bool, error) {
 		}
 		m := u.approvals[0]
 		u.approvals = u.approvals[1:]
+		if len(u.approvals) > 0 {
+			u.activityLabel = "Waiting for approval"
+		} else if len(u.questionRequests) > 0 {
+			u.activityLabel = "Waiting for input"
+		} else if u.busy {
+			u.activityLabel = "Thinking"
+		}
 		u.setAgentState(u.currentState())
 		return false, u.c.reply(m.ID, map[string]string{"decision": decision})
 	case line == "/status":
@@ -95,19 +124,36 @@ func (u *chatUI) line(line string) (bool, error) {
 		u.print("Searching saved sessions in this folder...\n")
 		return false, nil
 	case line == "/models":
+		if chatUIIsInteractive(u) {
+			u.pickerRequested = "model"
+		}
 		if err := u.startChatModelList(); err != nil {
+			u.pickerRequested = ""
 			u.print("\n" + err.Error() + "\n")
 			if !u.busy {
 				u.print("You> ")
 			}
 			return false, nil
 		}
-		u.print("Loading available Codex models...\n")
+		if !chatUIIsInteractive(u) {
+			u.print("Loading available Codex models...\n")
+		}
 		return false, nil
 	case strings.HasPrefix(line, "/models "):
-		u.print("Use /models to list choices, then /model ID or /model N to select one.\nYou> ")
+		u.print("Use /models or /model to open the model picker; /model ID also selects directly.\nYou> ")
 		return false, nil
 	case line == "/model":
+		if chatUIIsInteractive(u) {
+			u.pickerRequested = "model"
+			if u.models != nil && u.models.complete && u.models.failure == "" {
+				return false, nil
+			}
+			if err := u.startChatModelList(); err != nil {
+				u.pickerRequested = ""
+				u.print("\n" + err.Error() + "\n")
+			}
+			return false, nil
+		}
 		u.print("Use /model ID or /model N to choose a model for this conversation.\nYou> ")
 		return false, nil
 	case strings.HasPrefix(line, "/model "):
@@ -117,6 +163,27 @@ func (u *chatUI) line(line string) (bool, error) {
 			return false, nil
 		}
 		u.print("Model set to " + u.nextModelLabel + " for the next and subsequent turns in this conversation.\nYou> ")
+		return false, nil
+	case line == "/reasoning":
+		if chatUIIsInteractive(u) {
+			u.pickerRequested = "reasoning"
+			if u.models != nil && u.models.complete && u.models.failure == "" {
+				return false, nil
+			}
+			if err := u.startChatModelList(); err != nil {
+				u.pickerRequested = ""
+				u.print("\n" + err.Error() + "\n")
+			}
+			return false, nil
+		}
+		u.print("Use /reasoning EFFORT to select a reasoning level.\nYou> ")
+		return false, nil
+	case strings.HasPrefix(line, "/reasoning "):
+		if err := u.chooseChatReasoning(strings.TrimSpace(strings.TrimPrefix(line, "/reasoning "))); err != nil {
+			u.print("\n" + err.Error() + "\nYou> ")
+			return false, nil
+		}
+		u.print("Reasoning set to " + chatReasoningEffortLabel(u.nextReasoning) + " for the next and subsequent turns.\nYou> ")
 		return false, nil
 	case line == "/answer" || strings.HasPrefix(line, "/answer "):
 		return false, u.answerQuestion(line)
@@ -167,6 +234,43 @@ func (u *chatUI) line(line string) (bool, error) {
 	}
 }
 
+func (u *chatUI) sendPersistentExit(method string) error {
+	if !u.persistentSession {
+		return nil
+	}
+	return u.c.encoder.Encode(map[string]string{"method": method})
+}
+
+func (u *chatUI) quitSession() error {
+	if u.persistentSession {
+		method := "jara/close"
+		if u.agentTurnActive() {
+			method = "jara/detach"
+		}
+		return u.sendPersistentExit(method)
+	}
+	return u.cancelQuestionRequests("User exited the conversation.")
+}
+
+func (u *chatUI) stopIdleSession() error {
+	if !u.persistentSession || u.agentTurnActive() {
+		return nil
+	}
+	return u.sendPersistentExit("jara/close")
+}
+
+func (u *chatUI) agentTurnActive() bool {
+	if u.attachedTurnActive || u.turn != "" {
+		return true
+	}
+	for _, pending := range u.pending {
+		if pending.method == "turn/start" {
+			return true
+		}
+	}
+	return u.threadReady && u.busy
+}
+
 func (u *chatUI) sendDraft() error {
 	if !u.threadReady {
 		u.print("No conversation is open. Resume a session or start a new one first. Your draft is still here.\nCompose> ")
@@ -192,10 +296,15 @@ func (u *chatUI) sendPrompt(message string) error {
 	u.recordRole("user", message)
 	u.busy = true
 	u.cancel = false
+	u.turnStartedAt = time.Now()
+	u.activityLabel = "Thinking"
 	u.setAgentState("running")
 	params := map[string]any{"threadId": u.thread, "input": []any{map[string]any{"type": "text", "text": message}}}
 	if u.nextModel != "" {
 		params["model"] = u.nextModel
+	}
+	if u.nextReasoning != "" {
+		params["effort"] = u.nextReasoning
 	}
 	return u.requestTurn(params)
 }

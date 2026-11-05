@@ -116,6 +116,16 @@ func openRemote(r Remote, q Request) error {
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 	}
+	if q.UserInterface == "jara" && q.ID != "" {
+		usedLocalClient, err := openRemoteJaraClient(r, q)
+		if err != nil || usedLocalClient {
+			return err
+		}
+	}
+	return openRemoteLegacy(r, q)
+}
+
+func openRemoteLegacy(r Remote, q Request) error {
 	if q.UserInterface == "jara" {
 		return remoteMenuResult(interactive(sshCommand(r, true, shellArgs("jara", "_open", token(q)))))
 	}

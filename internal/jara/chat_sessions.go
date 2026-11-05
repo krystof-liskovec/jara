@@ -104,6 +104,18 @@ func (u *chatUI) acceptChatSessionPage(raw json.RawMessage) error {
 		}
 		return nil
 	}
+	if u.resumeLatest {
+		u.resumeLatest = false
+		if len(u.sessions.matches) == 0 {
+			u.sessionPickerRequested = false
+			u.print("\nNo saved conversations found; use /new to start one.\n")
+			if !u.busy {
+				u.print("You> ")
+			}
+			return nil
+		}
+		return u.resumeChatSessionChoice("1")
+	}
 	u.printChatSessionResults()
 	return nil
 }

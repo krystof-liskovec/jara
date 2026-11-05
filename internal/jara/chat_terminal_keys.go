@@ -168,6 +168,10 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		key = chatEditorEnd
 	case "\x1b[3~":
 		key = chatEditorDelete
+	case "\x1bOQ", "\x1b[12~":
+		key = chatEditorModelPicker
+	case "\x1bOR", "\x1b[13~":
+		key = chatEditorReasoningPicker
 	case "\x1b[Z":
 		key = chatEditorTab
 	case "\x1b[5~":

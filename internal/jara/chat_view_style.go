@@ -32,6 +32,10 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		bold = "\x1b[1m"
 	case "welcome-copy":
 		fg = palette.muted
+	case "activity":
+		fg, bold = palette.accent, "\x1b[1m"
+	case "controls":
+		bg, fg = palette.surface, palette.muted
 	case "role-user":
 		bg, fg, bold = palette.surface, palette.green, "\x1b[1m"
 	case "role-assistant", "heading", "bullet":

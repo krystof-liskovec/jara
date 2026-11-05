@@ -9,19 +9,21 @@ import (
 type chatEditorKey string
 
 const (
-	chatEditorText      chatEditorKey = "text"
-	chatEditorPaste     chatEditorKey = "paste"
-	chatEditorLeft      chatEditorKey = "left"
-	chatEditorRight     chatEditorKey = "right"
-	chatEditorHome      chatEditorKey = "home"
-	chatEditorEnd       chatEditorKey = "end"
-	chatEditorBackspace chatEditorKey = "backspace"
-	chatEditorDelete    chatEditorKey = "delete"
-	chatEditorUp        chatEditorKey = "up"
-	chatEditorDown      chatEditorKey = "down"
-	chatEditorTab       chatEditorKey = "tab"
-	chatEditorEnter     chatEditorKey = "enter"
-	chatEditorEscape    chatEditorKey = "escape"
+	chatEditorText            chatEditorKey = "text"
+	chatEditorPaste           chatEditorKey = "paste"
+	chatEditorLeft            chatEditorKey = "left"
+	chatEditorRight           chatEditorKey = "right"
+	chatEditorHome            chatEditorKey = "home"
+	chatEditorEnd             chatEditorKey = "end"
+	chatEditorBackspace       chatEditorKey = "backspace"
+	chatEditorDelete          chatEditorKey = "delete"
+	chatEditorUp              chatEditorKey = "up"
+	chatEditorDown            chatEditorKey = "down"
+	chatEditorTab             chatEditorKey = "tab"
+	chatEditorEnter           chatEditorKey = "enter"
+	chatEditorEscape          chatEditorKey = "escape"
+	chatEditorModelPicker     chatEditorKey = "model-picker"
+	chatEditorReasoningPicker chatEditorKey = "reasoning-picker"
 )
 
 type chatEditorInput struct {

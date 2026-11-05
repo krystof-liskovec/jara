@@ -1,0 +1,47 @@
+//go:build linux || darwin
+
+package jara
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"syscall"
+)
+
+func startChatDaemonProcess(request Request, logPath string) (int, error) {
+	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+	if err != nil {
+		return 0, err
+	}
+	defer log.Close()
+	input, err := os.Open(os.DevNull)
+	if err != nil {
+		return 0, err
+	}
+	defer input.Close()
+	executable, err := os.Executable()
+	if err != nil {
+		return 0, err
+	}
+	cmd := exec.Command(executable, "_chat-daemon", token(request))
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, log, log
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err = cmd.Start(); err != nil {
+		return 0, fmt.Errorf("start persistent Jara session: %w", err)
+	}
+	pid := cmd.Process.Pid
+	if err = cmd.Process.Release(); err != nil {
+		return 0, fmt.Errorf("detach persistent Jara session: %w", err)
+	}
+	return pid, nil
+}
+
+func chatProcessExists(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || err == syscall.EPERM
+}
+
+func chatDaemonTerminationSignals() []os.Signal {
+	return []os.Signal{os.Interrupt, syscall.SIGTERM}
+}

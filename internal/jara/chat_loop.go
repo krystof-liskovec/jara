@@ -33,13 +33,32 @@ func (b *chatDiagnosticBuffer) String() string {
 	return string(append([]byte(nil), b.data...))
 }
 
+type chatLoopOptions struct {
+	cwd, id, workspaceLabel string
+	trackAgentState         bool
+	persistentSession       bool
+	attachedTurnActive      bool
+	resumeAtStart           bool
+	resumeLatest            bool
+}
+
 func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id string) error {
+	return chatLoopWithOptions(c, input, output, chatLoopOptions{cwd: cwd, id: id, trackAgentState: true})
+}
+
+func chatLoopWithOptions(c *appConnection, input io.Reader, output io.Writer, options chatLoopOptions) error {
 	u := &chatUI{
-		c: c, out: output, cwd: cwd, thread: id, busy: true, startedAt: time.Now(),
+		c: c, out: output, cwd: options.cwd, thread: options.id, busy: true, startedAt: time.Now(),
+		workspaceLabel: options.workspaceLabel, trackAgentState: options.trackAgentState,
+		persistentSession:  options.persistentSession,
+		attachedTurnActive: options.attachedTurnActive,
+		resumeAtStart:      options.resumeAtStart, resumeLatest: options.resumeLatest,
 		pending: map[string]chatPending{}, pendingTurnModels: map[string]chatTurnRequest{},
 		items: map[string]json.RawMessage{},
 	}
-	defer clearChatAgentState()
+	if u.trackAgentState {
+		defer clearChatAgentState()
+	}
 	if terminalIn, terminalOut, ok := chatInteractiveFiles(input, output); ok {
 		return chatTerminalLoop(u, terminalIn, terminalOut)
 	}
@@ -49,7 +68,7 @@ func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id strin
 func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 	u.out = output
 	u.setAgentState("starting")
-	u.print("Jara conversation · /help for commands · Ctrl-C cancels a turn\n")
+	u.print("Jara conversation · /help for commands · Ctrl-C cancels a turn; while idle it stops the session\n")
 	if err := u.request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}); err != nil {
 		return err
 	}
@@ -94,11 +113,14 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 			u.setAgentState("idle")
 			return err
 		case <-signals:
-			if u.busy {
+			if u.agentTurnActive() || (u.busy && !u.persistentSession) {
 				if err := u.interrupt(); err != nil {
 					return err
 				}
 			} else {
+				if err := u.stopIdleSession(); err != nil {
+					return err
+				}
 				return nil
 			}
 		case now := <-timer.C:
