@@ -7,8 +7,31 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 )
+
+type chatDiagnosticBuffer struct {
+	mu   sync.Mutex
+	data []byte
+}
+
+func (b *chatDiagnosticBuffer) Write(data []byte) (int, error) {
+	const limit = 32 * 1024
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.data = append(b.data, data...)
+	if len(b.data) > limit {
+		b.data = append([]byte(nil), b.data[len(b.data)-limit:]...)
+	}
+	return len(data), nil
+}
+
+func (b *chatDiagnosticBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return string(append([]byte(nil), b.data...))
+}
 
 func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id string) error {
 	u := &chatUI{

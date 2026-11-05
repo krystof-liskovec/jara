@@ -9,6 +9,7 @@ import (
 func sanitizeChatViewText(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
+	s = strings.ReplaceAll(s, "\t", "    ")
 	parts := strings.Split(s, "\n")
 	for i := range parts {
 		parts[i] = menuText(parts[i])

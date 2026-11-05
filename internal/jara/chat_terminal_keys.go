@@ -62,8 +62,12 @@ func (p *chatTerminalKeyParser) feed(data []byte) []chatTerminalKeyEvent {
 		}
 		b := p.buffer[0]
 		switch b {
-		case '\r', '\n':
+		case '\r':
 			events = append(events, editorEvent(chatEditorEnter))
+			p.buffer = p.buffer[1:]
+		case '\n':
+			// Ctrl+J inserts a newline into the multiline composer.
+			events = append(events, editorEvent(chatEditorText, "\n"))
 			p.buffer = p.buffer[1:]
 		case '\t':
 			events = append(events, editorEvent(chatEditorTab))
@@ -160,7 +164,7 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		key = chatEditorLeft
 	case "\x1b[H", "\x1b[1~", "\x1bOH", "\x1b[7~":
 		key = chatEditorHome
-	case "\x1b[F", "\x1b[1~", "\x1bOF", "\x1b[8~":
+	case "\x1b[F", "\x1bOF", "\x1b[8~":
 		key = chatEditorEnd
 	case "\x1b[3~":
 		key = chatEditorDelete
@@ -171,6 +175,8 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 	case "\x1b[6~":
 		return &chatTerminalKeyEvent{scroll: -1}
 	case "\x1b[4~":
+		key = chatEditorEnd
+	case "\x1b[1;5F":
 		return &chatTerminalKeyEvent{returnToLive: true}
 	default:
 		return nil
