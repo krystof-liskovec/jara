@@ -21,7 +21,7 @@ type chatUI struct {
 	c                            *appConnection
 	out                          io.Writer
 	cwd, thread, turn            string
-	busy, cancel                 bool
+	busy, cancel, planMode       bool
 	threadReady                  bool
 	connected                    bool
 	composing                    bool
@@ -196,8 +196,11 @@ func (u *chatUI) response(m appMessage) error {
 		return nil
 	}
 	delete(u.pending, string(m.ID))
-	if chatGoalRequest(p.method) && p.threadID != "" && p.threadID != u.thread {
+	if (chatGoalRequest(p.method) || p.method == "thread/settings/update") && p.threadID != "" && p.threadID != u.thread {
 		return nil
+	}
+	if p.method == "thread/settings/update" {
+		return u.acceptChatPlanResponse(m, p)
 	}
 	if m.Error != nil {
 		if p.method == "thread/list" {
@@ -271,9 +274,7 @@ func (u *chatUI) response(m appMessage) error {
 		previousThread := u.thread
 		u.thread = r.Thread.ID
 		if previousThread != "" && previousThread != u.thread {
-			u.nextModel = ""
-			u.nextModelLabel = ""
-			u.nextReasoning = ""
+			u.nextModel, u.nextModelLabel, u.nextReasoning, u.planMode = "", "", "", false
 			u.goal = nil
 			u.resetChatSubagentTracking()
 		}
@@ -362,6 +363,9 @@ func (u *chatUI) event(m appMessage) error {
 	if m.Method == "" {
 		return u.response(m)
 	}
+	if m.Method == "thread/settings/updated" {
+		return u.acceptChatPlanUpdate(m.Params)
+	}
 	var p struct {
 		Delta    string
 		Message  string
@@ -425,6 +429,7 @@ func (u *chatUI) event(m appMessage) error {
 		var item chatHistoryItem
 		_ = json.Unmarshal(p.Item, &item)
 		u.items[item.ID] = p.Item
+		u.handleChatPlanItem(m.Method, item)
 		if item.Type == "contextCompaction" {
 			if m.Method == "item/started" {
 				u.activityLabel = "Compacting context"

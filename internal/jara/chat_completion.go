@@ -40,6 +40,7 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/send", description: "Send the composed message"},
 	{name: "/discard", description: "Discard the composed message"},
 	{name: "/goal", description: "Set or manage a persistent goal", arguments: true},
+	{name: "/plan", description: "Switch this conversation to Plan mode", arguments: true},
 	{name: "/schedule", description: "Schedule a prompt in this conversation", arguments: true},
 	{name: "/crunch", description: "Run a prompt through usage-limit pauses", arguments: true},
 	{name: "/goalcrunch", description: "Run a persistent goal through usage-limit pauses", arguments: true},

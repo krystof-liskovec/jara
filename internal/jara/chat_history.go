@@ -66,6 +66,8 @@ func (u *chatUI) renderChatHistory(turns []chatHistoryTurn) {
 			switch item.Type {
 			case "agentMessage":
 				u.printRoleAt("assistant", item.Text+"\n", at)
+			case "plan":
+				u.printRoleAt("assistant", "Plan:\n"+item.Text+"\n", at)
 			case "reasoning":
 				u.renderReasoningSummaryAt(item.Summary, at)
 			case "contextCompaction":

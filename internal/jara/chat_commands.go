@@ -8,6 +8,9 @@ import (
 func (u *chatUI) line(line string) (bool, error) {
 	if u.composing {
 		trimmed := strings.TrimSpace(line)
+		if isChatPlanCommand(trimmed) {
+			return false, u.runChatPlanCommand(trimmed)
+		}
 		if isChatGoalCommand(trimmed) {
 			return false, u.runChatGoalCommand(trimmed)
 		}
@@ -111,6 +114,8 @@ func (u *chatUI) line(line string) (bool, error) {
 		return false, nil
 	case isChatGoalCommand(line):
 		return false, u.runChatGoalCommand(line)
+	case isChatPlanCommand(line):
+		return false, u.runChatPlanCommand(line)
 	case isChatScheduleCommand(line):
 		return false, u.runChatScheduleCommand(line)
 	case isChatCrunchCommand(line):
@@ -324,6 +329,14 @@ func (u *chatUI) sendQueuedPrompt(message string) error {
 func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 	if !u.threadReady {
 		u.print("No conversation is open. Use /resume ID or /new first.\nYou> ")
+		return nil
+	}
+	if u.chatPlanUpdatePending() {
+		if err := u.queuePrompt(u.thread, message); err != nil {
+			u.print("Conversation mode change is pending and the prompt could not be queued: " + err.Error() + "\n" + u.chatPlanPrompt())
+		} else {
+			u.print("Conversation mode change is pending; prompt added to the queue.\n" + u.chatPlanPrompt())
+		}
 		return nil
 	}
 	u.recordRole("user", message)

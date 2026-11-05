@@ -69,7 +69,7 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 	u.out = output
 	u.setAgentState("starting")
 	u.print("Jara conversation · /help for commands · Ctrl-C cancels a turn; while idle it stops the session\n")
-	if err := u.request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}); err != nil {
+	if err := u.request("initialize", chatInitializeParams()); err != nil {
 		return err
 	}
 	lines := make(chan string)
