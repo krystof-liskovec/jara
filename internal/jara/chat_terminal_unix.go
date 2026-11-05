@@ -49,7 +49,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	palette := menuColorsForTerminal()
 	terminalOutput := &chatTerminalOutput{}
 	u.out = terminalOutput
-	if err := u.request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}); err != nil {
+	if err := u.request("initialize", chatInitializeParams()); err != nil {
 		return err
 	}
 	workspace := u.workspaceLabel

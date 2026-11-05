@@ -78,7 +78,7 @@ func (u *chatUI) runChatQueueCommand(line string) error {
 }
 
 func (u *chatUI) dispatchQueuedPrompt() (bool, error) {
-	if !u.threadReady || u.agentTurnActive() {
+	if !u.threadReady || u.agentTurnActive() || u.chatPlanUpdatePending() {
 		return false, nil
 	}
 	for index, prompt := range u.queuedPrompts {

@@ -43,6 +43,11 @@ func (u *chatUI) status() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Status\nConnection: %s\nSession runtime: %s\nConversation: %s\nState: %s\n", connection, runtime, thread, state)
 	fmt.Fprintf(&b, "Model: %s\n", u.effectiveModelLabel())
+	mode := "Default"
+	if u.planMode {
+		mode = "Plan"
+	}
+	fmt.Fprintf(&b, "Mode: %s\n", mode)
 	if u.nextModel != "" {
 		fmt.Fprintf(&b, "Next turns model: %s (selected)\n", u.nextModelLabel)
 	}
@@ -85,6 +90,7 @@ func (u *chatUI) help() string {
 /send            Send the composed message
 /discard         Discard the composed message
 /goal [ARGS]     Set or manage a persistent goal for this conversation
+/plan [PROMPT|off|status] Use Plan mode for this and later turns
 /goalcrunch ...  Run a goal through usage-limit pauses
 /schedule ...    Schedule a prompt for this conversation
 /crunch ...      Run a prompt through usage-limit pauses

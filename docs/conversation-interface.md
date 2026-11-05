@@ -116,6 +116,10 @@ is cleared when that interface exits.
   Goals are stored per conversation and may continue automatically between
   turns. If Goals are disabled, set `goals = true` under `[features]` in Codex's
   `config.toml` and restart Codex.
+- `/plan` switches this conversation to Codex Plan mode for current and future
+  turns. `/plan PROMPT` enables the mode and starts planning that prompt;
+  `/plan off` returns to Default mode, and `/plan status` reports the mode.
+  A completed Plan item is shown in chat.
 - `/crunch PROMPT` works on the task until it is complete, then stops. If Codex
   stops it because usage is exhausted, Jara waits for the reported rate-limit
   reset and continues from the saved conversation. `/goalcrunch OBJECTIVE` sets
