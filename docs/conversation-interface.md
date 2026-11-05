@@ -35,7 +35,9 @@ Type `/` in the composer to open command suggestions. Filter by typing, navigate
 with the arrow keys, and accept a suggestion with Tab or Enter. Acceptance fills
 the composer; it does not execute the command. Escape dismisses the dropdown.
 `/model ` and `/resume ` offer contextual choices from the most recently loaded
-`/models` and `/sessions` results. Normal Enter submits the completed input.
+`/models` and `/sessions` results. Enter submits completed input; Alt+Enter or
+Ctrl+J inserts a newline. PageUp and PageDown scroll the transcript while the
+composer keeps its draft.
 
 Bracketed paste inserts text, including multiple lines, without submitting it.
 Input history and cursor editing work in the composer. Text typed while an agent
@@ -43,8 +45,9 @@ is streaming remains a draft if submission is unavailable; control commands such
 as `/cancel`, `/answer`, and `/approve` remain usable during a turn.
 
 The theme follows the terminal background; `JARA_THEME=dark` or
-`JARA_THEME=light` selects an explicit palette on the environment. `NO_COLOR`
-retains the layout with monochrome styling.
+`JARA_THEME=light` selects an explicit palette in the Jara environment.
+`NO_COLOR` retains the layout with monochrome styling. Set
+`JARA_CHAT_PLAIN=1` to use the line-oriented interface inside a terminal.
 
 ## Conversation controls
 
@@ -79,9 +82,9 @@ the terminal. `/help` lists the controls:
 
 Use `/help` to discover commands without leaving the conversation. Commands are
 written on separate lines so they remain readable in narrow SSH terminals.
-For a phone SSH client, use `/compose`, paste or type the message, then enter
-`/send` on its own line. Outside compose mode, unknown slash commands display
-help guidance instead of sending an accidental prompt.
+For a phone SSH client, paste or type directly into the composer, then press
+Enter to send. Outside compose mode, unknown slash commands display help
+guidance instead of sending an accidental prompt.
 
 ## Agent activity and detached sessions
 

@@ -187,6 +187,7 @@ func cleanChatEditorText(text string) string {
 	text = strings.ToValidUTF8(text, "�")
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
+	text = strings.ReplaceAll(text, "\t", "    ")
 	return chatText(text)
 }
 
@@ -392,9 +393,7 @@ func (e *chatEditor) refreshCompletions(resetSelection bool) {
 		e.selected = 0
 	}
 	e.candidates = chatCompletionCandidates(e.text, e.cursor, e.context)
-	_ = start
-	_ = end
-	if e.selected >= len(list) {
-		e.selected = max(0, len(list)-1)
+	if e.selected >= len(e.candidates) {
+		e.selected = max(0, len(e.candidates)-1)
 	}
 }

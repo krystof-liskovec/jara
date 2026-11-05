@@ -174,9 +174,11 @@ func chatComposerBorder(width int, left, right, label string, more bool) string 
 		marker = " ↑"
 	}
 	label = label + marker + " "
-	remaining := max(0, width-2-unisegStringWidth(left+right+label))
+	remaining := max(0, width-unisegStringWidth(left+right+label))
 	return left + label + strings.Repeat("─", remaining) + right
 }
+
+func unisegStringWidth(text string) int { return uniseg.StringWidth(text) }
 
 func chatTranscriptWindow(lines []chatViewLine, height, offset int) ([]chatViewLine, bool, bool) {
 	if height <= 0 || len(lines) == 0 {
@@ -202,22 +204,73 @@ func chatComposerWindow(lines []string, cursor, height int) ([]string, int) {
 
 func renderCompactChatView(model chatViewModel, width, height int, palette menuPalette, color bool) chatFrame {
 	frame := chatFrame{Lines: make([]string, height), CursorRow: -1}
-	content := []chatViewLine{{text: "JARA / " + menuText(model.Workspace), kind: "header"}}
-	if model.Model != "" || model.State != "" {
-		content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
+	for row := range frame.Lines {
+		frame.Lines[row] = paintChatViewLine(strings.Repeat(" ", width), "canvas", "", false, width, palette, color)
 	}
-	transcript := expandChatTranscript(model.Messages, width)
-	content = append(content, transcript...)
-	if len(content) == 0 {
-		content = []chatViewLine{{text: "JARA", kind: "header"}}
+	if height == 0 {
+		return frame
 	}
-	start := max(0, len(content)-height)
-	for row := 0; row < height; row++ {
-		line := chatViewLine{kind: "blank"}
-		if start+row < len(content) {
-			line = content[start+row]
+	frame.Lines[0] = paintChatViewLine("JARA / "+menuText(model.Workspace), "header", "", false, width, palette, color)
+	if height > 2 {
+		content := []chatViewLine{}
+		if model.Model != "" || model.State != "" {
+			content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
 		}
-		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, line.role, false, width, palette, color)
+		content = append(content, expandChatTranscript(model.Messages, width)...)
+		visible, _, _ := chatTranscriptWindow(content, height-2, model.ScrollOffset)
+		for index, line := range visible {
+			frame.Lines[index+1] = paintChatViewLine(fitChatView(line.text, width), line.kind, line.role, false, width, palette, color)
+		}
 	}
+	composerLines, cursorLine, cursorColumn := wrapChatComposer(model.Composer, model.CursorLine, model.CursorColumn, max(1, width-2))
+	if len(composerLines) == 0 {
+		composerLines = []string{""}
+	}
+	cursorLine = min(max(0, cursorLine), len(composerLines)-1)
+	visible, start, leftMore := chatViewWindow(composerLines[cursorLine], max(0, width-2), cursorColumn)
+	prefix := "> "
+	if width < 2 {
+		prefix = ">"
+	}
+	frame.Lines[height-1] = paintChatViewLine(prefix+visible, "composer", "", false, width, palette, color)
+	frame.CursorRow = height - 1
+	frame.CursorCol = min(width-1, uniseg.StringWidth(prefix)+cursorColumn-start+btoi(leftMore))
 	return frame
+}
+
+func chatViewWindow(text string, width, cursor int) (string, int, bool) {
+	if width <= 0 {
+		return "", 0, false
+	}
+	if uniseg.StringWidth(text) <= width {
+		return text, 0, false
+	}
+	start := max(0, cursor-width+1)
+	leftMore := start > 0
+	available := width
+	if leftMore {
+		available--
+	}
+	var b strings.Builder
+	position, used := 0, 0
+	g := uniseg.NewGraphemes(text)
+	for g.Next() {
+		part, cells := g.Str(), g.Width()
+		if position >= start && used+cells <= available {
+			b.WriteString(part)
+			used += cells
+		}
+		position += cells
+	}
+	if leftMore {
+		return "‹" + b.String(), start, true
+	}
+	return b.String(), start, false
+}
+
+func btoi(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }

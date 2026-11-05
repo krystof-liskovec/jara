@@ -2,6 +2,7 @@ package jara
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 )
@@ -76,10 +77,23 @@ func runJaraChat(q Request) error {
 	}
 	publishChatAgentState("starting")
 	defer clearChatAgentState()
-	connection, err := startChatServer(binary, args, os.Stderr)
+	var diagnostics *chatDiagnosticBuffer
+	serverStderr := io.Writer(os.Stderr)
+	if _, _, interactive := chatInteractiveFiles(os.Stdin, os.Stdout); interactive {
+		diagnostics = &chatDiagnosticBuffer{}
+		serverStderr = diagnostics
+	}
+	connection, err := startChatServer(binary, args, serverStderr)
 	if err != nil {
+		if diagnostics != nil && diagnostics.String() != "" {
+			return fmt.Errorf("%w\nCodex app-server diagnostics:\n%s", err, chatText(diagnostics.String()))
+		}
 		return err
 	}
 	defer connection.close()
-	return chatLoop(connection, os.Stdin, os.Stdout, cwd, id)
+	err = chatLoop(connection, os.Stdin, os.Stdout, cwd, id)
+	if err != nil && diagnostics != nil && diagnostics.String() != "" {
+		return fmt.Errorf("%w\nCodex app-server diagnostics:\n%s", err, chatText(diagnostics.String()))
+	}
+	return err
 }
