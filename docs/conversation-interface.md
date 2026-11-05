@@ -43,7 +43,10 @@ Interactive terminals use a full-screen conversation view with a persistent
 workspace/model/activity header, styled user/agent/tool messages, and a bordered
 composer. The transcript scrolls independently of your draft and reflows when
 the terminal is resized. Narrow terminals use the same controls with a compact
-layout. Plain output remains available for pipes and `TERM=dumb` terminals.
+layout. Message groups have clearer spacing, and Codex's concise reasoning
+summaries appear inline as progress updates, such as command or exploration
+activity. The interface does not display raw reasoning text. Plain output remains
+available for pipes and `TERM=dumb` terminals.
 
 Type `/` in the composer to open command suggestions. Filter by typing, navigate
 with the arrow keys, and accept a suggestion with Tab or Enter. Acceptance fills
