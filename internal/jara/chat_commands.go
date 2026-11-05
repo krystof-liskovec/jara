@@ -68,7 +68,22 @@ func (u *chatUI) line(line string) (bool, error) {
 	case line == "/help":
 		u.print("\n" + u.help() + "You> ")
 		return false, nil
+	case line == "/resume":
+		u.sessionPickerRequested = true
+		if err := u.startChatSessionSearch(""); err != nil {
+			u.sessionPickerRequested = false
+			u.print("\n" + err.Error() + "\n")
+			if !u.busy {
+				u.print("You> ")
+			}
+			return false, nil
+		}
+		if !chatUIIsInteractive(u) {
+			u.print("Loading recent sessions, newest first...\n")
+		}
+		return false, nil
 	case line == "/sessions" || strings.HasPrefix(line, "/sessions ") || strings.HasPrefix(line, "/sessions\t"):
+		u.sessionPickerRequested = false
 		query := strings.TrimSpace(line[len("/sessions"):])
 		if err := u.startChatSessionSearch(query); err != nil {
 			u.print("\n" + err.Error() + "\n")
@@ -142,9 +157,6 @@ func (u *chatUI) line(line string) (bool, error) {
 			return false, nil
 		}
 		return false, u.open(target)
-	case line == "/resume":
-		u.print("Use /resume N to open a listed session or /resume ID for a conversation ID.\nYou> ")
-		return false, nil
 	case line == "/new":
 		return false, u.open("")
 	case line == "":

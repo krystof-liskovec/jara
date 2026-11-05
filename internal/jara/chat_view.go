@@ -13,6 +13,7 @@ type chatViewMessage struct {
 type chatViewModel struct {
 	Workspace, Model, State string
 	Messages                []chatViewMessage
+	TranscriptLines         []chatViewLine
 	Composer                string
 	CursorByte              int
 	CursorLine              int
@@ -53,12 +54,15 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	spare := max(0, height-headerRows-footerRows-composerRows-1)
 	completionRows := min(min(6, len(model.Suggestions)), spare)
 	transcriptRows := max(1, height-headerRows-footerRows-composerRows-completionRows)
-	transcript := expandChatTranscript(model.Messages, width-4)
-	if len(transcript) == 0 {
-		transcript = []chatViewLine{{text: "Start a conversation or type /help for commands.", kind: "empty"}}
+	transcript := model.TranscriptLines
+	if transcript == nil {
+		transcript = expandChatTranscript(model.Messages, width-4)
 	}
 	if len(model.Suggestions) > 0 && completionRows == 0 {
 		transcriptRows = max(1, height-headerRows-footerRows-composerRows)
+	}
+	if len(transcript) == 0 {
+		transcript = chatWelcomeTranscript(transcriptRows, width-2)
 	}
 	visibleTranscript, clippedAbove, clippedBelow := chatTranscriptWindow(transcript, transcriptRows, model.ScrollOffset)
 
@@ -99,7 +103,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		if i < len(composerParts) {
 			content = composerParts[i]
 		}
-		frame.Lines[row] = paintChatViewLine("│ "+fitChatView(content, innerWidth)+" │", "composer", "", false, width, palette, color)
+		frame.Lines[row] = paintChatViewLine("  "+fitChatView(content, innerWidth)+"  ", "composer", "", false, width, palette, color)
 		row++
 	}
 	frame.Lines[row] = paintChatViewLine(chatComposerBorder(width, "╰", "╯", " Enter send ", visibleStart+inputRows < len(composerLines)), "composer-border", "", false, width, palette, color)
@@ -108,7 +112,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 
 	if cursorLine >= visibleStart && cursorLine < visibleStart+inputRows {
 		frame.CursorRow = composerStart + 1 + cursorLine - visibleStart
-		frame.CursorCol = min(width-2, 2+max(0, cursorColumn))
+		frame.CursorCol = min(width-1, 2+max(0, cursorColumn))
 	}
 	return frame
 }
@@ -119,25 +123,60 @@ func chatViewHeader(model chatViewModel, width int, sub bool) string {
 		if workspace == "" {
 			workspace = "Workspace"
 		}
-		return "JARA  /  " + workspace
+		return "✦ JARA  /  " + workspace
 	}
 	modelName := strings.TrimSpace(menuText(model.Model))
 	state := strings.TrimSpace(menuText(model.State))
-	if modelName == "" {
+	if modelName == "" || modelName == "not reported by Codex" {
 		modelName = "Codex"
 	}
 	if state == "" {
 		state = "idle"
 	}
-	return "" + modelName + "   ·   " + state
+	return modelName + "   ·   " + state
+}
+
+func chatWelcomeTranscript(rows, width int) []chatViewLine {
+	content := []chatViewLine{
+		{text: "✦", kind: "welcome-mark"},
+		{text: "Ready when you are", kind: "welcome-title"},
+		{text: "Ask Codex to explore or change this project.", kind: "welcome-copy"},
+		{text: "/resume  recent sessions     /help  command guide", kind: "welcome-hint"},
+	}
+	top := max(0, (rows-len(content))/2)
+	lines := make([]chatViewLine, top, max(rows, top+len(content)))
+	for i := range lines {
+		lines[i].kind = "welcome-space"
+	}
+	for _, line := range content {
+		line.text = centerChatViewText(line.text, width)
+		lines = append(lines, line)
+	}
+	for len(lines) < rows {
+		lines = append(lines, chatViewLine{kind: "welcome-space"})
+	}
+	return lines
+}
+
+func centerChatViewText(text string, width int) string {
+	return strings.Repeat(" ", max(0, (width-uniseg.StringWidth(text))/2)) + text
 }
 
 func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool) string {
 	hints := model.Hints
 	if len(hints) == 0 {
-		hints = []string{"PgUp/PgDn history", "Tab complete", "Enter send", "Ctrl+C quit"}
+		hints = []string{"↑↓ choose", "Tab complete", "Enter send", "Ctrl+C quit"}
 	}
 	if clippedAbove || clippedBelow {
+		if strings.Contains(strings.Join(hints, " "), "Esc close") {
+			hints = []string{"↑↓ choose", "Enter open", "Esc close"}
+		} else {
+			interrupt := "Ctrl+C quit"
+			if strings.Contains(strings.Join(hints, " "), "cancel") {
+				interrupt = "Ctrl+C cancel"
+			}
+			hints = []string{"PgUp/Dn history", "Ctrl+J newline", "Enter send", interrupt}
+		}
 		markers := []string{}
 		if clippedAbove {
 			markers = append(markers, "↑ older")
@@ -147,7 +186,7 @@ func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool)
 		}
 		hints = append(hints, strings.Join(markers, " "))
 	}
-	return strings.Join(hints, "  ·  ")
+	return strings.Join(hints, "  ")
 }
 
 func chatCompletionWindow(choices []chatCompletionChoice, rows int) int {
@@ -216,7 +255,14 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		if model.Model != "" || model.State != "" {
 			content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
 		}
-		content = append(content, expandChatTranscript(model.Messages, width)...)
+		transcript := model.TranscriptLines
+		if transcript == nil {
+			transcript = expandChatTranscript(model.Messages, width)
+		}
+		content = append(content, transcript...)
+		if len(transcript) == 0 {
+			content = append(content, chatWelcomeTranscript(height-2, width)...)
+		}
 		visible, _, _ := chatTranscriptWindow(content, height-2, model.ScrollOffset)
 		for index, line := range visible {
 			frame.Lines[index+1] = paintChatViewLine(fitChatView(line.text, width), line.kind, line.role, false, width, palette, color)

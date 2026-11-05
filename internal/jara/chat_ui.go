@@ -36,6 +36,7 @@ type chatUI struct {
 	approvals                []appMessage
 	questionRequests         []chatQuestionRequest
 	sessions                 *chatSessionBrowser
+	sessionPickerRequested   bool
 	models                   *chatModelBrowser
 	items                    map[string]json.RawMessage
 }
@@ -50,6 +51,10 @@ func chatText(s string) string {
 	}, s)
 }
 func (u *chatUI) print(s string) { fmt.Fprint(u.out, chatText(s)) }
+func chatUIIsInteractive(u *chatUI) bool {
+	marker, ok := u.out.(interface{ InteractiveChat() bool })
+	return ok && marker.InteractiveChat()
+}
 func (u *chatUI) printRole(role, s string) {
 	s = chatText(s)
 	if writer, ok := u.out.(interface{ WriteChatRole(string, string) }); ok {
@@ -217,7 +222,9 @@ func (u *chatUI) response(m appMessage) error {
 		if os.Getenv("TMUX") != "" {
 			_ = tmux("set-option", "-t", os.Getenv("TMUX_PANE"), "@jara_codex_thread", u.thread).Run()
 		}
-		u.print("\nConversation " + u.thread + "\n")
+		if !chatUIIsInteractive(u) {
+			u.print("\nConversation " + u.thread + "\n")
+		}
 		for _, t := range r.Thread.Turns {
 			for _, item := range t.Items {
 				if item.Type == "agentMessage" {

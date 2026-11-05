@@ -21,15 +21,15 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 	var lines []chatViewLine
 	for _, message := range messages {
 		role := message.Role
-		label := "System"
+		label := "• Jara"
 		kind := "role-system"
 		switch role {
 		case "user":
-			label, kind = "You", "role-user"
+			label, kind = "● You", "role-user"
 		case "assistant":
-			label, kind = "Codex", "role-assistant"
+			label, kind = "✦ Codex", "role-assistant"
 		case "tool":
-			label, kind = "Tool", "role-tool"
+			label, kind = "↳ Tool", "role-tool"
 		}
 		title := strings.TrimSpace(menuText(message.Title))
 		if title != "" {
@@ -50,30 +50,32 @@ func expandChatMessage(text string, width int, role string) []chatViewLine {
 	var lines []chatViewLine
 	inCode := false
 	for _, raw := range strings.Split(text, "\n") {
-		trimmed := strings.TrimSpace(raw)
-		if strings.HasPrefix(trimmed, "```") {
-			inCode = !inCode
-			continue
-		}
-		if inCode {
-			lines = append(lines, wrapChatLine(raw, width, "  │ ", "  │ ", "code", role, true)...)
-			continue
-		}
-		if trimmed == "" {
-			lines = append(lines, chatViewLine{kind: "body", role: role})
-			continue
-		}
-		if prefix, heading, ok := chatMarkdownHeading(raw); ok {
-			lines = append(lines, wrapChatLine(heading, width, prefix, "   ", "heading", role, false)...)
-			continue
-		}
-		if prefix, body, ok := chatMarkdownBullet(raw); ok {
-			lines = append(lines, wrapChatLine(body, width, prefix, "    ", "bullet", role, false)...)
-			continue
-		}
-		lines = append(lines, wrapChatLine(raw, width, "  ", "  ", "body", role, false)...)
+		row, nextCode := expandChatTranscriptLine(raw, width, role, inCode)
+		lines = append(lines, row...)
+		inCode = nextCode
 	}
 	return lines
+}
+
+func expandChatTranscriptLine(raw string, width int, role string, inCode bool) ([]chatViewLine, bool) {
+	raw = menuText(strings.ReplaceAll(raw, "\t", "    "))
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "```") {
+		return nil, !inCode
+	}
+	if inCode {
+		return wrapChatLine(raw, width, "  │ ", "  │ ", "code", role, true), inCode
+	}
+	if trimmed == "" {
+		return []chatViewLine{{kind: "body", role: role}}, inCode
+	}
+	if prefix, body, ok := chatMarkdownHeading(raw); ok {
+		return wrapChatLine(body, width, prefix, "   ", "heading", role, false), inCode
+	}
+	if prefix, body, ok := chatMarkdownBullet(raw); ok {
+		return wrapChatLine(body, width, prefix, "    ", "bullet", role, false), inCode
+	}
+	return wrapChatLine(raw, width, "  ", "  ", "body", role, false), inCode
 }
 
 func chatMarkdownHeading(line string) (prefix, body string, ok bool) {
