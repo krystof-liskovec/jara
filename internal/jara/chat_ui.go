@@ -50,6 +50,8 @@ type chatUI struct {
 	sessionPickerRequested       bool
 	models                       *chatModelBrowser
 	items                        map[string]json.RawMessage
+	reasoningSummaryStreamed     map[string]bool
+	reasoningSummaryIndexes      map[string]int
 }
 
 // Text from the model and tools is untrusted terminal content.
@@ -234,9 +236,10 @@ func (u *chatUI) response(m appMessage) error {
 				Turns           []struct {
 					StartedAt *int64 `json:"startedAt"`
 					Items     []struct {
-						Type        string `json:"type"`
-						Text        string `json:"text"`
-						StartedAtMs *int64 `json:"startedAtMs"`
+						Type        string                     `json:"type"`
+						Text        string                     `json:"text"`
+						StartedAtMs *int64                     `json:"startedAtMs"`
+						Summary     []chatReasoningSummaryPart `json:"summary"`
 						Content     []struct {
 							Type string `json:"type"`
 							Text string `json:"text"`
@@ -293,6 +296,8 @@ func (u *chatUI) response(m appMessage) error {
 				switch item.Type {
 				case "agentMessage":
 					u.printRoleAt("assistant", item.Text+"\n", at)
+				case "reasoning":
+					u.renderReasoningSummaryAt(item.Summary, at)
 				case "userMessage":
 					var text strings.Builder
 					for _, content := range item.Content {
@@ -363,8 +368,9 @@ func (u *chatUI) event(m appMessage) error {
 			ID, Status string
 			Error      *struct{ Message string }
 		}
-		Item   json.RawMessage
-		ItemID string `json:"itemId"`
+		Item         json.RawMessage
+		ItemID       string `json:"itemId"`
+		SummaryIndex int    `json:"summaryIndex"`
 	}
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return err
@@ -385,6 +391,8 @@ func (u *chatUI) event(m appMessage) error {
 		}
 	}
 	switch m.Method {
+	case "item/reasoning/summaryTextDelta":
+		u.streamReasoningSummary(p.ItemID, p.SummaryIndex, p.Delta)
 	case "turn/started":
 		u.attachedTurnActive = true
 		u.turn = p.Turn.ID
@@ -405,10 +413,14 @@ func (u *chatUI) event(m appMessage) error {
 	case "item/started", "item/completed":
 		var item struct {
 			ID, Type, Command, Status string
-			StartedAtMs               *int64 `json:"startedAtMs"`
+			StartedAtMs               *int64                     `json:"startedAtMs"`
+			Summary                   []chatReasoningSummaryPart `json:"summary"`
 		}
 		_ = json.Unmarshal(p.Item, &item)
 		u.items[item.ID] = p.Item
+		if item.Type == "reasoning" && m.Method == "item/completed" {
+			u.finishReasoningSummary(item.ID, item.Summary)
+		}
 		if m.Method == "item/started" && item.Type == "commandExecution" {
 			u.activityLabel = "Running command"
 			at := time.Time{}
@@ -429,6 +441,7 @@ func (u *chatUI) event(m appMessage) error {
 			u.activityLabel = "Thinking"
 		}
 	case "turn/completed":
+		u.finishAllReasoningSummaries()
 		if err := u.cancelQuestionRequests("Turn ended before the question was answered."); err != nil {
 			return err
 		}

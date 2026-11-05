@@ -37,8 +37,8 @@ func (o *chatTerminalOutput) Write(data []byte) (int, error) {
 	text := string(data)
 	text = strings.ReplaceAll(text, "You> ", "")
 	text = strings.ReplaceAll(text, "Compose> ", "")
-	if strings.HasPrefix(text, "Jara conversation · /help for commands · Ctrl-C cancels a turn\n") {
-		text = strings.TrimPrefix(text, "Jara conversation · /help for commands · Ctrl-C cancels a turn\n")
+	if strings.HasPrefix(text, "Jara conversation · /help for commands · Ctrl-C cancels a turn; while idle it stops the session\n") {
+		text = strings.TrimPrefix(text, "Jara conversation · /help for commands · Ctrl-C cancels a turn; while idle it stops the session\n")
 	}
 	o.append("system", text)
 	return len(data), nil

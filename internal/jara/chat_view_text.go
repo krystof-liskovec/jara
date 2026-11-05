@@ -20,6 +20,7 @@ func sanitizeChatViewText(s string) string {
 
 func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine {
 	var lines []chatViewLine
+	previousRole := ""
 	for _, message := range messages {
 		role := message.Role
 		label := "• Jara"
@@ -30,7 +31,12 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 		case "assistant":
 			label, kind = "✦ Codex", "role-assistant"
 		case "tool":
-			label, kind = "↳ Tool", "role-tool"
+			label, kind = "⌁ Tool", "role-tool"
+		case "progress":
+			label, kind = "↳ Codex progress", "role-progress"
+		}
+		if previousRole != "" && role != "progress" && previousRole != "progress" {
+			lines = append(lines, chatViewLine{kind: "message-gap"})
 		}
 		title := strings.TrimSpace(menuText(message.Title))
 		if title != "" {
@@ -41,6 +47,7 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 		}
 		lines = append(lines, chatViewLine{text: label, kind: kind, role: role})
 		lines = append(lines, expandChatMessage(message.Text, width, role)...)
+		previousRole = role
 	}
 	return lines
 }

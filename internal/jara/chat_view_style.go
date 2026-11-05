@@ -20,6 +20,8 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		bg = palette.surface
 	case "subheader":
 		bg, fg = palette.surface, palette.muted
+	case "message-gap":
+		bg = palette.canvas
 	case "footer", "scroll", "empty":
 		fg = palette.muted
 	case "welcome-space":
@@ -43,8 +45,19 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		if kind != "bullet" {
 			bold = "\x1b[1m"
 		}
+	case "role-progress":
+		bg, fg = palette.surface, palette.accent
 	case "role-tool", "role-system":
 		bg, fg = palette.surface, palette.muted
+	case "body":
+		switch role {
+		case "user":
+			bg = palette.surface
+		case "tool":
+			bg, fg = palette.surface, palette.muted
+		case "progress":
+			bg, fg, bold = palette.surface, palette.muted, "\x1b[3m"
+		}
 	case "code":
 		fg = palette.green
 	case "completion":

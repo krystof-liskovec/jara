@@ -299,7 +299,11 @@ func (u *chatUI) sendPrompt(message string) error {
 	u.turnStartedAt = time.Now()
 	u.activityLabel = "Thinking"
 	u.setAgentState("running")
-	params := map[string]any{"threadId": u.thread, "input": []any{map[string]any{"type": "text", "text": message}}}
+	params := map[string]any{
+		"threadId": u.thread,
+		"input":    []any{map[string]any{"type": "text", "text": message}},
+		"summary":  "concise",
+	}
 	if u.nextModel != "" {
 		params["model"] = u.nextModel
 	}
