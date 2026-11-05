@@ -11,8 +11,11 @@ import (
 )
 
 type chatPending struct {
-	method   string
-	deadline time.Time
+	method       string
+	deadline     time.Time
+	action       string
+	threadID     string
+	queuedPrompt string
 }
 type chatUI struct {
 	c                            *appConnection
@@ -24,6 +27,7 @@ type chatUI struct {
 	composing                    bool
 	draft                        []string
 	draftBytes                   int
+	queuedPrompts                []chatQueuedPrompt
 	startedAt                    time.Time
 	turnStartedAt                time.Time
 	workspaceLabel               string
@@ -50,8 +54,11 @@ type chatUI struct {
 	sessionPickerRequested       bool
 	models                       *chatModelBrowser
 	items                        map[string]json.RawMessage
+	goal                         *chatThreadGoal
 	reasoningSummaryStreamed     map[string]bool
 	reasoningSummaryIndexes      map[string]int
+	subagentPaths                map[string]string
+	subagentItemDisplays         map[string]string
 }
 
 // Text from the model and tools is untrusted terminal content.
@@ -92,11 +99,18 @@ func (u *chatUI) recordRole(role, s string) {
 	}
 }
 func (u *chatUI) request(method string, params any) error {
+	return u.requestWithAction(method, params, "")
+}
+func (u *chatUI) requestWithAction(method string, params any, action string) error {
 	id, err := u.c.request(method, params)
 	if err != nil {
 		return err
 	}
-	u.pending[id] = chatPending{method, time.Now().Add(30 * time.Second)}
+	pending := chatPending{method: method, deadline: time.Now().Add(30 * time.Second), action: action}
+	if chatGoalRequest(method) {
+		pending.threadID = u.thread
+	}
+	u.pending[id] = pending
 	return nil
 }
 func (u *chatUI) setAgentState(state string) {
@@ -182,6 +196,9 @@ func (u *chatUI) response(m appMessage) error {
 		return nil
 	}
 	delete(u.pending, string(m.ID))
+	if chatGoalRequest(p.method) && p.threadID != "" && p.threadID != u.thread {
+		return nil
+	}
 	if m.Error != nil {
 		if p.method == "thread/list" {
 			err := fmt.Errorf("Codex app-server rejected thread/list: %s", chatText(m.Error.Message))
@@ -203,7 +220,22 @@ func (u *chatUI) response(m appMessage) error {
 			}
 			return nil
 		}
+		if chatGoalRequest(p.method) {
+			u.print("\n" + chatGoalRequestError(m.Error.Message) + "\n" + u.chatGoalPrompt())
+			return nil
+		}
+		if chatScheduleRequest(p.method) {
+			u.print("\nScheduled prompt request failed: " + chatText(m.Error.Message) + "\n" + u.schedulePrompt())
+			return nil
+		}
+		if chatCrunchRequest(p.method) {
+			u.print("\nCrunch request failed: " + chatText(m.Error.Message) + "\n" + u.schedulePrompt())
+			return nil
+		}
 		if p.method == "turn/start" {
+			if p.queuedPrompt != "" {
+				u.queuedPrompts = append([]chatQueuedPrompt{{threadID: p.threadID, text: p.queuedPrompt}}, u.queuedPrompts...)
+			}
 			request, tracked := u.pendingTurnModels[string(m.ID)]
 			delete(u.pendingTurnModels, string(m.ID))
 			if tracked && request.thread != u.thread {
@@ -229,27 +261,7 @@ func (u *chatUI) response(m appMessage) error {
 		}
 		return u.open(u.thread)
 	case "thread/start", "thread/resume":
-		var r struct {
-			Thread struct {
-				ID              string  `json:"id"`
-				ReasoningEffort *string `json:"reasoningEffort"`
-				Turns           []struct {
-					StartedAt *int64 `json:"startedAt"`
-					Items     []struct {
-						Type        string                     `json:"type"`
-						Text        string                     `json:"text"`
-						StartedAtMs *int64                     `json:"startedAtMs"`
-						Summary     []chatReasoningSummaryPart `json:"summary"`
-						Content     []struct {
-							Type string `json:"type"`
-							Text string `json:"text"`
-						} `json:"content"`
-					} `json:"items"`
-				} `json:"turns"`
-			}
-			Model           string  `json:"model"`
-			ReasoningEffort *string `json:"reasoningEffort"`
-		}
+		var r chatThreadResponse
 		if err := json.Unmarshal(m.Result, &r); err != nil {
 			return err
 		}
@@ -262,6 +274,8 @@ func (u *chatUI) response(m appMessage) error {
 			u.nextModel = ""
 			u.nextModelLabel = ""
 			u.nextReasoning = ""
+			u.goal = nil
+			u.resetChatSubagentTracking()
 		}
 		u.setEffectiveModel(r.Model)
 		u.effectiveReasoning = ""
@@ -285,37 +299,24 @@ func (u *chatUI) response(m appMessage) error {
 		if !chatUIIsInteractive(u) {
 			u.print("\nConversation " + u.thread + "\n")
 		}
-		for _, t := range r.Thread.Turns {
-			for _, item := range t.Items {
-				at := time.Time{}
-				if item.StartedAtMs != nil {
-					at = time.UnixMilli(*item.StartedAtMs)
-				} else if t.StartedAt != nil {
-					at = time.Unix(*t.StartedAt, 0)
-				}
-				switch item.Type {
-				case "agentMessage":
-					u.printRoleAt("assistant", item.Text+"\n", at)
-				case "reasoning":
-					u.renderReasoningSummaryAt(item.Summary, at)
-				case "userMessage":
-					var text strings.Builder
-					for _, content := range item.Content {
-						if content.Type == "text" || content.Type == "input_text" {
-							text.WriteString(content.Text)
-						}
-					}
-					if text.Len() > 0 {
-						u.printRoleAt("user", text.String()+"\n", at)
-					}
-				}
-			}
+		u.renderChatHistory(r.Thread.Turns)
+		started, err := u.dispatchQueuedPrompt()
+		if err != nil {
+			return err
 		}
-		u.print("\nYou> ")
+		if !started {
+			u.print("\nYou> ")
+		}
 	case "thread/list":
 		return u.acceptChatSessionPage(m.Result)
 	case "model/list":
 		return u.acceptChatModelPage(m.Result)
+	case "thread/goal/get", "thread/goal/set", "thread/goal/clear":
+		return u.acceptChatGoalResponse(m, p.action)
+	case "jara/schedule/create", "jara/schedule/list", "jara/schedule/cancel":
+		return u.acceptChatScheduleResponse(m, p.action)
+	case "jara/crunch/create", "jara/crunch/status", "jara/crunch/stop":
+		return u.acceptChatCrunchResponse(m, p.action)
 	case "turn/start":
 		var r struct{ Turn struct{ ID string } }
 		if err := json.Unmarshal(m.Result, &r); err != nil {
@@ -362,9 +363,10 @@ func (u *chatUI) event(m appMessage) error {
 		return u.response(m)
 	}
 	var p struct {
-		Delta   string
-		Message string
-		Turn    struct {
+		Delta    string
+		Message  string
+		ThreadID string `json:"threadId"`
+		Turn     struct {
 			ID, Status string
 			Error      *struct{ Message string }
 		}
@@ -391,10 +393,19 @@ func (u *chatUI) event(m appMessage) error {
 		}
 	}
 	switch m.Method {
+	case "thread/goal/updated":
+		return u.acceptChatGoalUpdate(m.Params)
+	case "thread/goal/cleared":
+		return u.acceptChatGoalClear(m.Params)
+	case "thread/compacted":
+		if p.ThreadID == "" || p.ThreadID == u.thread {
+			u.printRole("progress", "Conversation context compacted.\n")
+		}
 	case "item/reasoning/summaryTextDelta":
 		u.streamReasoningSummary(p.ItemID, p.SummaryIndex, p.Delta)
 	case "turn/started":
 		u.attachedTurnActive = true
+		u.busy = true
 		u.turn = p.Turn.ID
 		u.turnStartedAt = time.Now()
 		if u.activityLabel == "" || u.activityLabel == "Starting turn" {
@@ -411,13 +422,21 @@ func (u *chatUI) event(m appMessage) error {
 		}
 		u.printRole(role, p.Delta)
 	case "item/started", "item/completed":
-		var item struct {
-			ID, Type, Command, Status string
-			StartedAtMs               *int64                     `json:"startedAtMs"`
-			Summary                   []chatReasoningSummaryPart `json:"summary"`
-		}
+		var item chatHistoryItem
 		_ = json.Unmarshal(p.Item, &item)
 		u.items[item.ID] = p.Item
+		if item.Type == "contextCompaction" {
+			if m.Method == "item/started" {
+				u.activityLabel = "Compacting context"
+				u.printRoleAt("progress", "Compacting conversation context…\n", chatHistoryItemTime(item, time.Now()))
+			} else {
+				u.activityLabel = "Thinking"
+				u.printRoleAt("progress", "Conversation context compaction complete.\n", chatHistoryItemTime(item, time.Now()))
+			}
+		}
+		if item.Type == "subAgentActivity" || item.Type == "collabAgentToolCall" {
+			u.renderLiveSubagentItem(item)
+		}
 		if item.Type == "reasoning" && m.Method == "item/completed" {
 			u.finishReasoningSummary(item.ID, item.Summary)
 		}
@@ -453,12 +472,21 @@ func (u *chatUI) event(m appMessage) error {
 		u.cancel = false
 		u.approvals = nil
 		u.items = map[string]json.RawMessage{}
+		u.subagentItemDisplays = nil
 		u.setAgentState("idle")
-		u.print("\n[" + p.Turn.Status + "]\n")
+		if !chatUIIsInteractive(u) || p.Turn.Status != "completed" {
+			u.print("\n[" + p.Turn.Status + "]\n")
+		}
 		if p.Turn.Error != nil {
 			u.print(p.Turn.Error.Message + "\n")
 		}
-		u.print("\nYou> ")
+		started, err := u.dispatchQueuedPrompt()
+		if err != nil {
+			return err
+		}
+		if !started {
+			u.print("\nYou> ")
+		}
 	case "error":
 		u.print("\nCodex: " + string(m.Params) + "\n")
 	}

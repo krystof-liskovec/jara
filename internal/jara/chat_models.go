@@ -360,6 +360,10 @@ func (u *chatUI) chooseChatModel(value string) error {
 }
 
 func (u *chatUI) requestTurn(params map[string]any) error {
+	return u.requestTurnWithQueuedPrompt(params, "")
+}
+
+func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt string) error {
 	id, err := u.c.request("turn/start", params)
 	if err != nil {
 		return err
@@ -367,7 +371,7 @@ func (u *chatUI) requestTurn(params map[string]any) error {
 	if u.pending == nil {
 		u.pending = map[string]chatPending{}
 	}
-	u.pending[id] = chatPending{method: "turn/start", deadline: time.Now().Add(30 * time.Second)}
+	u.pending[id] = chatPending{method: "turn/start", deadline: time.Now().Add(30 * time.Second), threadID: u.thread, queuedPrompt: queuedPrompt}
 	if u.pendingTurnModels == nil {
 		u.pendingTurnModels = map[string]chatTurnRequest{}
 	}

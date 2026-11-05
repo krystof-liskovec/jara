@@ -207,7 +207,7 @@ jara sessions        # Remote workspace and running-terminal browser
 
 Detach using **Ctrl-b d**. Disconnecting SSH also leaves the tmux terminal running.
 The bottom status bar shows the workspace, window tabs, and detach shortcut in a
-theme that matches the terminal background, with contrasting text and teal accents.
+theme that matches the terminal background, with contrasting text and warm orange accents.
 Reconnecting applies the theme to existing sessions too.
 Opening it again attaches rather than starting a duplicate. Several matches show
 a selector. Multiple clients can share the terminal; `--takeover` detaches others.

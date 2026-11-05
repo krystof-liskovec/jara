@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	chatTerminalRefresh = 33 * time.Millisecond
+	chatTerminalRefresh = 16 * time.Millisecond
 )
 
 func chatInteractiveFiles(input io.Reader, output io.Writer) (*os.File, *os.File, bool) {
@@ -38,12 +38,12 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		return fmt.Errorf("enable interactive terminal: %w", err)
 	}
 	defer func() {
-		_, _ = output.Write([]byte("\x1b[?2026l\x1b[?2004l\x1b[0 q\x1b[?25h\x1b[?1049l"))
+		_, _ = output.Write([]byte("\x1b[>4;0m\x1b[<u\x1b[?2026l\x1b[?2004l\x1b[0 q\x1b[?25h\x1b[?1049l"))
 		if restoreErr := term.Restore(int(input.Fd()), state); returnErr == nil && restoreErr != nil {
 			returnErr = fmt.Errorf("restore terminal: %w", restoreErr)
 		}
 	}()
-	if _, err := output.Write([]byte("\x1b[?1049h\x1b[?25l\x1b[2 q\x1b[?2004h")); err != nil {
+	if _, err := output.Write([]byte("\x1b[?1049h\x1b[?25l\x1b[2 q\x1b[?2004h\x1b[>1u\x1b[>4;2m")); err != nil {
 		return err
 	}
 	palette := menuColorsForTerminal()
@@ -112,7 +112,11 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		if u.agentTurnActive() || (u.busy && !u.persistentSession) {
 			interruptHint = "Ctrl+C cancel turn"
 		}
-		hints := []string{"↑↓ choose", "Tab accept", "PgUp/Dn scroll", "Ctrl+J newline", "Enter send", interruptHint}
+		tabHint := "Tab accept"
+		if u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(suggestions) == 0 {
+			tabHint = "Tab queue"
+		}
+		hints := []string{"↑↓ choose", tabHint, "PgUp/Dn scroll", "Shift+Enter newline", "Enter send", interruptHint}
 		if sessionPicker {
 			hints = []string{"↑↓ choose", "Enter open", "Esc close", interruptHint}
 		} else if picker.active() {
@@ -275,6 +279,16 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 						sessionPicker = false
 						resumePickerPending = false
 					}
+				}
+				if event.input.Key == chatEditorTab && u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(editor.Completions()) == 0 {
+					if err := u.queuePrompt(u.thread, editor.Text()); err != nil {
+						terminalOutput.append("system", err.Error()+"\n")
+					} else {
+						terminalOutput.append("system", fmt.Sprintf("Queued prompt %d. It will run after the current turn.\n", len(u.queuedPrompts)))
+						editor.SetText("")
+					}
+					dirty = true
+					continue
 				}
 				result := editor.Apply(*event.input)
 				if result.LimitReached || event.limitReached {

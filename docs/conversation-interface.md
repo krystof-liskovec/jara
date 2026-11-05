@@ -45,16 +45,22 @@ composer. The transcript scrolls independently of your draft and reflows when
 the terminal is resized. Narrow terminals use the same controls with a compact
 layout. Message groups have clearer spacing, and Codex's concise reasoning
 summaries appear inline as progress updates, such as command or exploration
-activity. The interface does not display raw reasoning text. Plain output remains
-available for pipes and `TERM=dumb` terminals.
+activity. Subagent activity appears inline with its delegation prompt, lifecycle
+updates, and any status or result text Codex includes in the parent thread. The
+interface does not fetch the child agent's separate full transcript or display
+raw reasoning text. Plain output remains available for pipes and `TERM=dumb`
+terminals.
+
+When Codex compacts conversation context, Jara shows a progress message in the
+chat and updates the live activity label until compaction completes.
 
 Type `/` in the composer to open command suggestions. Filter by typing, navigate
 with the arrow keys, and accept a suggestion with Tab or Enter. Acceptance fills
 the composer; it does not execute the command. Escape dismisses the dropdown.
 `/model ` and `/resume ` offer contextual choices from the most recently loaded
-`/models` and `/sessions` results. Enter submits completed input; Alt+Enter or
-Ctrl+J inserts a newline. PageUp and PageDown scroll the transcript while the
-composer keeps its draft.
+`/models` and `/sessions` results. Enter submits completed input; Shift+Enter,
+Alt+Enter, or Ctrl+J inserts a newline. PageUp and PageDown scroll the
+transcript while the composer keeps its draft.
 
 Submitting bare `/resume` opens a recent-session picker ordered newest first.
 Use the arrow keys to choose a conversation, Enter to open it, or Escape to
@@ -84,6 +90,12 @@ The theme follows the terminal background; `JARA_THEME=dark` or
 Enter one line of text to send a message. Replies and command output stream into
 the terminal. `/help` lists the controls:
 
+While a turn is running, type a follow-up and press Tab to queue it. Jara sends
+queued prompts one at a time after the current turn. Use `/queue` to inspect the
+queue, `/queue run` to start one while idle, or `/queue clear` to remove queued
+prompts for this conversation. The queue is held by the attached interface and
+is cleared when that interface exits.
+
 - `/compose` starts a multiline message; `/send` submits it and `/discard`
   clears it. Blank lines and indentation are preserved. `/help`, `/status`,
   and `/quit`, `/detach`, `/stop` remain available while composing. Start a literal slash line
@@ -98,6 +110,24 @@ the terminal. `/help` lists the controls:
 - `/status` shows the connection, conversation, turn state and pending approvals,
   including while a turn is running. A live terminal alone does not mean the
   agent is working.
+- `/goal <objective>` sets a durable goal for this conversation. Bare `/goal`
+  shows its status and usage; `/goal pause`, `/goal resume`, and `/goal clear`
+  manage its lifecycle. `/goal edit <objective>` replaces the objective.
+  Goals are stored per conversation and may continue automatically between
+  turns. If Goals are disabled, set `goals = true` under `[features]` in Codex's
+  `config.toml` and restart Codex.
+- `/crunch PROMPT` works on the task until it is complete, then stops. If Codex
+  stops it because usage is exhausted, Jara waits for the reported rate-limit
+  reset and continues from the saved conversation. `/goalcrunch OBJECTIVE` sets
+  a Codex goal and continues it until the goal is marked complete, including
+  across usage-limit resets. Both commands stop when their task is complete.
+  Use `/crunch status` or `/crunch stop` to inspect or stop the active task.
+  Crunch tasks require a persistent Jara session and ChatGPT usage-window data.
+- `/schedule in DURATION PROMPT` or `/schedule at RFC3339 PROMPT` schedules a
+  one-time prompt for this conversation. Use `/schedule list` to review jobs and
+  `/schedule cancel ID` to cancel a pending one. Scheduled prompts run when the
+  conversation is idle, including after you disconnect. Scheduling requires a
+  persistent Jara session.
 - `/models` loads the runtime's model catalog without interrupting a turn.
   `/model N` selects a listed model, and `/model ID` selects an explicit model.
   `/reasoning` lists effort values supported by the selected model, while

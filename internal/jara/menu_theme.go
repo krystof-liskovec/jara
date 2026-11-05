@@ -19,9 +19,9 @@ var menuTerminalTheme struct {
 func menuColors() menuPalette {
 	switch os.Getenv("JARA_THEME") {
 	case "light":
-		return menuPalette{"242;244;250", "230;234;244", "214;224;250", "30;39;60", "83;96;120", "61;75;180", "20;110;77", "75;48;155"}
+		return menuPalette{"251;241;199", "235;219;178", "213;196;161", "60;56;54", "124;111;100", "175;58;3", "121;116;14", "175;58;3"}
 	case "dark":
-		return menuPalette{"15;19;30", "32;39;55", "55;65;103", "229;235;248", "143;157;184", "161;179;255", "108;222;172", "185;164;255"}
+		return menuPalette{"40;40;40", "60;56;54", "80;73;69", "235;219;178", "168;153;132", "254;128;25", "184;187;38", "254;128;25"}
 	}
 	background, err := terminalBackground()
 	if err != nil {
@@ -41,29 +41,25 @@ func menuColorsForBackground(background terminalRGB) menuPalette {
 	rgb := func(c terminalRGB) string { return fmt.Sprintf("%d;%d;%d", c.r, c.g, c.b) }
 	edge := terminalRGB{0, 0, 0}
 	strength := 0.10
-	accent := terminalRGB{91, 70, 171}
-	green := terminalRGB{16, 105, 75}
-	text := terminalRGB{35, 43, 58}
-	muted := terminalRGB{77, 91, 111}
+	accent := terminalRGB{175, 58, 3}
+	green := terminalRGB{121, 116, 14}
+	text := terminalRGB{60, 56, 54}
+	muted := terminalRGB{124, 111, 100}
 	if dark {
 		edge = terminalRGB{255, 255, 255}
 		strength = 0.13
-		accent = terminalRGB{191, 172, 255}
-		green = terminalRGB{117, 224, 178}
-		text = terminalRGB{238, 242, 252}
-		muted = terminalRGB{161, 175, 195}
-	}
-	baseBrightness := (299*int(background.r) + 587*int(background.g) + 114*int(background.b)) / 1000
-	if baseBrightness >= 100 {
-		accent = terminalRGB{31, 18, 58}
+		accent = terminalRGB{254, 128, 25}
+		green = terminalRGB{184, 187, 38}
+		text = terminalRGB{235, 219, 178}
+		muted = terminalRGB{168, 153, 132}
 	}
 	surface := blend(background, edge, strength)
 	selection := blend(surface, accent, 0.38)
 	surfaceBrightness := (299*int(surface.r) + 587*int(surface.g) + 114*int(surface.b)) / 1000
 	if surfaceBrightness > 115 {
-		text = terminalRGB{21, 24, 33}
-		muted = terminalRGB{65, 75, 91}
-		green = terminalRGB{15, 98, 66}
+		text = terminalRGB{60, 56, 54}
+		muted = terminalRGB{124, 111, 100}
+		green = terminalRGB{121, 116, 14}
 	}
 	return menuPalette{rgb(background), rgb(surface), rgb(selection), rgb(text), rgb(muted), rgb(accent), rgb(green), rgb(accent)}
 }

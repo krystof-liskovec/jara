@@ -12,7 +12,7 @@ support the query and its theme differs from the configured background.
 `JARA_THEME=light` and `JARA_THEME=dark` explicitly select fixed palettes;
 `NO_COLOR` disables styling.
 
-The interface keeps a violet breadcrumb, an inset search field, and a bottom
+The interface uses warm orange accents, an inset search field, and a bottom
 shortcut bar. Desktop lists are centered at a readable width; phones use the
 available width, with compact spacing on short screens. Selection never
 changes row content. Search includes metadata and titles; long lists paginate.

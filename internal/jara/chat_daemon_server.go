@@ -52,6 +52,14 @@ func runChatDaemon(q Request) error {
 	if info, statErr := os.Lstat(workspace.Path); statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("remote workspace is unavailable: %s", workspace.Path)
 	}
+	schedules, err := newChatScheduleManager(paths.schedules)
+	if err != nil {
+		return fmt.Errorf("load scheduled prompts: %w", err)
+	}
+	crunch, err := newChatCrunchManager(paths.crunch)
+	if err != nil {
+		return fmt.Errorf("load crunch task: %w", err)
+	}
 	active, err := activeSessions()
 	if err != nil {
 		return err
@@ -119,7 +127,7 @@ func runChatDaemon(q Request) error {
 		_ = server.Wait()
 		return err
 	}
-	return serveChatDaemon(listener, server, input, output, paths, &state)
+	return serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state)
 }
 
 func waitForChatDaemonPID(paths chatDaemonPaths) error {
@@ -183,7 +191,7 @@ func chatDaemonWorkingDirectory(q Request, workspace Workspace) (string, error) 
 	return cwd, nil
 }
 
-func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteCloser, output io.Reader, paths chatDaemonPaths, initial *chatDaemonState) error {
+func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteCloser, output io.Reader, paths chatDaemonPaths, schedules *chatScheduleManager, crunch *chatCrunchManager, initial *chatDaemonState) error {
 	var currentMu sync.Mutex
 	var current net.Conn
 	preserveDetachedIdle := false
@@ -200,6 +208,8 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 	idleSignal := make(chan struct{}, 1)
 	acceptErrors := make(chan error, 1)
 	var shutdown atomic.Bool
+	scheduleTicker := time.NewTicker(time.Second)
+	defer scheduleTicker.Stop()
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, chatDaemonTerminationSignals()...)
 	defer signal.Stop(signals)
@@ -211,7 +221,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		stateMu.Lock()
 		idle := !state.ActiveTurn
 		stateMu.Unlock()
-		return detached && idle && len(accepted) == 0 && !preserveDetachedIdle
+		return detached && idle && len(accepted) == 0 && !preserveDetachedIdle && !schedules.hasPending() && !crunch.hasPending()
 	}
 
 	go func() {
@@ -234,6 +244,8 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		scanner.Buffer(make([]byte, 4096), 8<<20)
 		for scanner.Scan() {
 			line := append([]byte(nil), scanner.Bytes()...)
+			var appEvent appMessage
+			hasEvent := json.Unmarshal(line, &appEvent) == nil
 			changed := applyChatDaemonEvent(line, &state, &stateMu, &pending, &pendingMu)
 			if changed {
 				stateWriteMu.Lock()
@@ -248,6 +260,16 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 					default:
 					}
 				}
+			}
+			if hasEvent {
+				schedules.handleAppMessage(appEvent)
+				isCrunchBusy := func() bool {
+					stateMu.Lock()
+					busy := state.ActiveTurn || !state.ThreadLoaded
+					stateMu.Unlock()
+					return busy || schedules.running()
+				}
+				crunch.handleAppMessage(appEvent, input, &inputMu, isCrunchBusy)
 			}
 			currentMu.Lock()
 			var message appMessage
@@ -324,7 +346,7 @@ running:
 				continue
 			}
 			currentMu.Unlock()
-			go readChatDaemonClient(conn, input, &inputMu, &state, &stateMu, &stateWriteMu, paths, pending, &pendingMu, serverRequests, clientClosed)
+			go readChatDaemonClient(conn, input, &inputMu, &state, &stateMu, &stateWriteMu, paths, pending, &pendingMu, serverRequests, schedules, crunch, clientClosed)
 		case event := <-clientClosed:
 			currentMu.Lock()
 			if current == event.conn {
@@ -340,8 +362,16 @@ running:
 			_ = writeChatDaemonState(paths, snapshot)
 			stateWriteMu.Unlock()
 			if event.close {
-				shutdown.Store(true)
-				break running
+				if event.stop {
+					_ = schedules.cancelPending()
+					crunch.stopAll(input, &inputMu)
+					shutdown.Store(true)
+					break running
+				}
+				if !schedules.hasPending() && !crunch.hasPending() {
+					shutdown.Store(true)
+					break running
+				}
 			}
 			stateMu.Lock()
 			preserveDetachedIdle = event.detach && !state.ActiveTurn
@@ -351,6 +381,29 @@ running:
 				break running
 			}
 		case <-idleSignal:
+			if isDetachedAndIdle() {
+				shutdown.Store(true)
+				break running
+			}
+		case <-scheduleTicker.C:
+			isScheduleBusy := func() bool {
+				stateMu.Lock()
+				busy := state.ActiveTurn || !state.ThreadLoaded
+				stateMu.Unlock()
+				return busy || crunch.hasPending()
+			}
+			if err := schedules.startDue(input, &inputMu, isScheduleBusy); err != nil {
+				fmt.Fprintf(os.Stderr, "Jara scheduled prompt failed to start: %v\n", err)
+			}
+			isCrunchBusy := func() bool {
+				stateMu.Lock()
+				busy := state.ActiveTurn || !state.ThreadLoaded
+				stateMu.Unlock()
+				return busy || schedules.running()
+			}
+			if err := crunch.tick(input, &inputMu, isCrunchBusy); err != nil {
+				fmt.Fprintf(os.Stderr, "Jara crunch task failed: %v\n", err)
+			}
 			if isDetachedAndIdle() {
 				shutdown.Store(true)
 				break running
