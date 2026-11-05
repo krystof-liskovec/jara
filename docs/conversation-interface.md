@@ -39,6 +39,10 @@ the composer; it does not execute the command. Escape dismisses the dropdown.
 Ctrl+J inserts a newline. PageUp and PageDown scroll the transcript while the
 composer keeps its draft.
 
+Submitting bare `/resume` opens a recent-session picker ordered newest first.
+Use the arrow keys to choose a conversation, Enter to open it, or Escape to
+return to the chat. `/resume ID` still opens a specific conversation directly.
+
 Bracketed paste inserts text, including multiple lines, without submitting it.
 Input history and cursor editing work in the composer. Text typed while an agent
 is streaming remains a draft if submission is unavailable; control commands such
@@ -62,8 +66,9 @@ the terminal. `/help` lists the controls:
 - `/sessions [query]` lists recent saved conversations in the current folder.
   Search matches names, previews, and IDs. Results load asynchronously, show
   at most eight choices, and report when the search is incomplete.
-- `/resume ID` resumes a saved conversation in the current working directory;
-  `/resume N` opens a numbered result from the last `/sessions` list.
+- `/resume` opens the recent sessions for the current working directory;
+  `/resume ID` resumes a specific conversation, and `/resume N` opens a numbered
+  result from the last `/sessions` list.
 - `/status` shows the connection, conversation, turn state and pending approvals,
   including while a turn is running. A live terminal alone does not mean the
   agent is working.

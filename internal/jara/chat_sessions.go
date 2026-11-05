@@ -3,6 +3,7 @@ package jara
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -131,8 +132,10 @@ func (u *chatUI) expireChatSessionRequest(id string) bool {
 
 func (u *chatUI) finishChatSessionSearch(err error) {
 	if u.sessions == nil {
+		u.sessionPickerRequested = false
 		return
 	}
+	u.sessionPickerRequested = false
 	u.print("\n" + u.sessions.fail(err))
 	if !u.busy {
 		u.print("You> ")
@@ -143,6 +146,11 @@ func (u *chatUI) printChatSessionResults() {
 	if u.sessions == nil {
 		return
 	}
+	if u.sessionPickerRequested && chatUIIsInteractive(u) {
+		u.sessionPickerRequested = false
+		return
+	}
+	u.sessionPickerRequested = false
 	u.print("\n" + u.sessions.render())
 	if !u.busy {
 		u.print("You> ")
@@ -208,6 +216,14 @@ func (b *chatSessionBrowser) acceptPage(raw json.RawMessage) (bool, error) {
 			matchedBeyondLimit = true
 		}
 	}
+	sort.SliceStable(b.matches, func(i, j int) bool {
+		left, right := b.matches[i], b.matches[j]
+		leftRecent, rightRecent := max(left.Updated, left.Created), max(right.Updated, right.Created)
+		if leftRecent != rightRecent {
+			return leftRecent > rightRecent
+		}
+		return left.ID < right.ID
+	})
 	if page.NextCursor == nil || *page.NextCursor == "" {
 		b.complete = true
 		b.more = matchedBeyondLimit

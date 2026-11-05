@@ -139,24 +139,29 @@ func TestNewChatSessionQueryInvalidatesOlderRequestAndChoices(t *testing.T) {
 	}
 }
 
-func TestChatResumeRequiresDisplayedNumericChoice(t *testing.T) {
+func TestChatResumeWithoutArgumentLoadsRecentSessions(t *testing.T) {
 	t.Setenv("TMUX", "")
 	t.Setenv("TMUX_PANE", "")
 	var output, wire bytes.Buffer
 	u := newChatCommandTestUI(&output, &wire)
+	u.connected = true
+	u.cwd = "/workspace/current"
 	if _, err := u.line("/resume"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := u.line("/resume 1"); err != nil {
+	requests := decodeChatRequests(t, &wire)
+	if len(requests) != 1 || requests[0].Method != "thread/list" || requests[0].Params.CWD != u.cwd {
+		t.Fatalf("bare /resume did not request recent workspace sessions: %+v", requests)
+	}
+	page := chatSessionPageJSON(t, []Conversation{
+		{ID: "older", Name: "Older session", CWD: u.cwd, Updated: 1},
+		{ID: "newer", Name: "Newer session", CWD: u.cwd, Updated: 2},
+	}, "")
+	if err := u.response(appMessage{ID: requests[0].ID, Result: page}); err != nil {
 		t.Fatal(err)
 	}
-	if wire.Len() != 0 {
-		t.Fatalf("invalid numeric choices must not become thread IDs: %s", wire.String())
-	}
-	for _, want := range []string{"Use /resume N", "run /sessions first"} {
-		if !strings.Contains(output.String(), want) {
-			t.Errorf("missing helpful selection error %q: %q", want, output.String())
-		}
+	if !strings.Contains(output.String(), "1. Newer session") || !strings.Contains(output.String(), "2. Older session") {
+		t.Fatalf("recent sessions were not displayed newest first: %q", output.String())
 	}
 }
 

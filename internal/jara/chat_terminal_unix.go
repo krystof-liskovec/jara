@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -16,49 +17,46 @@ import (
 )
 
 const (
-	chatTerminalRefresh = 80 * time.Millisecond
-	chatTranscriptLimit = 512 * 1024
+	chatTerminalRefresh = 33 * time.Millisecond
 )
 
-type chatTerminalOutput struct {
-	messages []chatViewMessage
-	bytes    int
-	trimmed  bool
-}
-
-func (o *chatTerminalOutput) Write(data []byte) (int, error) {
-	text := string(data)
-	text = strings.ReplaceAll(text, "You> ", "")
-	text = strings.ReplaceAll(text, "Compose> ", "")
-	if strings.HasPrefix(text, "Jara conversation · /help for commands · Ctrl-C cancels a turn\n") {
-		text = strings.TrimPrefix(text, "Jara conversation · /help for commands · Ctrl-C cancels a turn\n")
+func chatSessionPickerChoices(browser *chatSessionBrowser, selected int) []chatCompletionChoice {
+	if browser == nil {
+		return nil
 	}
-	o.append("system", text)
-	return len(data), nil
-}
-
-func (o *chatTerminalOutput) WriteChatRole(role, text string) { o.append(role, text) }
-
-func (o *chatTerminalOutput) append(role, text string) {
-	if text == "" {
-		return
+	if !browser.complete {
+		description := ""
+		if len(browser.matches) > 0 {
+			description = strconv.Itoa(len(browser.matches)) + " found"
+		}
+		return []chatCompletionChoice{{Value: "Loading recent sessions…", Description: description}}
 	}
-	text = chatText(text)
-	if count := len(text); count > chatTranscriptLimit {
-		text, _ = truncateChatGraphemes(text, chatTranscriptLimit)
-		o.trimmed = true
+	if browser.complete && len(browser.matches) == 0 {
+		return []chatCompletionChoice{{Value: "No recent sessions found", Description: "Esc closes"}}
 	}
-	if count := len(o.messages); count > 0 && o.messages[count-1].Role == role {
-		o.messages[count-1].Text += text
-	} else {
-		o.messages = append(o.messages, chatViewMessage{Role: role, Text: text})
+	choices := make([]chatCompletionChoice, 0, len(browser.matches)+1)
+	description := "newest first"
+	if browser.more {
+		description = "newest 8 · /sessions query for more"
 	}
-	o.bytes += len(text)
-	for o.bytes > chatTranscriptLimit && len(o.messages) > 1 {
-		o.bytes -= len(o.messages[0].Text)
-		o.messages = o.messages[1:]
-		o.trimmed = true
+	choices = append(choices, chatCompletionChoice{Value: "Recent sessions", Description: description})
+	for index, session := range browser.matches {
+		title := session.Name
+		if strings.TrimSpace(title) == "" {
+			title = session.Preview
+		}
+		if strings.TrimSpace(title) == "" {
+			title = session.ID
+		}
+		choices = append(choices, chatCompletionChoice{
+			Value:       strconv.Itoa(index+1) + ". " + compactChatSessionText(title, chatSessionTitleRunes),
+			Description: "updated " + conversationAge(max(session.Updated, session.Created)),
+			Selected:    index == selected,
+			Index:       index,
+			Total:       len(browser.matches),
+		})
 	}
+	return choices
 }
 
 func chatInteractiveFiles(input io.Reader, output io.Writer) (*os.File, *os.File, bool) {
@@ -79,12 +77,12 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		return fmt.Errorf("enable interactive terminal: %w", err)
 	}
 	defer func() {
-		_, _ = output.Write([]byte("\x1b[?2004l\x1b[?25h\x1b[?1049l"))
+		_, _ = output.Write([]byte("\x1b[?2026l\x1b[?2004l\x1b[0 q\x1b[?25h\x1b[?1049l"))
 		if restoreErr := term.Restore(int(input.Fd()), state); returnErr == nil && restoreErr != nil {
 			returnErr = fmt.Errorf("restore terminal: %w", restoreErr)
 		}
 	}()
-	if _, err := output.Write([]byte("\x1b[?1049h\x1b[?25l\x1b[?2004h\x1b[2J\x1b[H")); err != nil {
+	if _, err := output.Write([]byte("\x1b[?1049h\x1b[?25l\x1b[2 q\x1b[?2004h")); err != nil {
 		return err
 	}
 	palette := menuColorsForTerminal()
@@ -111,40 +109,71 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	ticker := time.NewTicker(chatTerminalRefresh)
 	defer ticker.Stop()
 	var scrollOffset int
+	var resumePickerPending, sessionPicker bool
+	var sessionSelection int
 	dirty := true
 	lastDraw := time.Time{}
+	var previousLines []string
+	previousWidth, previousHeight := 0, 0
+	cursorShown := false
 	draw := func() error {
 		width, height, err := term.GetSize(int(output.Fd()))
 		if err != nil {
 			width, height = 80, 24
 		}
-		choices := editor.Completions()
 		cursorLine, cursorColumn := editor.CursorPosition()
-		messages := terminalOutput.messages
-		if terminalOutput.trimmed {
-			messages = append([]chatViewMessage{{Role: "system", Text: "Earlier output was trimmed to keep this session responsive."}}, messages...)
+		width, height = max(1, width), max(1, height)
+		transcriptWidth := width - 4
+		if height < 7 || width < 18 {
+			transcriptWidth = width
+		}
+		suggestions := editor.Completions()
+		if sessionPicker && u.sessions != nil {
+			suggestions = chatSessionPickerChoices(u.sessions, sessionSelection)
+		}
+		interruptHint := "Ctrl+C quit"
+		if u.busy {
+			interruptHint = "Ctrl+C cancel"
+		}
+		hints := []string{"↑↓ choose", "Tab accept", "PgUp/Dn scroll", "Ctrl+J newline", "Enter send", interruptHint}
+		if sessionPicker {
+			hints = []string{"↑↓ choose", "Enter open", "Esc close", "Ctrl+C quit"}
 		}
 		frame := renderChatView(chatViewModel{
 			Workspace: workspace, Model: u.effectiveModelLabel(), State: u.currentState(),
-			Messages: messages, Composer: editor.Text(), CursorByte: editor.CursorByte(),
-			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: choices,
+			TranscriptLines: terminalOutput.transcriptLines(transcriptWidth),
+			Composer:        editor.Text(), CursorByte: editor.CursorByte(),
+			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
 			ScrollOffset: scrollOffset,
-			Hints:        []string{"↑↓ choose", "Tab/Enter complete", "PgUp/PgDn scroll", "Ctrl+J newline", "Enter send", "Ctrl+C cancel/quit"},
+			Hints:        hints,
 		}, width, height, palette, os.Getenv("NO_COLOR") == "")
 		var screen strings.Builder
-		screen.WriteString("\x1b[H")
+		// Synchronized updates keep capable terminals from showing half a frame.
+		screen.WriteString("\x1b[?2026h")
+		fullRedraw := previousWidth != width || previousHeight != height || len(previousLines) != len(frame.Lines)
+		if fullRedraw {
+			screen.WriteString("\x1b[2J")
+		}
 		for index, line := range frame.Lines {
-			if index > 0 {
-				screen.WriteString("\r\n")
+			if !fullRedraw && previousLines[index] == line {
+				continue
 			}
+			fmt.Fprintf(&screen, "\x1b[%d;1H", index+1)
 			screen.WriteString(line)
 		}
 		if frame.CursorRow >= 0 {
-			fmt.Fprintf(&screen, "\x1b[%d;%dH\x1b[?25h", frame.CursorRow+1, frame.CursorCol+1)
+			fmt.Fprintf(&screen, "\x1b[%d;%dH", frame.CursorRow+1, frame.CursorCol+1)
+			if !cursorShown {
+				screen.WriteString("\x1b[?25h")
+				cursorShown = true
+			}
 		} else {
 			screen.WriteString("\x1b[?25l")
 		}
+		screen.WriteString("\x1b[?2026l")
 		_, writeErr := io.WriteString(output, screen.String())
+		previousLines = append(previousLines[:0], frame.Lines...)
+		previousWidth, previousHeight = width, height
 		return writeErr
 	}
 	if err := draw(); err != nil {
@@ -159,6 +188,10 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 				return err
 			}
 			editor.SetCompletionContext(chatCompletionContextFromUI(u))
+			if resumePickerPending && u.sessions != nil && u.sessions.complete {
+				sessionPicker = u.sessions.failure == ""
+				resumePickerPending = false
+			}
 			dirty = true
 		case err := <-u.c.errors:
 			terminalOutput.append("system", "Codex app-server disconnected: "+err.Error()+"\n")
@@ -192,6 +225,39 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 				if event.input == nil {
 					continue
 				}
+				if sessionPicker {
+					switch event.input.Key {
+					case chatEditorUp:
+						sessionSelection = max(0, sessionSelection-1)
+						dirty = true
+						continue
+					case chatEditorDown:
+						if u.sessions != nil && len(u.sessions.matches) > 0 {
+							sessionSelection = min(len(u.sessions.matches)-1, sessionSelection+1)
+						}
+						dirty = true
+						continue
+					case chatEditorEscape:
+						sessionPicker = false
+						resumePickerPending = false
+						dirty = true
+						continue
+					case chatEditorEnter:
+						if u.busy {
+							terminalOutput.append("system", "A turn is running. Cancel or wait before opening a saved session.\n")
+						} else if u.sessions != nil && u.sessions.complete && len(u.sessions.matches) > 0 {
+							sessionPicker = false
+							if err := u.resumeChatSessionChoice(strconv.Itoa(sessionSelection + 1)); err != nil {
+								terminalOutput.append("system", err.Error()+"\n")
+							}
+						}
+						dirty = true
+						continue
+					default:
+						sessionPicker = false
+						resumePickerPending = false
+					}
+				}
 				result := editor.Apply(*event.input)
 				if result.LimitReached || event.limitReached {
 					terminalOutput.append("system", "Input reached the size limit; the remaining text was omitted.\n")
@@ -200,7 +266,16 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 					line := strings.TrimSpace(result.Value)
 					if line != "" {
 						isCommand := strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "//")
-						busyControl := u.busy && (line == "/new" || strings.HasPrefix(line, "/resume") || line == "/compose")
+						wasBusy, wasReady := u.busy, u.threadReady
+						busyControl := wasBusy && (line == "/new" || strings.HasPrefix(line, "/resume ") || line == "/compose")
+						if line == "/resume" {
+							resumePickerPending = true
+							sessionPicker = true
+							sessionSelection = 0
+						} else if strings.HasPrefix(line, "/sessions") {
+							resumePickerPending, sessionPicker = false, false
+						}
+						previousSessions := u.sessions
 						quit, err := u.line(result.Value)
 						if err != nil {
 							return err
@@ -208,7 +283,11 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 						if quit {
 							return nil
 						}
-						if (!isCommand || busyControl) && (u.busy || !u.threadReady) {
+						if line == "/resume" && u.sessions == previousSessions {
+							resumePickerPending = false
+							sessionPicker = false
+						}
+						if (!isCommand || busyControl) && (wasBusy || !wasReady) {
 							editor.SetText(result.Value)
 						}
 					}
@@ -246,10 +325,16 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 				if now.After(pending.deadline) {
 					if pending.method == "thread/list" {
 						u.expireChatSessionRequest(id)
+						if resumePickerPending && u.sessions != nil && u.sessions.complete {
+							sessionPicker = u.sessions.failure == ""
+							resumePickerPending = false
+						}
+						dirty = true
 						continue
 					}
 					if pending.method == "model/list" {
 						u.expireChatModelRequest(id)
+						dirty = true
 						continue
 					}
 					return fmt.Errorf("Codex app-server timed out during %s", pending.method)

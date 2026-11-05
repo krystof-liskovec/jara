@@ -31,7 +31,7 @@ type chatCommandCompletion struct {
 var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/new", description: "Start a new conversation"},
 	{name: "/sessions", description: "Browse saved sessions in this folder", arguments: true},
-	{name: "/resume", description: "Resume a displayed or saved session", arguments: true},
+	{name: "/resume", description: "Choose a recent saved session", arguments: true},
 	{name: "/model", description: "Select a model for this conversation", arguments: true},
 	{name: "/models", description: "List available Codex models"},
 	{name: "/compose", description: "Compose a multi-line message"},
