@@ -141,6 +141,12 @@ func remoteRPC(q Request) error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(w)
+	case "chat-session-state":
+		state, active := readChatDaemonState(q.ID)
+		return json.NewEncoder(os.Stdout).Encode(struct {
+			Active bool            `json:"active"`
+			State  chatDaemonState `json:"state,omitempty"`
+		}{Active: active, State: state})
 	case "workspace-list":
 		workspaces, err := remoteWorkspaces()
 		if err != nil {
@@ -297,6 +303,13 @@ func remoteRPC(q Request) error {
 	case "guard":
 		if _, err := workspaceInfo(q.ID); err != nil {
 			return err
+		}
+		locked, err := workspaceOperationLocked(q.ID)
+		if err != nil {
+			return err
+		}
+		if locked {
+			return fmt.Errorf("workspace operation or local-client agent is active; wait before pulling files")
 		}
 		ss, err := activeSessions()
 		if err != nil {

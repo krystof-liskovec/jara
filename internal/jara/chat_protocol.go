@@ -22,6 +22,7 @@ type appMessage struct {
 type appConnection struct {
 	cmd      *exec.Cmd
 	input    io.WriteCloser
+	reader   io.Reader
 	messages chan appMessage
 	errors   chan error
 	stop     chan struct{}
@@ -30,7 +31,10 @@ type appConnection struct {
 }
 
 func startChatServer(binary string, args []string, stderr io.Writer) (*appConnection, error) {
-	cmd := exec.Command(binary, args...)
+	return startChatServerCommand(exec.Command(binary, args...), stderr)
+}
+
+func startChatServerCommand(cmd *exec.Cmd, stderr io.Writer) (*appConnection, error) {
 	cmd.Stderr = stderr
 	isolateChatProcess(cmd)
 	input, err := cmd.StdinPipe()
@@ -46,9 +50,17 @@ func startChatServer(binary string, args []string, stderr io.Writer) (*appConnec
 		input.Close()
 		return nil, err
 	}
-	c := &appConnection{cmd: cmd, input: input, encoder: json.NewEncoder(input), messages: make(chan appMessage, 32), errors: make(chan error, 1), stop: make(chan struct{})}
+	return newAppConnection(cmd, input, output), nil
+}
+
+func startChatConnection(connection io.ReadWriteCloser) *appConnection {
+	return newAppConnection(nil, connection, connection)
+}
+
+func newAppConnection(cmd *exec.Cmd, input io.WriteCloser, output io.Reader) *appConnection {
+	c := &appConnection{cmd: cmd, input: input, reader: output, encoder: json.NewEncoder(input), messages: make(chan appMessage, 32), errors: make(chan error, 1), stop: make(chan struct{})}
 	go func() {
-		scanner := bufio.NewScanner(output)
+		scanner := bufio.NewScanner(c.reader)
 		scanner.Buffer(make([]byte, 4096), 8<<20)
 		for scanner.Scan() {
 			var m appMessage
@@ -68,11 +80,14 @@ func startChatServer(binary string, args []string, stderr io.Writer) (*appConnec
 		}
 		c.errors <- err
 	}()
-	return c, nil
+	return c
 }
 func (c *appConnection) close() {
 	close(c.stop)
-	c.input.Close()
+	_ = c.input.Close()
+	if c.cmd == nil {
+		return
+	}
 	done := make(chan struct{})
 	go func() { _ = c.cmd.Wait(); close(done) }()
 	select {

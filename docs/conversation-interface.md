@@ -18,6 +18,20 @@ project browser. An existing terminal retains the interface it started with;
 use `jara new --interface jara` to try this alongside a Codex terminal.
 `--interface codex` selects the existing Codex terminal interface.
 
+When the local CLI opens an associated workspace with `--interface jara`, the
+Jara conversation UI runs on the client and connects over SSH to Codex
+app-server in the remote workspace. Its session persists if the local CLI
+disconnects, so an active turn keeps running in the background and can be
+resumed by opening the workspace again. Closing the UI with `/quit` during an
+active turn or `/detach` leaves the remote agent running. An SSH disconnect
+does the same if a turn is active. When a disconnected turn finishes, Jara
+stops the app-server and releases the workspace lock; the saved conversation is
+resumed when you open the workspace again. An idle session stops on `/quit`,
+idle Ctrl-C, or an SSH disconnect. `/detach` keeps an idle session explicitly,
+and `/stop` always ends it. Direct SSH connections use the remote `jara connect`
+CLI and keep new workspace sessions in the same persistent service. Existing
+managed tmux sessions keep their current attach behavior.
+
 Sign in using `jara auth codex`. Codex continues to own the agent runtime,
 credentials, sandbox, tools, configuration, and saved conversations. This preview
 uses the app-server shipped with Codex 0.166.0. It adds no inference proxy or
@@ -43,6 +57,15 @@ Submitting bare `/resume` opens a recent-session picker ordered newest first.
 Use the arrow keys to choose a conversation, Enter to open it, or Escape to
 return to the chat. `/resume ID` still opens a specific conversation directly.
 
+`/models` and bare `/model` open an interactive model picker. Use F2 from any
+prompt to open it directly. `/reasoning` and F3 open the selected model's
+supported reasoning choices. Use the arrow keys and Enter to choose, or Escape
+to return to the chat. The model and reasoning controls remain visible below
+the composer, and the choices apply to this and later turns in the conversation.
+When Codex is working, an animated activity row shows whether it is thinking,
+running a command, applying changes, or waiting for input. Message headers show
+their timestamps when Codex provides them.
+
 Bracketed paste inserts text, including multiple lines, without submitting it.
 Input history and cursor editing work in the composer. Text typed while an agent
 is streaming remains a draft if submission is unavailable; control commands such
@@ -60,7 +83,7 @@ the terminal. `/help` lists the controls:
 
 - `/compose` starts a multiline message; `/send` submits it and `/discard`
   clears it. Blank lines and indentation are preserved. `/help`, `/status`,
-  and `/quit` remain available while composing. Start a literal slash line
+  and `/quit`, `/detach`, `/stop` remain available while composing. Start a literal slash line
   with `//` (for example, `//path` sends `/path`).
 - `/new` starts another saved conversation in the same terminal.
 - `/sessions [query]` lists recent saved conversations in the current folder.
@@ -73,17 +96,25 @@ the terminal. `/help` lists the controls:
   including while a turn is running. A live terminal alone does not mean the
   agent is working.
 - `/models` loads the runtime's model catalog without interrupting a turn.
-  When idle, `/model N` selects a listed model, and `/model ID` selects an
-  explicit model. The selection applies to the next and subsequent turns in
-  this conversation; it does not change account-wide defaults.
-- `/cancel` or Ctrl-C interrupts a running turn. Ctrl-C while idle exits.
+  `/model N` selects a listed model, and `/model ID` selects an explicit model.
+  `/reasoning` lists effort values supported by the selected model, while
+  `/reasoning EFFORT` selects one directly. F2 and F3 open the interactive
+  model and reasoning pickers. These selections apply to this and subsequent
+  turns in this conversation; they do not change account-wide defaults.
+- `/cancel` or Ctrl-C interrupts a running turn. Ctrl-C while idle stops the
+  session. `/quit` stops an idle session but leaves an active agent running;
+  `/detach` leaves it running whether it is active or idle. `/stop` always ends it.
 - `/approve` approves the oldest pending command or file approval once.
 - `/deny` rejects that approval; the agent can continue.
 - `/answer Q VALUE` answers question number `Q` in the current question set.
   Use an option number or, when offered, free text. For example, `/answer 1 2`
   chooses option 2 for question 1. Nothing is preselected or sent until every
   question in that request has an explicit answer.
-- `/quit` exits and stops this app-server process.
+- `/quit` stops an idle persistent session. During an active turn it closes the
+  UI and leaves the agent running until that turn finishes. Use `/stop` to stop
+  immediately and release its workspace lock.
+- `/detach` closes the UI and leaves the remote session running. Reopen the
+  workspace or use `jara connect --interface jara WORKSPACE_ID` to attach again.
 
 Use `/help` to discover commands without leaving the conversation. Commands are
 written on separate lines so they remain readable in narrow SSH terminals.

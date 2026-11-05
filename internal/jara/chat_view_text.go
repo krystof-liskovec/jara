@@ -2,6 +2,7 @@ package jara
 
 import (
 	"strings"
+	"time"
 
 	"github.com/rivo/uniseg"
 )
@@ -35,10 +36,22 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 		if title != "" {
 			label += " · " + title
 		}
+		if !message.At.IsZero() {
+			label += " · " + chatMessageTimestamp(message.At)
+		}
 		lines = append(lines, chatViewLine{text: label, kind: kind, role: role})
 		lines = append(lines, expandChatMessage(message.Text, width, role)...)
 	}
 	return lines
+}
+
+func chatMessageTimestamp(at time.Time) string {
+	local := at.Local()
+	now := time.Now().In(local.Location())
+	if local.Year() == now.Year() && local.YearDay() == now.YearDay() {
+		return local.Format("15:04")
+	}
+	return local.Format("Jan 2 · 15:04")
 }
 
 func expandChatMessage(text string, width int, role string) []chatViewLine {

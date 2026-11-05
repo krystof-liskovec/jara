@@ -35,13 +35,22 @@ func confirmWithReader(reader *bufio.Reader, prompt string) (bool, error) {
 	return s == "y" || s == "yes", nil
 }
 
-func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string, includeIgnored, isGit bool, reader *bufio.Reader) error {
+func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string, includeIgnored, isGit bool, reader *bufio.Reader, persistentJara ...bool) error {
 	pending, deletions, size, err := localPushChangesSummary(b, root, includeIgnored, isGit)
 	if err != nil {
 		return fmt.Errorf("local changes could not be checked: %w; run `jara sync push` if needed", err)
 	}
 	if !pending {
 		return nil
+	}
+	if len(persistentJara) > 0 && persistentJara[0] {
+		var status struct {
+			Active bool `json:"active"`
+		}
+		if stateErr := rpc(r, Request{Op: "chat-session-state", ID: b.Workspace}, nil, &status); stateErr == nil && status.Active {
+			fmt.Fprintln(os.Stderr, "Reconnecting to the persistent Jara session; local files will not sync until it is stopped with /stop.")
+			return nil
+		}
 	}
 	// A Git pull may already have brought the remote's changes into this
 	// checkout while the saved sync baseline still describes the prior state.

@@ -63,6 +63,7 @@ var commandHelp = map[string]helpEntry{
 		summary: "Resume a Codex session in the current workspace.",
 		options: []string{
 			"--latest            Resume Codex's latest session instead of opening its picker.",
+			"--interface jara    Use the Jara conversation UI.",
 			"--remote NAME       Select a configured host.",
 			"--source DIR        Use another local folder.",
 			"--codex-arg VALUE   Add a Codex argument; repeatable.",
@@ -101,6 +102,7 @@ var commandHelp = map[string]helpEntry{
 			"--source DIR        Use another local folder.",
 			"--worktree          Create a separate Git worktree.",
 			"--takeover          Detach other clients from the selected session.",
+			"--interface jara    Use the Jara conversation UI.",
 			"--codex-arg VALUE   Add a Codex argument; repeatable.",
 			"-- CODEX_ARGS       Pass remaining arguments directly to Codex.",
 		},

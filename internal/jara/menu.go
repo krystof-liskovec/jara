@@ -349,7 +349,9 @@ func workspaceBadge(w Workspace) string {
 func sessionItem(w Workspace, s Session, number int) menuItem {
 	title := strings.TrimSpace(s.Label)
 	if title == "" {
-		if s.Background {
+		if s.ChatDaemon {
+			title = "Persistent Jara session"
+		} else if s.Background {
 			title = fmt.Sprintf("Background run #%d", number)
 		} else {
 			title = fmt.Sprintf("Jara terminal #%d", number)
@@ -382,6 +384,9 @@ func sessionItem(w Workspace, s Session, number int) menuItem {
 	kind := "terminal"
 	if s.Background {
 		kind = "background"
+	}
+	if s.ChatDaemon {
+		kind = "chat-daemon"
 	}
 	return menuItem{Title: title, Detail: strings.Join(detail, " · "), Workspace: w.ID, Group: workspaceTitle(w), Kind: kind, Action: s.Name}
 }

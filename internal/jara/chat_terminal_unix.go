@@ -20,45 +20,6 @@ const (
 	chatTerminalRefresh = 33 * time.Millisecond
 )
 
-func chatSessionPickerChoices(browser *chatSessionBrowser, selected int) []chatCompletionChoice {
-	if browser == nil {
-		return nil
-	}
-	if !browser.complete {
-		description := ""
-		if len(browser.matches) > 0 {
-			description = strconv.Itoa(len(browser.matches)) + " found"
-		}
-		return []chatCompletionChoice{{Value: "Loading recent sessions…", Description: description}}
-	}
-	if browser.complete && len(browser.matches) == 0 {
-		return []chatCompletionChoice{{Value: "No recent sessions found", Description: "Esc closes"}}
-	}
-	choices := make([]chatCompletionChoice, 0, len(browser.matches)+1)
-	description := "newest first"
-	if browser.more {
-		description = "newest 8 · /sessions query for more"
-	}
-	choices = append(choices, chatCompletionChoice{Value: "Recent sessions", Description: description})
-	for index, session := range browser.matches {
-		title := session.Name
-		if strings.TrimSpace(title) == "" {
-			title = session.Preview
-		}
-		if strings.TrimSpace(title) == "" {
-			title = session.ID
-		}
-		choices = append(choices, chatCompletionChoice{
-			Value:       strconv.Itoa(index+1) + ". " + compactChatSessionText(title, chatSessionTitleRunes),
-			Description: "updated " + conversationAge(max(session.Updated, session.Created)),
-			Selected:    index == selected,
-			Index:       index,
-			Total:       len(browser.matches),
-		})
-	}
-	return choices
-}
-
 func chatInteractiveFiles(input io.Reader, output io.Writer) (*os.File, *os.File, bool) {
 	if os.Getenv("JARA_CHAT_PLAIN") == "1" || os.Getenv("TERM") == "dumb" {
 		return nil, nil, false
@@ -91,9 +52,12 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	if err := u.request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}); err != nil {
 		return err
 	}
-	workspace := filepath.Base(filepath.Clean(u.cwd))
-	if workspace == "." || workspace == string(filepath.Separator) {
-		workspace = u.cwd
+	workspace := u.workspaceLabel
+	if workspace == "" {
+		workspace = filepath.Base(filepath.Clean(u.cwd))
+		if workspace == "." || workspace == string(filepath.Separator) {
+			workspace = u.cwd
+		}
 	}
 	editor := newChatEditor(maxBackgroundPrompt)
 	parser := newChatTerminalKeyParser(maxBackgroundPrompt)
@@ -109,13 +73,24 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	ticker := time.NewTicker(chatTerminalRefresh)
 	defer ticker.Stop()
 	var scrollOffset int
-	var resumePickerPending, sessionPicker bool
+	resumePickerPending := u.resumeAtStart && !u.resumeLatest
+	var sessionPicker bool
 	var sessionSelection int
+	picker := &chatTerminalPicker{}
+	lastActivityFrame := -1
 	dirty := true
 	lastDraw := time.Time{}
 	var previousLines []string
 	previousWidth, previousHeight := 0, 0
 	cursorShown := false
+	openPicker := func(kind string) {
+		sessionPicker, resumePickerPending = false, false
+		if err := picker.request(u, kind); err != nil {
+			u.pickerRequested = ""
+			terminalOutput.append("system", chatPickerErrorText("Could not open picker", err)+"\n")
+		}
+		dirty = true
+	}
 	draw := func() error {
 		width, height, err := term.GetSize(int(output.Fd()))
 		if err != nil {
@@ -130,22 +105,29 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		suggestions := editor.Completions()
 		if sessionPicker && u.sessions != nil {
 			suggestions = chatSessionPickerChoices(u.sessions, sessionSelection)
+		} else if picker.active() {
+			suggestions = picker.choices(u)
 		}
-		interruptHint := "Ctrl+C quit"
-		if u.busy {
-			interruptHint = "Ctrl+C cancel"
+		interruptHint := "Ctrl+C stop idle session"
+		if u.agentTurnActive() || (u.busy && !u.persistentSession) {
+			interruptHint = "Ctrl+C cancel turn"
 		}
 		hints := []string{"↑↓ choose", "Tab accept", "PgUp/Dn scroll", "Ctrl+J newline", "Enter send", interruptHint}
 		if sessionPicker {
-			hints = []string{"↑↓ choose", "Enter open", "Esc close", "Ctrl+C quit"}
+			hints = []string{"↑↓ choose", "Enter open", "Esc close", interruptHint}
+		} else if picker.active() {
+			hints = []string{"↑↓ choose", "Enter select", "Esc close", "F2 model", "F3 reasoning", interruptHint}
 		}
+		activity, elapsed := chatTerminalActivity(u, time.Now())
 		frame := renderChatView(chatViewModel{
 			Workspace: workspace, Model: u.effectiveModelLabel(), State: u.currentState(),
 			TranscriptLines: terminalOutput.transcriptLines(transcriptWidth),
 			Composer:        editor.Text(), CursorByte: editor.CursorByte(),
 			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
-			ScrollOffset: scrollOffset,
-			Hints:        hints,
+			ScrollOffset: scrollOffset, Activity: activity, ActivityElapsed: elapsed,
+			ActivityFrame: int(time.Now().UnixMilli() / 120),
+			ControlModel:  u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(),
+			Hints: hints,
 		}, width, height, palette, os.Getenv("NO_COLOR") == "")
 		var screen strings.Builder
 		// Synchronized updates keep capable terminals from showing half a frame.
@@ -187,6 +169,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			if err := u.event(message); err != nil {
 				return err
 			}
+			picker.sync(u)
 			editor.SetCompletionContext(chatCompletionContextFromUI(u))
 			if resumePickerPending && u.sessions != nil && u.sessions.complete {
 				sessionPicker = u.sessions.failure == ""
@@ -212,11 +195,14 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 					continue
 				}
 				if event.interrupt {
-					if u.busy {
+					if u.agentTurnActive() || (u.busy && !u.persistentSession) {
 						if err := u.interrupt(); err != nil {
 							return err
 						}
 					} else {
+						if err := u.stopIdleSession(); err != nil {
+							return err
+						}
 						return nil
 					}
 					dirty = true
@@ -224,6 +210,38 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 				}
 				if event.input == nil {
 					continue
+				}
+				if event.input.Key == chatEditorModelPicker {
+					openPicker("model")
+					continue
+				}
+				if event.input.Key == chatEditorReasoningPicker {
+					openPicker("reasoning")
+					continue
+				}
+				if picker.active() {
+					switch event.input.Key {
+					case chatEditorUp:
+						picker.move(u, -1)
+						dirty = true
+						continue
+					case chatEditorDown:
+						picker.move(u, 1)
+						dirty = true
+						continue
+					case chatEditorEscape:
+						picker.close()
+						dirty = true
+						continue
+					case chatEditorEnter:
+						if err := picker.choose(u); err != nil {
+							terminalOutput.append("system", err.Error()+"\n")
+						}
+						dirty = true
+						continue
+					default:
+						picker.close()
+					}
 				}
 				if sessionPicker {
 					switch event.input.Key {
@@ -269,6 +287,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 						wasBusy, wasReady := u.busy, u.threadReady
 						busyControl := wasBusy && (line == "/new" || strings.HasPrefix(line, "/resume ") || line == "/compose")
 						if line == "/resume" {
+							picker.close()
 							resumePickerPending = true
 							sessionPicker = true
 							sessionSelection = 0
@@ -283,6 +302,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 						if quit {
 							return nil
 						}
+						picker.sync(u)
 						if line == "/resume" && u.sessions == previousSessions {
 							resumePickerPending = false
 							sessionPicker = false
@@ -305,12 +325,15 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			case syscall.SIGWINCH:
 				dirty = true
 			case os.Interrupt:
-				if u.busy {
+				if u.agentTurnActive() || (u.busy && !u.persistentSession) {
 					if err := u.interrupt(); err != nil {
 						return err
 					}
 					dirty = true
 				} else {
+					if err := u.stopIdleSession(); err != nil {
+						return err
+					}
 					return nil
 				}
 			default:
@@ -339,6 +362,16 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 					}
 					return fmt.Errorf("Codex app-server timed out during %s", pending.method)
 				}
+			}
+			picker.sync(u)
+			if u.busy && u.turnStartedAt.IsZero() && u.activityLabel != "" {
+				// Preserve a useful timer while the start request is pending.
+				u.turnStartedAt = now
+			}
+			activityFrame := int(now.UnixMilli() / 120)
+			if u.busy && activityFrame != lastActivityFrame {
+				lastActivityFrame = activityFrame
+				dirty = true
 			}
 			if dirty && (lastDraw.IsZero() || now.Sub(lastDraw) >= chatTerminalRefresh) {
 				if err := draw(); err != nil {

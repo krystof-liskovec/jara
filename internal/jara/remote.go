@@ -33,6 +33,7 @@ type Session struct {
 	Workspace    string
 	Attached     int
 	Background   bool
+	ChatDaemon   bool
 	Dead         bool
 	CreatedAt    int64
 	LastAttach   int64
@@ -93,4 +94,22 @@ func lockWorkspace(id string) (func(), error) {
 		return nil, fmt.Errorf("workspace operation already in progress (or stale lock %s): %w", lock, err)
 	}
 	return func() { _ = os.Remove(lock) }, nil
+}
+
+func workspaceOperationLocked(id string) (bool, error) {
+	p, err := workspacePath(id)
+	if err != nil {
+		return false, err
+	}
+	info, err := os.Lstat(p + ".lock")
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return false, fmt.Errorf("workspace lock is not a valid directory")
+	}
+	return true, nil
 }

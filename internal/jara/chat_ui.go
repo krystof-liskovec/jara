@@ -15,30 +15,41 @@ type chatPending struct {
 	deadline time.Time
 }
 type chatUI struct {
-	c                        *appConnection
-	out                      io.Writer
-	cwd, thread, turn        string
-	busy, cancel             bool
-	threadReady              bool
-	connected                bool
-	composing                bool
-	draft                    []string
-	draftBytes               int
-	startedAt                time.Time
-	turnStartedAt            time.Time
-	lastAgentState           string
-	effectiveModel           string
-	nextModel                string
-	nextModelLabel           string
-	modelSelectionGeneration uint64
-	pending                  map[string]chatPending
-	pendingTurnModels        map[string]chatTurnRequest
-	approvals                []appMessage
-	questionRequests         []chatQuestionRequest
-	sessions                 *chatSessionBrowser
-	sessionPickerRequested   bool
-	models                   *chatModelBrowser
-	items                    map[string]json.RawMessage
+	c                            *appConnection
+	out                          io.Writer
+	cwd, thread, turn            string
+	busy, cancel                 bool
+	threadReady                  bool
+	connected                    bool
+	composing                    bool
+	draft                        []string
+	draftBytes                   int
+	startedAt                    time.Time
+	turnStartedAt                time.Time
+	workspaceLabel               string
+	trackAgentState              bool
+	persistentSession            bool
+	attachedTurnActive           bool
+	resumeAtStart                bool
+	resumeLatest                 bool
+	lastAgentState               string
+	effectiveModel               string
+	effectiveReasoning           string
+	nextModel                    string
+	nextModelLabel               string
+	nextReasoning                string
+	activityLabel                string
+	modelSelectionGeneration     uint64
+	reasoningSelectionGeneration uint64
+	pickerRequested              string
+	pending                      map[string]chatPending
+	pendingTurnModels            map[string]chatTurnRequest
+	approvals                    []appMessage
+	questionRequests             []chatQuestionRequest
+	sessions                     *chatSessionBrowser
+	sessionPickerRequested       bool
+	models                       *chatModelBrowser
+	items                        map[string]json.RawMessage
 }
 
 // Text from the model and tools is untrusted terminal content.
@@ -63,6 +74,16 @@ func (u *chatUI) printRole(role, s string) {
 	}
 	fmt.Fprint(u.out, s)
 }
+func (u *chatUI) printRoleAt(role, s string, at time.Time) {
+	s = chatText(s)
+	if writer, ok := u.out.(interface {
+		WriteChatRoleAt(string, string, time.Time)
+	}); ok {
+		writer.WriteChatRoleAt(role, s, at)
+		return
+	}
+	u.printRole(role, s)
+}
 func (u *chatUI) recordRole(role, s string) {
 	if writer, ok := u.out.(interface{ WriteChatRole(string, string) }); ok {
 		writer.WriteChatRole(role, chatText(s))
@@ -84,7 +105,9 @@ func (u *chatUI) setAgentState(state string) {
 		return
 	}
 	u.lastAgentState = state
-	publishChatAgentState(state)
+	if u.trackAgentState {
+		publishChatAgentState(state)
+	}
 }
 func publishChatAgentState(state string) {
 	if os.Getenv("TMUX") == "" {
@@ -110,6 +133,8 @@ func clearChatAgentState() {
 }
 func (u *chatUI) open(id string) error {
 	u.busy = true
+	u.turnStartedAt = time.Time{}
+	u.activityLabel = ""
 	u.setAgentState("starting")
 	params := map[string]any{"cwd": u.cwd}
 	method := "thread/start"
@@ -130,6 +155,7 @@ func (u *chatUI) interrupt() error {
 		return err
 	}
 	u.cancel = true
+	u.activityLabel = "Stopping"
 	for _, m := range u.approvals {
 		if err := u.c.reply(m.ID, map[string]string{"decision": "cancel"}); err != nil {
 			return err
@@ -193,14 +219,33 @@ func (u *chatUI) response(m appMessage) error {
 		if err := u.c.encoder.Encode(map[string]string{"method": "initialized"}); err != nil {
 			return err
 		}
+		if u.resumeAtStart && u.thread == "" {
+			u.busy = false
+			u.setAgentState("idle")
+			u.sessionPickerRequested = chatUIIsInteractive(u) && !u.resumeLatest
+			return u.startChatSessionSearch("")
+		}
 		return u.open(u.thread)
 	case "thread/start", "thread/resume":
 		var r struct {
 			Thread struct {
-				ID    string `json:"id"`
-				Turns []struct{ Items []struct{ Type, Text string } }
+				ID              string  `json:"id"`
+				ReasoningEffort *string `json:"reasoningEffort"`
+				Turns           []struct {
+					StartedAt *int64 `json:"startedAt"`
+					Items     []struct {
+						Type        string `json:"type"`
+						Text        string `json:"text"`
+						StartedAtMs *int64 `json:"startedAtMs"`
+						Content     []struct {
+							Type string `json:"type"`
+							Text string `json:"text"`
+						} `json:"content"`
+					} `json:"items"`
+				} `json:"turns"`
 			}
-			Model string `json:"model"`
+			Model           string  `json:"model"`
+			ReasoningEffort *string `json:"reasoningEffort"`
 		}
 		if err := json.Unmarshal(m.Result, &r); err != nil {
 			return err
@@ -213,13 +258,25 @@ func (u *chatUI) response(m appMessage) error {
 		if previousThread != "" && previousThread != u.thread {
 			u.nextModel = ""
 			u.nextModelLabel = ""
+			u.nextReasoning = ""
 		}
 		u.setEffectiveModel(r.Model)
+		u.effectiveReasoning = ""
+		if r.ReasoningEffort != nil {
+			u.effectiveReasoning = *r.ReasoningEffort
+		} else if r.Thread.ReasoningEffort != nil {
+			u.effectiveReasoning = *r.Thread.ReasoningEffort
+		}
 		u.threadReady = true
-		u.busy = false
-		u.setAgentState("idle")
+		u.busy = p.method == "thread/resume" && u.attachedTurnActive
+		if u.busy {
+			u.activityLabel = "Thinking"
+			u.setAgentState("running")
+		} else {
+			u.setAgentState("idle")
+		}
 		// Explicit metadata links this terminal to its saved conversation.
-		if os.Getenv("TMUX") != "" {
+		if u.trackAgentState && os.Getenv("TMUX") != "" {
 			_ = tmux("set-option", "-t", os.Getenv("TMUX_PANE"), "@jara_codex_thread", u.thread).Run()
 		}
 		if !chatUIIsInteractive(u) {
@@ -227,8 +284,25 @@ func (u *chatUI) response(m appMessage) error {
 		}
 		for _, t := range r.Thread.Turns {
 			for _, item := range t.Items {
-				if item.Type == "agentMessage" {
-					u.printRole("assistant", item.Text+"\n")
+				at := time.Time{}
+				if item.StartedAtMs != nil {
+					at = time.UnixMilli(*item.StartedAtMs)
+				} else if t.StartedAt != nil {
+					at = time.Unix(*t.StartedAt, 0)
+				}
+				switch item.Type {
+				case "agentMessage":
+					u.printRoleAt("assistant", item.Text+"\n", at)
+				case "userMessage":
+					var text strings.Builder
+					for _, content := range item.Content {
+						if content.Type == "text" || content.Type == "input_text" {
+							text.WriteString(content.Text)
+						}
+					}
+					if text.Len() > 0 {
+						u.printRoleAt("user", text.String()+"\n", at)
+					}
 				}
 			}
 		}
@@ -249,9 +323,21 @@ func (u *chatUI) response(m appMessage) error {
 			}
 			if request.model != "" {
 				u.setEffectiveModel(request.model)
-				if request.generation == u.modelSelectionGeneration {
+				if request.effort == "" {
+					u.effectiveReasoning = ""
+					if model := u.modelByID(request.model); model != nil {
+						u.effectiveReasoning = model.DefaultReasoningEffort
+					}
+				}
+				if request.modelGeneration == u.modelSelectionGeneration {
 					u.nextModel = ""
 					u.nextModelLabel = ""
+				}
+			}
+			if request.effort != "" {
+				u.effectiveReasoning = request.effort
+				if request.effortGeneration == u.reasoningSelectionGeneration {
+					u.nextReasoning = ""
 				}
 			}
 		}
@@ -287,6 +373,7 @@ func (u *chatUI) event(m appMessage) error {
 		switch m.Method {
 		case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 			u.approvals = append(u.approvals, m)
+			u.activityLabel = "Waiting for approval"
 			u.setAgentState("waiting")
 			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%sType /approve to allow once or /deny to reject.\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID])))
 			return nil
@@ -299,8 +386,12 @@ func (u *chatUI) event(m appMessage) error {
 	}
 	switch m.Method {
 	case "turn/started":
+		u.attachedTurnActive = true
 		u.turn = p.Turn.ID
 		u.turnStartedAt = time.Now()
+		if u.activityLabel == "" || u.activityLabel == "Starting turn" {
+			u.activityLabel = "Thinking"
+		}
 		u.setAgentState(u.currentState())
 		if u.cancel {
 			return u.interrupt()
@@ -312,22 +403,40 @@ func (u *chatUI) event(m appMessage) error {
 		}
 		u.printRole(role, p.Delta)
 	case "item/started", "item/completed":
-		var item struct{ ID, Type, Command, Status string }
+		var item struct {
+			ID, Type, Command, Status string
+			StartedAtMs               *int64 `json:"startedAtMs"`
+		}
 		_ = json.Unmarshal(p.Item, &item)
 		u.items[item.ID] = p.Item
 		if m.Method == "item/started" && item.Type == "commandExecution" {
-			u.printRole("tool", "\n$ "+item.Command+"\n")
+			u.activityLabel = "Running command"
+			at := time.Time{}
+			if item.StartedAtMs != nil {
+				at = time.UnixMilli(*item.StartedAtMs)
+			}
+			u.printRoleAt("tool", "\n$ "+item.Command+"\n", at)
 		}
 		if item.Type == "fileChange" {
+			if m.Method == "item/started" {
+				u.activityLabel = "Applying changes"
+			} else {
+				u.activityLabel = "Thinking"
+			}
 			u.printRole("tool", "\nFile changes: "+string(p.Item)+"\n")
+		}
+		if item.Type == "commandExecution" && m.Method == "item/completed" {
+			u.activityLabel = "Thinking"
 		}
 	case "turn/completed":
 		if err := u.cancelQuestionRequests("Turn ended before the question was answered."); err != nil {
 			return err
 		}
+		u.attachedTurnActive = false
 		u.busy = false
 		u.turn = ""
 		u.turnStartedAt = time.Time{}
+		u.activityLabel = ""
 		u.cancel = false
 		u.approvals = nil
 		u.items = map[string]json.RawMessage{}
