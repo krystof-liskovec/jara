@@ -19,6 +19,7 @@ type chatDaemonState struct {
 	Workspace    string `json:"workspace"`
 	CWD          string `json:"cwd"`
 	Conversation string `json:"conversation,omitempty"`
+	ThreadLoaded bool   `json:"thread_loaded,omitempty"`
 	ActiveTurn   bool   `json:"active_turn,omitempty"`
 	Attached     bool   `json:"attached,omitempty"`
 	PID          int    `json:"pid"`
@@ -26,7 +27,7 @@ type chatDaemonState struct {
 }
 
 type chatDaemonPaths struct {
-	socket, state, pid, start, log string
+	socket, state, schedules, crunch, pid, start, log string
 }
 
 func chatDaemonPathSet(id string) (chatDaemonPaths, error) {
@@ -45,7 +46,7 @@ func chatDaemonPathSet(id string) (chatDaemonPaths, error) {
 		return chatDaemonPaths{}, fmt.Errorf("chat session directory is unsafe")
 	}
 	base := filepath.Join(dir, id)
-	paths := chatDaemonPaths{socket: base + ".sock", state: base + ".json", pid: base + ".pid", start: base + ".start", log: base + ".log"}
+	paths := chatDaemonPaths{socket: base + ".sock", state: base + ".json", schedules: base + ".schedules.json", crunch: base + ".crunch.json", pid: base + ".pid", start: base + ".start", log: base + ".log"}
 	if len(paths.socket) >= 100 {
 		return chatDaemonPaths{}, fmt.Errorf("Jara data path is too long for a local chat socket")
 	}

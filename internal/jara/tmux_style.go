@@ -35,9 +35,9 @@ func configureTmuxStatus(session string) error {
 		return fmt.Errorf("configure exited terminal panes: %w", err)
 	}
 	bg, fg := background.hex(), background.foreground().hex()
-	accent := "#008080"
+	accent := "#af3a03"
 	if fg == "#d0d0d0" {
-		accent = "#5fd7af"
+		accent = "#fe8019"
 	}
 	base := "bg=" + bg + ",fg=" + fg
 	if err := runTmux("set-option", "-s", "escape-time", "40"); err != nil {

@@ -152,6 +152,23 @@ func (p *chatTerminalKeyParser) consumeEscape() (int, *chatTerminalKeyEvent, boo
 }
 
 func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEvent {
+	switch sequence {
+	case "\x1b[13;2u", "\x1b[13;2:1u", "\x1b[27;2;13~",
+		"\x1b[13;3u", "\x1b[13;3:1u", "\x1b[27;3;13~",
+		"\x1b[13;5u", "\x1b[13;5:1u", "\x1b[27;5;13~",
+		"\x1b[13;6u", "\x1b[13;6:1u", "\x1b[27;6;13~":
+		event := editorEvent(chatEditorText, "\n")
+		return &event
+	case "\x1b[106;5u", "\x1b[106;5:1u", "\x1b[27;5;106~",
+		"\x1b[106;6u", "\x1b[106;6:1u", "\x1b[27;6;106~":
+		event := editorEvent(chatEditorText, "\n")
+		return &event
+	case "\x1b[99;5u", "\x1b[99;5:1u", "\x1b[27;5;99~":
+		return &chatTerminalKeyEvent{interrupt: true}
+	case "\x1b[9;2u", "\x1b[9;2:1u", "\x1b[27;2;9~":
+		event := editorEvent(chatEditorTab)
+		return &event
+	}
 	var key chatEditorKey
 	switch sequence {
 	case "\x1b[A", "\x1bOA":

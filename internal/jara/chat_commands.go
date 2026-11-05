@@ -8,6 +8,21 @@ import (
 func (u *chatUI) line(line string) (bool, error) {
 	if u.composing {
 		trimmed := strings.TrimSpace(line)
+		if isChatGoalCommand(trimmed) {
+			return false, u.runChatGoalCommand(trimmed)
+		}
+		if isChatScheduleCommand(trimmed) {
+			return false, u.runChatScheduleCommand(trimmed)
+		}
+		if isChatCrunchCommand(trimmed) {
+			return false, u.runChatCrunchCommand(trimmed, false)
+		}
+		if isChatGoalCrunchCommand(trimmed) {
+			return false, u.runChatCrunchCommand(trimmed, true)
+		}
+		if isChatQueueCommand(trimmed) {
+			return false, u.runChatQueueCommand(trimmed)
+		}
 		switch trimmed {
 		case "/send":
 			return false, u.sendDraft()
@@ -35,7 +50,7 @@ func (u *chatUI) line(line string) (bool, error) {
 			if err := u.cancelQuestionRequests("Question request cancelled because the session was stopped."); err != nil {
 				return false, err
 			}
-			return true, u.sendPersistentExit("jara/close")
+			return true, u.sendPersistentExit("jara/stop")
 		default:
 			if strings.HasPrefix(trimmed, "//") {
 				leading := len(line) - len(strings.TrimLeft(line, " \t"))
@@ -62,7 +77,7 @@ func (u *chatUI) line(line string) (bool, error) {
 		if err := u.cancelQuestionRequests("Question request cancelled because the session was stopped."); err != nil {
 			return false, err
 		}
-		return true, u.sendPersistentExit("jara/close")
+		return true, u.sendPersistentExit("jara/stop")
 	case line == "/detach":
 		if !u.persistentSession {
 			u.print("This conversation cannot be detached from its current session.\nYou> ")
@@ -94,6 +109,16 @@ func (u *chatUI) line(line string) (bool, error) {
 	case line == "/status":
 		u.print("\n" + u.status() + "You> ")
 		return false, nil
+	case isChatGoalCommand(line):
+		return false, u.runChatGoalCommand(line)
+	case isChatScheduleCommand(line):
+		return false, u.runChatScheduleCommand(line)
+	case isChatCrunchCommand(line):
+		return false, u.runChatCrunchCommand(line, false)
+	case isChatGoalCrunchCommand(line):
+		return false, u.runChatCrunchCommand(line, true)
+	case isChatQueueCommand(line):
+		return false, u.runChatQueueCommand(line)
 	case line == "/help":
 		u.print("\n" + u.help() + "You> ")
 		return false, nil
@@ -289,6 +314,14 @@ func (u *chatUI) sendDraft() error {
 }
 
 func (u *chatUI) sendPrompt(message string) error {
+	return u.sendPromptWithQueue(message, "")
+}
+
+func (u *chatUI) sendQueuedPrompt(message string) error {
+	return u.sendPromptWithQueue(message, message)
+}
+
+func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 	if !u.threadReady {
 		u.print("No conversation is open. Use /resume ID or /new first.\nYou> ")
 		return nil
@@ -310,5 +343,5 @@ func (u *chatUI) sendPrompt(message string) error {
 	if u.nextReasoning != "" {
 		params["effort"] = u.nextReasoning
 	}
-	return u.requestTurn(params)
+	return u.requestTurnWithQueuedPrompt(params, queuedPrompt)
 }

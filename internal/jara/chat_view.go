@@ -204,7 +204,7 @@ func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool)
 			if strings.Contains(strings.Join(hints, " "), "cancel") {
 				interrupt = "Ctrl+C cancel"
 			}
-			hints = []string{"PgUp/Dn history", "Ctrl+J newline", "Enter send", interrupt}
+			hints = []string{"PgUp/Dn history", "Shift+Enter newline", "Enter send", interrupt}
 		}
 		markers := []string{}
 		if clippedAbove {

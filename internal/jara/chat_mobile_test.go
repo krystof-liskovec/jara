@@ -121,6 +121,7 @@ func TestChatMobileServerFixture(t *testing.T) {
 					os.Exit(5)
 				}
 				send(map[string]any{"method": "item/agentMessage/delta", "params": map[string]string{"delta": "QUESTION_OK"}})
+				time.Sleep(250 * time.Millisecond)
 				send(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]string{"id": "turn-question", "status": "completed"}}})
 			case `"approval-mobile"`:
 				var result struct {
@@ -174,6 +175,7 @@ func TestChatMobileConversationOn40ColumnPTY(t *testing.T) {
 	}
 	session.sendLine(t, "/answer 1 2")
 	session.wait(t, "QUESTION_OK")
+	session.waitNoMarker(t, "[completed]", 100*time.Millisecond)
 	session.waitCount(t, "[completed]", 1)
 
 	session.sendLine(t, "Need approval")
@@ -256,7 +258,7 @@ func (s *chatMobilePTY) waitNoMarker(t *testing.T, marker string, duration time.
 			}
 			s.output.WriteString(chunk)
 			if strings.Contains(s.output.String(), marker) {
-				t.Fatalf("approval was granted before explicit command %q: %s", marker, s.output.String())
+				t.Fatalf("unexpectedly rendered %q: %s", marker, s.output.String())
 			}
 		case <-deadline.C:
 			return

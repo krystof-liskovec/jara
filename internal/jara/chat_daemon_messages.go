@@ -15,6 +15,7 @@ type chatDaemonClientClosed struct {
 	conn   net.Conn
 	close  bool
 	detach bool
+	stop   bool
 }
 
 func writeChatDaemonState(paths chatDaemonPaths, state chatDaemonState) error {
@@ -28,19 +29,57 @@ func removeChatDaemonPID(paths chatDaemonPaths, pid int) {
 	}
 }
 
-func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mutex, state *chatDaemonState, stateMu, stateWriteMu *sync.Mutex, paths chatDaemonPaths, pending map[string]string, pendingMu *sync.Mutex, serverRequests *chatDaemonRequestQueue, closed chan<- chatDaemonClientClosed) {
+func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mutex, state *chatDaemonState, stateMu, stateWriteMu *sync.Mutex, paths chatDaemonPaths, pending map[string]string, pendingMu *sync.Mutex, serverRequests *chatDaemonRequestQueue, schedules *chatScheduleManager, crunch *chatCrunchManager, closed chan<- chatDaemonClientClosed) {
 	scanner := bufio.NewScanner(conn)
 	scanner.Buffer(make([]byte, 4096), 8<<20)
 	requestedClose := false
 	requestedDetach := false
+	requestedStop := false
 	for scanner.Scan() {
 		line := append([]byte(nil), scanner.Bytes()...)
 		var message appMessage
 		if json.Unmarshal(line, &message) == nil {
-			if message.Method == "jara/close" || message.Method == "jara/detach" {
-				requestedClose = message.Method == "jara/close"
+			if message.Method == "jara/close" || message.Method == "jara/detach" || message.Method == "jara/stop" {
+				requestedClose = message.Method == "jara/close" || message.Method == "jara/stop"
 				requestedDetach = message.Method == "jara/detach"
+				requestedStop = message.Method == "jara/stop"
 				break
+			}
+			if chatScheduleRequest(message.Method) {
+				if len(message.ID) > 0 {
+					stateMu.Lock()
+					threadID := state.Conversation
+					stateMu.Unlock()
+					result, requestErr := schedules.handleClientRequest(message.Method, message.Params, threadID)
+					response := map[string]any{"id": message.ID}
+					if requestErr != nil {
+						response["error"] = map[string]any{"code": -32602, "message": requestErr.Error()}
+					} else {
+						response["result"] = result
+					}
+					if line, marshalErr := json.Marshal(response); marshalErr == nil {
+						_ = writeChatDaemonLine(conn, line)
+					}
+				}
+				continue
+			}
+			if chatCrunchRequest(message.Method) {
+				if len(message.ID) > 0 {
+					stateMu.Lock()
+					threadID := state.Conversation
+					stateMu.Unlock()
+					result, requestErr := crunch.handleClientRequest(message.Method, message.Params, threadID, input, inputMu)
+					response := map[string]any{"id": message.ID}
+					if requestErr != nil {
+						response["error"] = map[string]any{"code": -32602, "message": requestErr.Error()}
+					} else {
+						response["result"] = result
+					}
+					if line, marshalErr := json.Marshal(response); marshalErr == nil {
+						_ = writeChatDaemonLine(conn, line)
+					}
+				}
+				continue
 			}
 			if len(message.ID) > 0 && message.Method != "" {
 				pendingMu.Lock()
@@ -49,24 +88,50 @@ func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mut
 			} else if len(message.ID) > 0 {
 				serverRequests.remove(message.ID)
 			}
-			if message.Method == "turn/start" {
-				stateWriteMu.Lock()
-				stateMu.Lock()
-				state.ActiveTurn = true
-				snapshot := *state
-				stateMu.Unlock()
-				_ = writeChatDaemonState(paths, snapshot)
-				stateWriteMu.Unlock()
-			}
 		}
 		inputMu.Lock()
+		if message.Method == "turn/start" {
+			stateMu.Lock()
+			activeTurn := state.ActiveTurn
+			stateMu.Unlock()
+			if activeTurn || schedules.running() || crunch.running() {
+				inputMu.Unlock()
+				pendingMu.Lock()
+				delete(pending, string(message.ID))
+				pendingMu.Unlock()
+				response, _ := json.Marshal(map[string]any{
+					"id": message.ID,
+					"error": map[string]any{
+						"code":    -32000,
+						"message": "another turn is already running; wait for it to finish before sending another prompt",
+					},
+				})
+				_ = writeChatDaemonLine(conn, response)
+				continue
+			}
+			stateWriteMu.Lock()
+			stateMu.Lock()
+			state.ActiveTurn = true
+			snapshot := *state
+			stateMu.Unlock()
+			_ = writeChatDaemonState(paths, snapshot)
+			stateWriteMu.Unlock()
+		} else if message.Method == "thread/start" || message.Method == "thread/resume" {
+			stateWriteMu.Lock()
+			stateMu.Lock()
+			state.ThreadLoaded = false
+			snapshot := *state
+			stateMu.Unlock()
+			_ = writeChatDaemonState(paths, snapshot)
+			stateWriteMu.Unlock()
+		}
 		_, err := input.Write(append(line, '\n'))
 		inputMu.Unlock()
 		if err != nil {
 			break
 		}
 	}
-	closed <- chatDaemonClientClosed{conn: conn, close: requestedClose, detach: requestedDetach}
+	closed <- chatDaemonClientClosed{conn: conn, close: requestedClose, detach: requestedDetach, stop: requestedStop}
 }
 
 func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mutex, pending *map[string]string, pendingMu *sync.Mutex) bool {
@@ -99,9 +164,15 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 			if json.Unmarshal(message.Result, &response) == nil && response.Thread.ID != "" {
 				stateMu.Lock()
 				state.Conversation = response.Thread.ID
+				state.ThreadLoaded = true
 				stateMu.Unlock()
 				changed = true
 			}
+		} else if (method == "thread/start" || method == "thread/resume") && message.Error != nil {
+			stateMu.Lock()
+			state.ThreadLoaded = state.Conversation != ""
+			stateMu.Unlock()
+			changed = true
 		}
 		if method == "turn/start" && message.Error != nil {
 			stateMu.Lock()

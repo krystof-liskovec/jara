@@ -65,7 +65,7 @@ func (u *chatUI) status() string {
 	} else {
 		b.WriteString("Turn: idle\n")
 	}
-	fmt.Fprintf(&b, "Pending approvals: %d\nPending questions: %d\nPending requests: %d\n", len(u.approvals), u.pendingQuestionCount(), len(u.pending))
+	fmt.Fprintf(&b, "Pending approvals: %d\nPending questions: %d\nPending requests: %d\nQueued prompts: %d\n", len(u.approvals), u.pendingQuestionCount(), len(u.pending), len(u.queuedPrompts))
 	for i, approval := range u.approvals {
 		itemID, _ := chatApprovalSummary(approval)
 		fmt.Fprintf(&b, "Pending approval %d:\n%s", i+1, formatChatApproval(approval, u.items[itemID]))
@@ -74,7 +74,37 @@ func (u *chatUI) status() string {
 }
 
 func (u *chatUI) help() string {
-	return "Commands\n/new             Start a new conversation\n/sessions [query] Browse saved sessions in this folder\n/resume [N or ID]  Browse recent sessions or resume an ID\n/models          Browse and select available Codex models\n/model [ID or N] Browse models or select one directly\n/reasoning [EFFORT] Select reasoning or browse supported efforts\n/compose         Write a multi-line message\n/send            Send the composed message\n/discard         Discard the composed message\n/status          Show connection, runtime, and turn state\n/answer N X      Answer question N with option X or text\n/cancel          Stop the current turn\n/approve         Allow the oldest pending request\n/deny            Reject the oldest pending request\n/detach          Disconnect and leave the remote session running\n/quit            Stop idle sessions; leave active agents running\n/stop            Stop the remote session and release the workspace\n/help            Show available commands\n\nF2 opens model selection; F3 opens reasoning selection. Choices apply to this and future turns in this conversation; they do not change Codex defaults.\nType a message to send it to the agent. In /compose, prefix a literal slash line with //.\n"
+	return `Commands
+/new             Start a new conversation
+/sessions [query] Browse saved sessions in this folder
+/resume [N or ID]  Browse recent sessions or resume an ID
+/models          Browse and select available Codex models
+/model [ID or N] Browse models or select one directly
+/reasoning [EFFORT] Select reasoning or browse supported efforts
+/compose         Write a multi-line message
+/send            Send the composed message
+/discard         Discard the composed message
+/goal [ARGS]     Set or manage a persistent goal for this conversation
+/goalcrunch ...  Run a goal through usage-limit pauses
+/schedule ...    Schedule a prompt for this conversation
+/crunch ...      Run a prompt through usage-limit pauses
+/queue [run|clear] Inspect or manage queued prompts
+/status          Show connection, runtime, and turn state
+/answer N X      Answer question N with option X or text
+/cancel          Stop the current turn
+/approve         Allow the oldest pending request
+/deny            Reject the oldest pending request
+/detach          Disconnect and leave the remote session running
+/quit            Stop idle sessions; leave active agents running
+/stop            Stop the remote session and release the workspace
+/help            Show available commands
+
+Use /crunch PROMPT to work until the task is complete. Normal completion stops it; a usage-limit interruption waits for reset and resumes. /goalcrunch OBJECTIVE stops when Codex marks its goal complete. Both require a persistent Jara session. Use /crunch status or /crunch stop to manage the active crunch task.
+Use /schedule in 30m PROMPT, /schedule at RFC3339 PROMPT, /schedule list, or /schedule cancel ID. Scheduled prompts run when this conversation is idle and continue after you disconnect.
+While a turn is running, type a follow-up and press Tab to queue it. Queued prompts run in order after the current turn; use /queue to inspect them, /queue run to start one when idle, or /queue clear to remove this conversation's queued prompts.
+F2 opens model selection; F3 opens reasoning selection. Choices apply to this and future turns in this conversation; they do not change Codex defaults.
+Type a message to send it to the agent. In /compose, prefix a literal slash line with //.
+`
 }
 
 func chatApprovalSummary(m appMessage) (itemID, command string) {
