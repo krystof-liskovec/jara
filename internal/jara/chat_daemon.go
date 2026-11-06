@@ -104,37 +104,18 @@ func recoverChatDaemonWorkspaceLock(id string) error {
 	if err != nil {
 		return err
 	}
+	gate, err := lockLifecycle()
+	if err != nil {
+		return err
+	}
+	defer gate()
 	lock := workspace + ".lock"
-	info, err := os.Lstat(lock)
-	if os.IsNotExist(err) {
-		return nil
-	}
+	recovered, err := recoverWorkspaceLock(lock)
 	if err != nil {
 		return err
 	}
-	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("workspace lock is not a directory")
-	}
-	owner := filepath.Join(lock, "chat-daemon.pid")
-	data, err := os.ReadFile(owner)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid < 2 {
-		return fmt.Errorf("persistent Jara lock owner is invalid; inspect %s", lock)
-	}
-	if chatProcessExists(pid) {
-		return nil
-	}
-	if err = os.Remove(owner); err != nil {
-		return err
-	}
-	if err = os.Remove(lock); err != nil {
-		return fmt.Errorf("remove stale persistent Jara lock: %w", err)
+	if !recovered {
+		return fmt.Errorf("workspace operation is active or its lock is too recent to recover: %s", lock)
 	}
 	return nil
 }

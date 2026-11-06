@@ -5,7 +5,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
+
+const workspaceLockOwnerFile = "owner.pid"
+const workspaceLockStaleGrace = time.Minute
 
 type Workspace struct {
 	ID         string `json:"id"`
@@ -91,9 +97,82 @@ func lockWorkspace(id string) (func(), error) {
 	}
 	lock := p + ".lock"
 	if err = os.Mkdir(lock, 0700); err != nil {
-		return nil, fmt.Errorf("workspace operation already in progress (or stale lock %s): %w", lock, err)
+		if !os.IsExist(err) {
+			return nil, err
+		}
+		recovered, recoverErr := recoverWorkspaceLock(lock)
+		if recoverErr != nil {
+			return nil, recoverErr
+		}
+		if !recovered {
+			return nil, fmt.Errorf("workspace operation is active or its lock is too recent to recover: %s", lock)
+		}
+		if err = os.Mkdir(lock, 0700); err != nil {
+			return nil, fmt.Errorf("workspace operation already in progress: %w", err)
+		}
 	}
-	return func() { _ = os.Remove(lock) }, nil
+	owner := filepath.Join(lock, workspaceLockOwnerFile)
+	if err = os.WriteFile(owner, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0600); err != nil {
+		_ = os.Remove(owner)
+		_ = os.Remove(lock)
+		return nil, fmt.Errorf("record workspace lock owner: %w", err)
+	}
+	return func() {
+		_ = os.Remove(owner)
+		_ = os.Remove(lock)
+	}, nil
+}
+
+// recoverWorkspaceLock runs while holding the lifecycle lock. PID markers
+// protect live operations; old ownerless locks expire after a short grace.
+func recoverWorkspaceLock(lock string) (bool, error) {
+	info, err := os.Lstat(lock)
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return false, fmt.Errorf("workspace lock is not a valid directory: %s", lock)
+	}
+	markers := []string{workspaceLockOwnerFile, "chat-daemon.pid"}
+	foundMarker := false
+	for _, name := range markers {
+		owner := filepath.Join(lock, name)
+		markerInfo, markerErr := os.Lstat(owner)
+		if os.IsNotExist(markerErr) {
+			continue
+		}
+		if markerErr != nil {
+			return false, markerErr
+		}
+		if !markerInfo.Mode().IsRegular() {
+			return false, fmt.Errorf("workspace lock owner marker is not a regular file: %s", owner)
+		}
+		foundMarker = true
+		data, readErr := os.ReadFile(owner)
+		if readErr != nil {
+			return false, readErr
+		}
+		pid, parseErr := strconv.Atoi(strings.TrimSpace(string(data)))
+		if parseErr != nil || pid < 2 {
+			return false, fmt.Errorf("workspace lock owner is invalid; inspect %s", owner)
+		}
+		if chatProcessExists(pid) {
+			return false, nil
+		}
+		if err = os.Remove(owner); err != nil {
+			return false, err
+		}
+	}
+	if !foundMarker && time.Since(info.ModTime()) < workspaceLockStaleGrace {
+		return false, nil
+	}
+	if err = os.Remove(lock); err != nil {
+		return false, fmt.Errorf("remove stale workspace lock: %w", err)
+	}
+	return true, nil
 }
 
 func workspaceOperationLocked(id string) (bool, error) {
