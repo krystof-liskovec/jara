@@ -156,7 +156,7 @@ running:
 				break running
 			}
 			stateMu.Lock()
-			preserveDetachedIdle = event.detach && clients.count() == 0 && !state.ActiveTurn
+			preserveDetachedIdle = (event.detach || event.disconnected) && clients.count() == 0
 			stateMu.Unlock()
 			if !event.detach && isDetachedAndIdle() {
 				shutdown.Store(true)

@@ -12,10 +12,11 @@ import (
 )
 
 type chatDaemonClientClosed struct {
-	client *chatDaemonClient
-	close  bool
-	detach bool
-	stop   bool
+	client       *chatDaemonClient
+	close        bool
+	detach       bool
+	stop         bool
+	disconnected bool
 }
 
 func writeChatDaemonState(paths chatDaemonPaths, state chatDaemonState) error {
@@ -151,7 +152,10 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 			break
 		}
 	}
-	closed <- chatDaemonClientClosed{client: client, close: requestedClose, detach: requestedDetach, stop: requestedStop}
+	closed <- chatDaemonClientClosed{
+		client: client, close: requestedClose, detach: requestedDetach,
+		stop: requestedStop, disconnected: !requestedClose && !requestedDetach && !requestedStop,
+	}
 }
 
 func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mutex, pending *map[string]string, pendingMu *sync.Mutex) bool {
