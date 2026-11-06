@@ -56,6 +56,7 @@ const (
 type chatEditor struct {
 	text                string
 	cursor              int
+	pastePreviews       []chatEditorPastePreview
 	maxBytes            int
 	history             []string
 	historyIndex        int
@@ -84,6 +85,7 @@ func (e *chatEditor) SetText(text string) {
 	text, _ = truncateChatGraphemes(text, e.maxBytes)
 	e.text = text
 	e.cursor = len(text)
+	e.pastePreviews = nil
 	e.afterEdit()
 }
 
@@ -134,7 +136,11 @@ func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
 	result := chatEditorResult{}
 	switch input.Key {
 	case chatEditorText, chatEditorPaste:
+		pasteStart := e.cursor
 		insert, limitReached := e.insert(input.Text)
+		if insert && input.Key == chatEditorPaste {
+			e.addPastePreview(pasteStart, e.cursor)
+		}
 		result.Changed, result.LimitReached = insert, limitReached
 	case chatEditorLeft:
 		result.Changed = e.moveLeft()
@@ -168,6 +174,7 @@ func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
 		e.remember(result.Value)
 		e.text = ""
 		e.cursor = 0
+		e.pastePreviews = nil
 		e.historyIndex = len(e.history)
 		e.historyDraft = ""
 		e.resetCompletions()
@@ -191,6 +198,7 @@ func (e *chatEditor) insert(raw string) (changed, limitReached bool) {
 	if insert == "" {
 		return false, truncated
 	}
+	e.shiftPastePreviewsForInsert(e.cursor, len(insert))
 	e.text = e.text[:e.cursor] + insert + e.text[e.cursor:]
 	e.cursor += len(insert)
 	e.afterEdit()
@@ -228,6 +236,13 @@ func (e *chatEditor) moveLeft() bool {
 	if e.cursor == 0 {
 		return false
 	}
+	for _, preview := range e.pastePreviews {
+		if e.cursor > preview.start && e.cursor <= preview.end {
+			e.cursor = preview.start
+			e.afterCursorMove()
+			return true
+		}
+	}
 	previous := 0
 	graphemes := uniseg.NewGraphemes(e.text)
 	for graphemes.Next() {
@@ -247,6 +262,13 @@ func (e *chatEditor) moveLeft() bool {
 func (e *chatEditor) moveRight() bool {
 	if e.cursor >= len(e.text) {
 		return false
+	}
+	for _, preview := range e.pastePreviews {
+		if e.cursor >= preview.start && e.cursor < preview.end {
+			e.cursor = preview.end
+			e.afterCursorMove()
+			return true
+		}
 	}
 	graphemes := uniseg.NewGraphemes(e.text)
 	for graphemes.Next() {
@@ -289,6 +311,7 @@ func (e *chatEditor) backspace() bool {
 	}
 	previous := e.cursor
 	e.moveLeft()
+	e.removePastePreviewsInRange(e.cursor, previous)
 	e.text = e.text[:e.cursor] + e.text[previous:]
 	e.afterEdit()
 	return true
@@ -300,6 +323,7 @@ func (e *chatEditor) deleteForward() bool {
 	}
 	next := e.cursor
 	e.moveRight()
+	e.removePastePreviewsInRange(next, e.cursor)
 	e.text = e.text[:next] + e.text[e.cursor:]
 	e.cursor = next
 	e.afterEdit()
@@ -323,6 +347,7 @@ func (e *chatEditor) moveUp() bool {
 	e.historyIndex--
 	e.text = e.history[e.historyIndex]
 	e.cursor = len(e.text)
+	e.pastePreviews = nil
 	e.afterCursorMove()
 	return true
 }
@@ -345,6 +370,7 @@ func (e *chatEditor) moveDown() bool {
 		e.text = e.history[e.historyIndex]
 	}
 	e.cursor = len(e.text)
+	e.pastePreviews = nil
 	e.afterCursorMove()
 	return true
 }
@@ -364,6 +390,7 @@ func (e *chatEditor) applySelectedCompletion() bool {
 	}
 	e.text = updated
 	e.cursor = candidate.start + len(replacement)
+	e.pastePreviews = nil
 	e.dismissed = true
 	e.candidates = nil
 	e.historyIndex = len(e.history)
@@ -388,6 +415,7 @@ func (e *chatEditor) afterEdit() {
 }
 
 func (e *chatEditor) afterCursorMove() {
+	e.snapCursorToPasteBoundary()
 	e.refreshCompletions(false)
 }
 
