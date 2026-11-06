@@ -37,7 +37,7 @@ unpublished commits. Docker and rsync are not needed after installation.
 
 This installs `jara` into `~/.local/bin` and does not modify your shell `PATH`.
 If that directory is not already on your `PATH`, run it as `~/.local/bin/jara`.
-The installer refreshes the deployment source bundle embedded in the CLI.
+The installer embeds a fresh deployment bundle without modifying the checked-in archive.
 
 ## First connection
 
