@@ -59,10 +59,12 @@ jara deployment upgrade work
 This transfers the source bundle embedded in that CLI, builds and validates a
 candidate image with native Docker on the host, defers while the environment is
 in use, and replaces the server container with rollback on failure. The host
-needs no Git, Compose, or Jara installation. Workspace volumes and the
-configured Codex version remain in place. After success, Jara asks whether to
-remove the previous image tag used for rollback. Manual Compose deployments must
-be upgraded from their host checkout.
+needs no Git, Compose, or Jara installation. Each upgrade checks npm for a newer
+stable Codex release and pins it in the replacement image and deployment env.
+Pass `--keep-codex-version` to preserve the current Codex pin. Workspace volumes
+remain in place. After success, Jara asks whether to remove the previous image
+tag used for rollback. Manual Compose deployments must be upgraded from their
+host checkout.
 
 ## First install
 
