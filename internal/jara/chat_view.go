@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,6 +25,9 @@ type chatViewModel struct {
 	Activity                string
 	ActivityElapsed         string
 	ActivityFrame           int
+	QueuedPrompts           []chatViewLine
+	QueueEditing            bool
+	QueueEditNumber         int
 	ControlModel            string
 	ControlReasoning        string
 	ScrollOffset            int
@@ -40,6 +44,8 @@ type chatViewLine struct {
 	selected         bool
 }
 
+const chatQueueViewRowLimit = 8
+
 // renderChatView builds a fixed-size frame. ScrollOffset counts rows upward
 // from the newest transcript row; zero follows the newest content.
 func renderChatView(model chatViewModel, width, height int, palette menuPalette, color bool) chatFrame {
@@ -48,7 +54,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	for i := range frame.Lines {
 		frame.Lines[i] = paintChatViewLine(strings.Repeat(" ", width), "canvas", "", false, width, palette, color)
 	}
-	if height < 7 || width < 18 {
+	if height < 9 || width < 18 {
 		return renderCompactChatView(model, width, height, palette, color)
 	}
 
@@ -67,16 +73,21 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 	composerText := sanitizeChatViewText(model.Composer)
 	composerLines, cursorLine, cursorColumn := wrapChatComposer(composerText, model.CursorLine, model.CursorColumn, max(1, width-4))
-	maxInputRows := max(1, min(4, height-headerRows-footerRows-controlRows-2))
+	queueReserve := 0
+	if len(model.QueuedPrompts) > 0 {
+		queueReserve = 1
+	}
+	maxInputRows := max(1, min(4, height-headerRows-footerRows-controlRows-2-queueReserve))
 	inputRows := max(1, min(maxInputRows, len(composerLines)))
 	composerRows := inputRows + 2
-	spare := max(0, height-headerRows-footerRows-controlRows-composerRows-1)
-	completionRows := min(min(6, len(model.Suggestions)), spare)
+	spare := max(0, height-headerRows-footerRows-controlRows-composerRows)
+	queueRows := min(min(chatQueueViewRowLimit, len(model.QueuedPrompts)), spare)
+	completionRows := min(min(6, len(model.Suggestions)), max(0, spare-queueRows))
 	activityRows := 0
-	if model.Activity != "" && spare > completionRows {
+	if model.Activity != "" && spare > queueRows+completionRows {
 		activityRows = 1
 	}
-	transcriptRows := max(0, height-headerRows-footerRows-controlRows-composerRows-completionRows-activityRows)
+	transcriptRows := max(0, spare-queueRows-completionRows-activityRows)
 	transcript := model.TranscriptLines
 	if transcript == nil {
 		transcript = expandChatTranscript(model.Messages, width-4)
@@ -104,6 +115,10 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, "", false, width, palette, color)
 		row++
 	}
+	for _, line := range chatQueueWindow(model.QueuedPrompts, queueRows) {
+		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, "", false, width, palette, color)
+		row++
+	}
 	choiceStart := chatCompletionWindow(model.Suggestions, completionRows)
 	for i := 0; i < completionRows; i++ {
 		choice := model.Suggestions[choiceStart+i]
@@ -120,7 +135,8 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 	composerStart := row
 	composerParts, visibleStart := chatComposerWindow(composerLines, cursorLine, inputRows)
-	frame.Lines[row] = paintChatViewLine(chatComposerBorder(width, "╭", "╮", " Message ", visibleStart > 0), "composer-border", "", false, width, palette, color)
+	composerLabel, sendLabel := chatComposerLabels(model)
+	frame.Lines[row] = paintChatViewLine(chatComposerBorder(width, "╭", "╮", composerLabel, visibleStart > 0), "composer-border", "", false, width, palette, color)
 	row++
 	innerWidth := max(1, width-4)
 	for i := 0; i < inputRows; i++ {
@@ -131,7 +147,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.Lines[row] = paintChatViewLine("  "+fitChatView(content, innerWidth)+"  ", "composer", "", false, width, palette, color)
 		row++
 	}
-	frame.Lines[row] = paintChatViewLine(chatComposerBorder(width, "╰", "╯", " Enter send ", visibleStart+inputRows < len(composerLines)), "composer-border", "", false, width, palette, color)
+	frame.Lines[row] = paintChatViewLine(chatComposerBorder(width, "╰", "╯", sendLabel, visibleStart+inputRows < len(composerLines)), "composer-border", "", false, width, palette, color)
 	row++
 	for _, control := range controlLines {
 		frame.Lines[row] = paintChatViewLine(" "+fitChatView(control, width-2), "controls", "", false, width, palette, color)
@@ -197,14 +213,16 @@ func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool)
 		hints = []string{"↑↓ choose", "Tab complete", "Enter send", "Ctrl+C quit"}
 	}
 	if clippedAbove || clippedBelow {
-		if strings.Contains(strings.Join(hints, " "), "Esc close") {
+		if model.QueueEditing {
+			hints = []string{"PgUp/Dn/wheel scroll", "Enter save", "Esc cancel"}
+		} else if strings.Contains(strings.Join(hints, " "), "Esc close") {
 			hints = []string{"↑↓ choose", "Enter open", "Esc close"}
 		} else {
 			interrupt := "Ctrl+C quit"
 			if strings.Contains(strings.Join(hints, " "), "cancel") {
 				interrupt = "Ctrl+C cancel"
 			}
-			hints = []string{"PgUp/Dn history", "Shift+Enter newline", "Enter send", interrupt}
+			hints = []string{"PgUp/Dn/wheel history", "Shift+Enter newline", "Enter send", interrupt}
 		}
 		markers := []string{}
 		if clippedAbove {
@@ -214,6 +232,9 @@ func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool)
 			markers = append(markers, "↓ newer")
 		}
 		hints = append(hints, strings.Join(markers, " "))
+	}
+	if len(model.QueuedPrompts) > 0 && !model.QueueEditing && !strings.Contains(strings.Join(hints, " "), "Esc close") {
+		hints = append(hints, "/queue edit N")
 	}
 	return strings.Join(hints, "  ")
 }
@@ -290,12 +311,13 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		}
 	}
 	available := max(0, height-1-composerRows-controlRows)
-	completionRows := min(4, min(len(model.Suggestions), available))
+	queueRows := min(min(chatQueueViewRowLimit, len(model.QueuedPrompts)), available)
+	completionRows := min(4, min(len(model.Suggestions), max(0, available-queueRows)))
 	activityRows := 0
-	if model.Activity != "" && available > completionRows {
+	if model.Activity != "" && available > queueRows+completionRows {
 		activityRows = 1
 	}
-	transcriptRows := max(0, available-completionRows-activityRows)
+	transcriptRows := max(0, available-queueRows-completionRows-activityRows)
 	content := []chatViewLine{}
 	if model.Model != "" || model.State != "" {
 		content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
@@ -323,6 +345,10 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, "", false, width, palette, color)
 		row++
 	}
+	for _, line := range chatQueueWindow(model.QueuedPrompts, queueRows) {
+		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, "", false, width, palette, color)
+		row++
+	}
 	choiceStart := chatCompletionWindow(model.Suggestions, completionRows)
 	for index := 0; index < completionRows; index++ {
 		choice := model.Suggestions[choiceStart+index]
@@ -337,16 +363,20 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		frame.Lines[row] = paintChatViewLine(marker+fitChatView(text, width-2), "completion", "", choice.Selected, width, palette, color)
 		row++
 	}
-	composerLines, cursorLine, cursorColumn := wrapChatComposer(model.Composer, model.CursorLine, model.CursorColumn, max(1, width-2))
-	if len(composerLines) == 0 {
-		composerLines = []string{""}
-	}
-	cursorLine = min(max(0, cursorLine), len(composerLines)-1)
-	visible, start, leftMore := chatViewWindow(composerLines[cursorLine], max(0, width-2), cursorColumn)
 	prefix := "> "
 	if width < 2 {
 		prefix = ">"
 	}
+	if model.QueueEditing {
+		prefix = "Edit> "
+	}
+	composerWidth := max(1, width-uniseg.StringWidth(prefix))
+	composerLines, cursorLine, cursorColumn := wrapChatComposer(model.Composer, model.CursorLine, model.CursorColumn, composerWidth)
+	if len(composerLines) == 0 {
+		composerLines = []string{""}
+	}
+	cursorLine = min(max(0, cursorLine), len(composerLines)-1)
+	visible, start, leftMore := chatViewWindow(composerLines[cursorLine], max(0, composerWidth), cursorColumn)
 	composerRow := height - controlRows - 1
 	if controlRows == 1 {
 		controls := "M:" + controlModel + " · R:" + controlReasoning + " (F2/F3)"
@@ -361,13 +391,49 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	return frame
 }
 
+func chatQueueWindow(lines []chatViewLine, rows int) []chatViewLine {
+	if rows <= 0 || len(lines) == 0 {
+		return nil
+	}
+	if len(lines) <= rows {
+		return lines
+	}
+	if rows == 1 {
+		line := lines[0]
+		line.text += "  +" + strconv.Itoa(len(lines)-1) + " more (/queue)"
+		return []chatViewLine{line}
+	}
+	visible := append([]chatViewLine(nil), lines[:rows-1]...)
+	visible = append(visible, chatViewLine{
+		text: "… " + strconv.Itoa(len(lines)-len(visible)) + " more; /queue to inspect",
+		kind: "queued-prompt-more",
+	})
+	return visible
+}
+
+func chatComposerLabels(model chatViewModel) (string, string) {
+	if model.QueueEditing {
+		label := " Edit queue "
+		if model.QueueEditNumber > 0 {
+			label = " Edit #" + strconv.Itoa(model.QueueEditNumber) + " "
+		}
+		return label, " Enter save "
+	}
+	return " Message ", " Enter send "
+}
+
 func chatActivityViewLine(model chatViewModel) chatViewLine {
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	text := spinner[max(0, model.ActivityFrame)%len(spinner)] + "  " + menuText(model.Activity)
 	if model.ActivityElapsed != "" {
 		text += "  ·  " + menuText(model.ActivityElapsed)
 	}
-	return chatViewLine{text: text, kind: "activity"}
+	kind := "activity"
+	switch strings.TrimSpace(model.Activity) {
+	case "Running command", "Applying changes", "Compacting context":
+		kind = "activity-working"
+	}
+	return chatViewLine{text: text, kind: kind}
 }
 
 func chatViewWindow(text string, width, cursor int) (string, int, bool) {

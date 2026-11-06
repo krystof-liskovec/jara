@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+func chatAlreadyInitialized(message string) bool {
+	return strings.Contains(strings.ToLower(message), "already initialized")
+}
+
 // recoverChatRequestError handles definitive app-server rejections for
 // requests whose failure leaves the current conversation usable.
 func recoverChatRequestError(u *chatUI, pending chatPending, message appMessage) bool {

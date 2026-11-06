@@ -2,12 +2,14 @@ package jara
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
 const chatPromptQueueLimit = 32
 
 type chatQueuedPrompt struct {
+	id       uint64
 	threadID string
 	text     string
 }
@@ -23,8 +25,16 @@ func (u *chatUI) queuePrompt(threadID, prompt string) error {
 	if len(u.queuedPrompts) >= chatPromptQueueLimit {
 		return fmt.Errorf("prompt queue is full (%d prompts)", chatPromptQueueLimit)
 	}
-	u.queuedPrompts = append(u.queuedPrompts, chatQueuedPrompt{threadID: threadID, text: prompt})
+	u.queuedPrompts = append(u.queuedPrompts, u.newQueuedPrompt(threadID, prompt))
 	return nil
+}
+
+func (u *chatUI) newQueuedPrompt(threadID, text string) chatQueuedPrompt {
+	u.queuePromptSequence++
+	if u.queuePromptSequence == 0 {
+		u.queuePromptSequence++
+	}
+	return chatQueuedPrompt{id: u.queuePromptSequence, threadID: threadID, text: text}
 }
 
 func isChatQueueCommand(line string) bool {
@@ -57,8 +67,31 @@ func (u *chatUI) runChatQueueCommand(line string) error {
 		u.print(fmt.Sprintf("Cleared %d queued prompt(s) for this conversation.\n%s", cleared, u.schedulePrompt()))
 		return nil
 	}
+	if strings.HasPrefix(args, "edit") {
+		parts := strings.Fields(args)
+		if len(parts) != 2 || parts[0] != "edit" {
+			u.print("Usage: /queue | /queue run | /queue clear | /queue edit N\n" + u.schedulePrompt())
+			return nil
+		}
+		if !chatUIIsInteractive(u) {
+			u.print("Editing queued prompts requires the interactive chat interface.\n" + u.schedulePrompt())
+			return nil
+		}
+		number, err := strconv.Atoi(parts[1])
+		if err != nil || number < 1 {
+			u.print("Choose a queued prompt number from /queue.\n" + u.schedulePrompt())
+			return nil
+		}
+		_, prompt, ok := u.queuedPromptAt(number)
+		if !ok {
+			u.print("That queued prompt does not exist. Use /queue to see the current queue.\n" + u.schedulePrompt())
+			return nil
+		}
+		u.queueEditRequest = prompt.id
+		return nil
+	}
 	if args != "" {
-		u.print("Usage: /queue | /queue run | /queue clear\n" + u.schedulePrompt())
+		u.print("Usage: /queue | /queue run | /queue clear | /queue edit N\n" + u.schedulePrompt())
 		return nil
 	}
 	var b strings.Builder
@@ -75,6 +108,61 @@ func (u *chatUI) runChatQueueCommand(line string) error {
 	}
 	u.print(b.String() + u.schedulePrompt())
 	return nil
+}
+
+func (u *chatUI) queuedPromptAt(number int) (int, chatQueuedPrompt, bool) {
+	if number < 1 {
+		return -1, chatQueuedPrompt{}, false
+	}
+	current := 0
+	for index, prompt := range u.queuedPrompts {
+		if prompt.threadID != u.thread {
+			continue
+		}
+		current++
+		if current == number {
+			return index, prompt, true
+		}
+	}
+	return -1, chatQueuedPrompt{}, false
+}
+
+func (u *chatUI) queuedPromptByID(id uint64) (int, int, chatQueuedPrompt, bool) {
+	if id == 0 {
+		return -1, 0, chatQueuedPrompt{}, false
+	}
+	current := 0
+	for index, prompt := range u.queuedPrompts {
+		if prompt.threadID != u.thread {
+			continue
+		}
+		current++
+		if prompt.id == id {
+			return index, current, prompt, true
+		}
+	}
+	return -1, 0, chatQueuedPrompt{}, false
+}
+
+func (u *chatUI) queueViewLines(editingID uint64) []chatViewLine {
+	var lines []chatViewLine
+	number := 0
+	for _, prompt := range u.queuedPrompts {
+		if prompt.threadID != u.thread {
+			continue
+		}
+		number++
+		kind := "queued-prompt"
+		marker := "  "
+		if prompt.id == editingID {
+			kind, marker = "queued-prompt-edit", "› "
+		}
+		lines = append(lines, chatViewLine{
+			text: fmt.Sprintf("%sQueued %d · %s", marker, number, compactScheduledPrompt(prompt.text)),
+			kind: kind,
+		})
+	}
+	return lines
 }
 
 func (u *chatUI) dispatchQueuedPrompt() (bool, error) {

@@ -46,6 +46,15 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 				requestedStop = message.Method == "jara/stop"
 				break
 			}
+			if message.Method == "initialized" {
+				stateWriteMu.Lock()
+				stateMu.Lock()
+				state.Initialized = true
+				snapshot := *state
+				stateMu.Unlock()
+				_ = writeChatDaemonState(paths, snapshot)
+				stateWriteMu.Unlock()
+			}
 			if chatScheduleRequest(message.Method) {
 				if len(message.ID) > 0 {
 					stateMu.Lock()
@@ -179,6 +188,12 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 		method := (*pending)[string(message.ID)]
 		delete(*pending, string(message.ID))
 		pendingMu.Unlock()
+		if method == "initialize" && message.Error != nil && chatAlreadyInitialized(message.Error.Message) {
+			stateMu.Lock()
+			state.Initialized = true
+			stateMu.Unlock()
+			changed = true
+		}
 		if (method == "thread/start" || method == "thread/resume") && message.Error == nil {
 			var response struct {
 				Thread struct {

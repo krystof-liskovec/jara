@@ -160,13 +160,18 @@ func (o *chatTerminalOutput) transcriptLines(width int) []chatViewLine {
 		return o.viewLines
 	}
 	lines := make([]chatViewLine, 0, 2+len(o.entries)*2)
+	previousRole := ""
 	if o.trimmed {
 		lines = append(lines,
 			chatViewLine{text: "• Jara", kind: "role-system"},
 			chatViewLine{text: "  Earlier output was trimmed to keep this session responsive.", kind: "body"},
 		)
+		previousRole = "system"
 	}
 	for _, entry := range o.entries {
+		if chatViewNeedsMessageGap(previousRole, entry.role) {
+			lines = append(lines, chatViewLine{kind: "message-gap"})
+		}
 		header := expandChatTranscript([]chatViewMessage{{Role: entry.role, At: entry.at}}, width)
 		lines = append(lines, header...)
 		lines = append(lines, entry.lines...)
@@ -174,6 +179,7 @@ func (o *chatTerminalOutput) transcriptLines(width int) []chatViewLine {
 			pending, _ := expandChatTranscriptLine(entry.pending.String(), width, entry.role, entry.inCode)
 			lines = append(lines, pending...)
 		}
+		previousRole = entry.role
 	}
 	o.viewLines = lines
 	o.viewDirty = false

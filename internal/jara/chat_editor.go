@@ -52,16 +52,17 @@ const (
 )
 
 type chatEditor struct {
-	text         string
-	cursor       int
-	maxBytes     int
-	history      []string
-	historyIndex int
-	historyDraft string
-	context      chatCompletionContext
-	candidates   []chatEditorCandidate
-	selected     int
-	dismissed    bool
+	text                string
+	cursor              int
+	maxBytes            int
+	history             []string
+	historyIndex        int
+	historyDraft        string
+	context             chatCompletionContext
+	candidates          []chatEditorCandidate
+	selected            int
+	dismissed           bool
+	completionsDisabled bool
 }
 
 func newChatEditor(maxBytes int) *chatEditor {
@@ -97,6 +98,11 @@ func (e *chatEditor) CursorPosition() (line, column int) {
 func (e *chatEditor) SetCompletionContext(context chatCompletionContext) {
 	e.context = context
 	e.refreshCompletions(false)
+}
+
+func (e *chatEditor) SetCompletionsDisabled(disabled bool) {
+	e.completionsDisabled = disabled
+	e.refreshCompletions(true)
 }
 
 func (e *chatEditor) Completions() []chatCompletionChoice {
@@ -390,6 +396,12 @@ func (e *chatEditor) completionVisible() bool {
 }
 
 func (e *chatEditor) refreshCompletions(resetSelection bool) {
+	if e.completionsDisabled {
+		e.candidates = nil
+		e.selected = 0
+		e.dismissed = false
+		return
+	}
 	if resetSelection {
 		e.dismissed = false
 		e.selected = 0

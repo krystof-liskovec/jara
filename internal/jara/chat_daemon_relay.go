@@ -133,7 +133,10 @@ running:
 		select {
 		case conn := <-accepted:
 			stateMu.Lock()
-			ready := remoteChatServerReady{CWD: state.CWD, Workspace: state.Workspace, Conversation: state.Conversation, ActiveTurn: state.ActiveTurn}
+			ready := remoteChatServerReady{
+				CWD: state.CWD, Workspace: state.Workspace, Conversation: state.Conversation,
+				Initialized: state.Initialized, ActiveTurn: state.ActiveTurn,
+			}
 			stateMu.Unlock()
 			client, err := clients.attach(conn, ready)
 			if err != nil {

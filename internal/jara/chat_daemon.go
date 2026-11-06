@@ -19,6 +19,7 @@ type chatDaemonState struct {
 	Workspace       string `json:"workspace"`
 	CWD             string `json:"cwd"`
 	Conversation    string `json:"conversation,omitempty"`
+	Initialized     bool   `json:"initialized,omitempty"`
 	ThreadLoaded    bool   `json:"thread_loaded,omitempty"`
 	ActiveTurn      bool   `json:"active_turn,omitempty"`
 	Attached        bool   `json:"attached,omitempty"`
