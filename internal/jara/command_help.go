@@ -421,9 +421,9 @@ var commandHelp = map[string]helpEntry{
 		},
 	},
 	"deployment upgrade": {
-		usage:   "jara deployment upgrade [NAME] [--force-downgrade]",
+		usage:   "jara deployment upgrade [NAME] [--force-downgrade] [--keep-codex-version]",
 		summary: "Build and validate this CLI's Jara source bundle on the Docker host.",
-		options: []string{"--force-downgrade   Permit replacing a newer server with this older CLI version."},
+		options: []string{"--force-downgrade      Permit replacing a newer server with this older CLI version.", "--keep-codex-version   Keep the deployment's current Codex version."},
 		examples: []string{
 			"jara deployment upgrade jellyfish",
 			"jara deployment upgrade jellyfish --force-downgrade",
