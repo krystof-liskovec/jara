@@ -1,0 +1,114 @@
+package jara
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+const (
+	chatFileChangeDiffLimit      = 80
+	chatFileChangeTotalDiffLimit = 240
+)
+
+type chatFileChange struct {
+	Path    string `json:"path"`
+	OldPath string `json:"oldPath"`
+	NewPath string `json:"newPath"`
+	Kind    string `json:"kind"`
+	Diff    string `json:"diff"`
+}
+
+func formatChatFileChanges(raw json.RawMessage) string {
+	var item struct {
+		Status  string           `json:"status"`
+		Changes []chatFileChange `json:"changes"`
+	}
+	if err := json.Unmarshal(raw, &item); err != nil {
+		return "File change details could not be read.\n"
+	}
+	return formatChatFileChangeList(item.Status, item.Changes)
+}
+
+func formatChatFileChangeList(status string, changes []chatFileChange) string {
+	if len(changes) == 0 {
+		return "File changes contained no file paths.\n"
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "File changes (%d files)", len(changes))
+	status = strings.TrimSpace(chatText(status))
+	if status != "" && !strings.EqualFold(status, "completed") && !strings.EqualFold(status, "applied") {
+		b.WriteString(" · " + status)
+	}
+	b.WriteString(":\n")
+
+	remainingDiffLines := chatFileChangeTotalDiffLimit
+	for _, change := range changes {
+		path := change.Path
+		if path == "" {
+			path = change.NewPath
+		}
+		if path == "" {
+			path = change.OldPath
+		}
+		path = strings.Join(strings.Fields(chatText(path)), " ")
+		if path == "" {
+			path = "Unknown file"
+		}
+		b.WriteString("- " + path)
+		if kind := chatFileChangeKind(change.Kind); kind != "" {
+			b.WriteString(" · " + kind)
+		}
+		added, removed := chatFileChangeCounts(change.Diff)
+		if added+removed > 0 {
+			fmt.Fprintf(&b, " · +%d −%d", added, removed)
+		}
+		b.WriteByte('\n')
+
+		diffLines := strings.Split(strings.TrimRight(change.Diff, "\r\n"), "\n")
+		if change.Diff == "" {
+			continue
+		}
+		if remainingDiffLines <= 0 {
+			b.WriteString("  … diff omitted (display limit reached)\n")
+			continue
+		}
+		shown := min(len(diffLines), min(chatFileChangeDiffLimit, remainingDiffLines))
+		b.WriteString("  ```diff\n")
+		for _, line := range diffLines[:shown] {
+			b.WriteString(line + "\n")
+		}
+		omitted := len(diffLines) - shown
+		if omitted > 0 {
+			b.WriteString(fmt.Sprintf("… %d diff lines omitted\n", omitted))
+		}
+		b.WriteString("  ```\n")
+		remainingDiffLines -= shown
+	}
+	return b.String()
+}
+
+func chatFileChangeKind(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case "add", "added", "create", "created":
+		return "added"
+	case "delete", "deleted", "remove", "removed":
+		return "deleted"
+	case "update", "updated", "modify", "modified":
+		return "updated"
+	default:
+		return strings.TrimSpace(chatText(kind))
+	}
+}
+
+func chatFileChangeCounts(diff string) (added, removed int) {
+	for _, line := range strings.Split(diff, "\n") {
+		if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+			added++
+		} else if strings.HasPrefix(line, "-") && !strings.HasPrefix(line, "---") {
+			removed++
+		}
+	}
+	return added, removed
+}

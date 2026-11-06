@@ -120,12 +120,12 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		if u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(suggestions) == 0 {
 			tabHint = "Tab queue"
 		}
-		hints := []string{"↑↓ choose", tabHint, "PgUp/Dn/wheel scroll", "Shift+Enter newline", "Enter send", interruptHint}
+		hints := []string{"Shift+drag select", tabHint, "PgUp/Dn/wheel", "Shift+Enter", "Enter send", interruptHint}
 		queueLines := u.queueViewLines(queueEditor.id)
 		queueEditNumber := 0
 		if queueEditor.active() {
 			_, queueEditNumber, _, _ = u.queuedPromptByID(queueEditor.id)
-			hints = []string{"Enter save edit", "Esc cancel", "Shift+Enter newline", "PgUp/Dn/wheel scroll"}
+			hints = []string{"Shift+drag select", "Enter save edit", "Esc cancel", "PgUp/Dn/wheel"}
 		} else if len(queueLines) > 0 {
 			hints = append(hints, "/queue edit N")
 		}
@@ -308,7 +308,8 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 					dirty = true
 					continue
 				}
-				if !queueEditor.active() && event.input.Key == chatEditorTab && u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(editor.Completions()) == 0 {
+				editorText := strings.TrimSpace(editor.Text())
+				if !queueEditor.active() && event.input.Key == chatEditorTab && u.agentTurnActive() && u.threadReady && editorText != "" && !strings.HasPrefix(editorText, "!") && len(editor.Completions()) == 0 {
 					if err := u.queuePrompt(u.thread, editor.Text()); err != nil {
 						terminalOutput.append("system", err.Error()+"\n")
 					} else {

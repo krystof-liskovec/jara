@@ -45,6 +45,9 @@ type chatUI struct {
 	nextModelLabel               string
 	nextReasoning                string
 	activityLabel                string
+	activitySummaryItemID        string
+	activitySummaryIndex         int
+	activitySummaryText          string
 	modelSelectionGeneration     uint64
 	reasoningSelectionGeneration uint64
 	pickerRequested              string
@@ -152,7 +155,7 @@ func clearChatAgentState() {
 func (u *chatUI) open(id string) error {
 	u.busy = true
 	u.turnStartedAt = time.Time{}
-	u.activityLabel = ""
+	u.setActivityLabel("")
 	u.setAgentState("starting")
 	params := map[string]any{"cwd": u.cwd}
 	method := "thread/start"
@@ -197,7 +200,7 @@ func (u *chatUI) interrupt() error {
 		return err
 	}
 	u.cancel = true
-	u.activityLabel = "Stopping"
+	u.setActivityLabel("Stopping")
 	for _, m := range u.approvals {
 		if err := u.c.reply(m.ID, map[string]string{"decision": "cancel"}); err != nil {
 			return err
@@ -229,6 +232,10 @@ func (u *chatUI) response(m appMessage) error {
 		return u.acceptChatPlanResponse(m, p)
 	}
 	if m.Error != nil {
+		if p.method == "jara/shell" {
+			u.printRole("system", "Shell command failed: "+chatText(m.Error.Message)+"\n")
+			return nil
+		}
 		if p.method == "initialize" && chatAlreadyInitialized(m.Error.Message) {
 			return u.completeChatInitialization(false)
 		}
@@ -282,6 +289,8 @@ func (u *chatUI) response(m appMessage) error {
 	switch p.method {
 	case "initialize":
 		return u.completeChatInitialization(true)
+	case "jara/shell":
+		return u.acceptChatShellResponse(m)
 	case "thread/start", "thread/resume":
 		var r chatThreadResponse
 		if err := json.Unmarshal(m.Result, &r); err != nil {
@@ -307,7 +316,7 @@ func (u *chatUI) response(m appMessage) error {
 		u.threadReady = true
 		u.busy = p.method == "thread/resume" && u.attachedTurnActive
 		if u.busy {
-			u.activityLabel = "Thinking"
+			u.setActivityLabel("Thinking")
 			u.setAgentState("running")
 		} else {
 			u.setAgentState("idle")

@@ -13,6 +13,8 @@ const (
 	chatEditorPaste           chatEditorKey = "paste"
 	chatEditorLeft            chatEditorKey = "left"
 	chatEditorRight           chatEditorKey = "right"
+	chatEditorWordLeft        chatEditorKey = "word-left"
+	chatEditorWordRight       chatEditorKey = "word-right"
 	chatEditorHome            chatEditorKey = "home"
 	chatEditorEnd             chatEditorKey = "end"
 	chatEditorBackspace       chatEditorKey = "backspace"
@@ -138,6 +140,10 @@ func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
 		result.Changed = e.moveLeft()
 	case chatEditorRight:
 		result.Changed = e.moveRight()
+	case chatEditorWordLeft:
+		result.Changed = e.moveWordLeft()
+	case chatEditorWordRight:
+		result.Changed = e.moveWordRight()
 	case chatEditorHome:
 		result.Changed = e.moveHome()
 	case chatEditorEnd:

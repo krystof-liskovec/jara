@@ -87,7 +87,11 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	if model.Activity != "" && spare > queueRows+completionRows {
 		activityRows = 1
 	}
-	transcriptRows := max(0, spare-queueRows-completionRows-activityRows)
+	separatorRows := 0
+	if spare-queueRows-completionRows-activityRows > 1 {
+		separatorRows = 1
+	}
+	transcriptRows := max(0, spare-queueRows-completionRows-activityRows-separatorRows)
 	transcript := model.TranscriptLines
 	if transcript == nil {
 		transcript = expandChatTranscript(model.Messages, width-4)
@@ -110,6 +114,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, line.role, false, width, palette, color)
 		row++
 	}
+	row += separatorRows
 	if activityRows > 0 {
 		line := chatActivityViewLine(model)
 		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, "", false, width, palette, color)
@@ -214,7 +219,7 @@ func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool)
 	}
 	if clippedAbove || clippedBelow {
 		if model.QueueEditing {
-			hints = []string{"PgUp/Dn/wheel scroll", "Enter save", "Esc cancel"}
+			hints = []string{"Shift+drag select", "PgUp/Dn/wheel", "Enter save", "Esc cancel"}
 		} else if strings.Contains(strings.Join(hints, " "), "Esc close") {
 			hints = []string{"↑↓ choose", "Enter open", "Esc close"}
 		} else {
@@ -222,7 +227,7 @@ func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool)
 			if strings.Contains(strings.Join(hints, " "), "cancel") {
 				interrupt = "Ctrl+C cancel"
 			}
-			hints = []string{"PgUp/Dn/wheel history", "Shift+Enter newline", "Enter send", interrupt}
+			hints = []string{"Shift+drag select", "PgUp/Dn/wheel history", "Shift+Enter", "Enter send", interrupt}
 		}
 		markers := []string{}
 		if clippedAbove {
@@ -317,7 +322,11 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	if model.Activity != "" && available > queueRows+completionRows {
 		activityRows = 1
 	}
-	transcriptRows := max(0, available-queueRows-completionRows-activityRows)
+	separatorRows := 0
+	if available-queueRows-completionRows-activityRows > 1 {
+		separatorRows = 1
+	}
+	transcriptRows := max(0, available-queueRows-completionRows-activityRows-separatorRows)
 	content := []chatViewLine{}
 	if model.Model != "" || model.State != "" {
 		content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
@@ -340,6 +349,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, line.role, false, width, palette, color)
 		row++
 	}
+	row += separatorRows
 	if activityRows > 0 {
 		line := chatActivityViewLine(model)
 		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, "", false, width, palette, color)
@@ -424,14 +434,17 @@ func chatComposerLabels(model chatViewModel) (string, string) {
 
 func chatActivityViewLine(model chatViewModel) chatViewLine {
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	text := spinner[max(0, model.ActivityFrame)%len(spinner)] + "  " + menuText(model.Activity)
+	text := spinner[max(0, model.ActivityFrame)%len(spinner)]
 	if model.ActivityElapsed != "" {
 		text += "  ·  " + menuText(model.ActivityElapsed)
 	}
-	kind := "activity"
+	text += "  ·  " + menuText(model.Activity)
+	kind := "activity-progress"
 	switch strings.TrimSpace(model.Activity) {
 	case "Running command", "Applying changes", "Compacting context":
 		kind = "activity-working"
+	case "Thinking", "Planning", "Waiting for approval", "Waiting for input", "Opening conversation", "Retrying", "Reconnecting", "Stopping":
+		kind = "activity"
 	}
 	return chatViewLine{text: text, kind: kind}
 }

@@ -36,7 +36,7 @@ func (u *chatUI) event(m appMessage) error {
 		switch m.Method {
 		case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 			u.approvals = append(u.approvals, m)
-			u.activityLabel = "Waiting for approval"
+			u.setActivityLabel("Waiting for approval")
 			u.setAgentState("waiting")
 			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%sType /approve to allow once or /deny to reject.\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID])))
 			return nil
@@ -64,7 +64,7 @@ func (u *chatUI) event(m appMessage) error {
 		u.turn = p.Turn.ID
 		u.turnStartedAt = time.Now()
 		if u.activityLabel == "" || u.activityLabel == "Starting turn" {
-			u.activityLabel = "Thinking"
+			u.setActivityLabel("Thinking")
 		}
 		u.setAgentState(u.currentState())
 		if u.cancel {
@@ -83,10 +83,10 @@ func (u *chatUI) event(m appMessage) error {
 		u.handleChatPlanItem(m.Method, item)
 		if item.Type == "contextCompaction" {
 			if m.Method == "item/started" {
-				u.activityLabel = "Compacting context"
+				u.setActivityLabel("Compacting context")
 				u.printRoleAt("progress", "Compacting conversation context…\n", chatHistoryItemTime(item, time.Now()))
 			} else {
-				u.activityLabel = "Thinking"
+				u.setActivityLabel("Thinking")
 				u.printRoleAt("progress", "Conversation context compaction complete.\n", chatHistoryItemTime(item, time.Now()))
 			}
 		}
@@ -97,7 +97,7 @@ func (u *chatUI) event(m appMessage) error {
 			u.finishReasoningSummary(item.ID, item.Summary)
 		}
 		if m.Method == "item/started" && item.Type == "commandExecution" {
-			u.activityLabel = "Running command"
+			u.setActivityLabel("Running command")
 			at := time.Time{}
 			if item.StartedAtMs != nil {
 				at = time.UnixMilli(*item.StartedAtMs)
@@ -106,14 +106,14 @@ func (u *chatUI) event(m appMessage) error {
 		}
 		if item.Type == "fileChange" {
 			if m.Method == "item/started" {
-				u.activityLabel = "Applying changes"
+				u.setActivityLabel("Applying changes")
 			} else {
-				u.activityLabel = "Thinking"
+				u.setActivityLabel("Thinking")
+				u.printRole("tool", "\n"+formatChatFileChanges(p.Item))
 			}
-			u.printRole("tool", "\nFile changes: "+string(p.Item)+"\n")
 		}
 		if item.Type == "commandExecution" && m.Method == "item/completed" {
-			u.activityLabel = "Thinking"
+			u.setActivityLabel("Thinking")
 		}
 	case "turn/completed":
 		u.finishAllReasoningSummaries()
@@ -124,7 +124,7 @@ func (u *chatUI) event(m appMessage) error {
 		u.busy = false
 		u.turn = ""
 		u.turnStartedAt = time.Time{}
-		u.activityLabel = ""
+		u.setActivityLabel("")
 		u.cancel = false
 		u.approvals = nil
 		u.items = map[string]json.RawMessage{}
@@ -173,7 +173,7 @@ func (u *chatUI) acceptChatErrorEvent(params json.RawMessage) error {
 		activity = "Reconnecting"
 		message = "Network issue: " + message
 	}
-	u.activityLabel = activity
+	u.setActivityLabel(activity)
 	u.setAgentState("running")
 	u.printRole("progress", message+"\n")
 	return nil

@@ -20,6 +20,11 @@ func chatTerminalActivity(u *chatUI, now time.Time) (string, string) {
 			label = "Thinking"
 		}
 	}
+	if label == "Thinking" || label == "Planning" {
+		if summary := chatActivitySummaryLabel(u.activitySummaryText); summary != "" {
+			label = summary
+		}
+	}
 	elapsed := ""
 	if !u.turnStartedAt.IsZero() {
 		elapsed = now.Sub(u.turnStartedAt).Round(time.Second).String()

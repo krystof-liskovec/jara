@@ -38,6 +38,8 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		fg, bold = palette.accent, "\x1b[1m"
 	case "activity-working":
 		fg, bold = palette.green, "\x1b[1m"
+	case "activity-progress":
+		fg = menuSelectionText(palette.canvas)
 	case "controls":
 		bg, fg = palette.surface, palette.muted
 	case "role-user":
@@ -47,7 +49,9 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		if kind != "bullet" {
 			bold = "\x1b[1m"
 		}
-	case "role-progress", "role-subagent":
+	case "role-progress":
+		bg, fg = palette.canvas, menuSelectionText(palette.canvas)
+	case "role-subagent":
 		bg, fg = palette.canvas, palette.accent
 	case "role-tool", "role-system":
 		bg, fg = palette.canvas, palette.muted
@@ -58,7 +62,7 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		case "tool":
 			bg, fg = palette.canvas, palette.muted
 		case "progress":
-			bg, fg, bold = palette.canvas, palette.muted, "\x1b[3m"
+			bg, fg, bold = palette.canvas, menuSelectionText(palette.canvas), "\x1b[3m"
 		case "subagent":
 			bg, fg = palette.canvas, palette.text
 		}

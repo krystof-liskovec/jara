@@ -44,11 +44,11 @@ workspace/model/activity header, styled user/agent/tool messages, and a bordered
 composer. The transcript scrolls independently of your draft and reflows when
 the terminal is resized. Narrow terminals use the same controls with a compact
 layout. Message groups have clearer spacing, and Codex's concise reasoning
-summaries appear inline as progress updates, such as command or exploration
-activity. Subagent activity appears inline with its delegation prompt, lifecycle
-updates, and any status or result text Codex includes in the parent thread. The
-interface does not fetch the child agent's separate full transcript or display
-raw reasoning text. Plain output remains available for pipes and `TERM=dumb`
+summaries update the activity row instead of appearing as transcript messages.
+Subagent activity appears inline with its delegation prompt, lifecycle updates,
+and any status or result text Codex includes in the parent thread. The interface
+does not fetch the child agent's separate full transcript or display raw
+reasoning text. Plain output remains available for pipes and `TERM=dumb`
 terminals.
 
 When Codex compacts conversation context, Jara shows a progress message in the
@@ -61,6 +61,8 @@ the composer; it does not execute the command. Escape dismisses the dropdown.
 `/models` and `/sessions` results. Enter submits completed input; Shift+Enter,
 Alt+Enter, or Ctrl+J inserts a newline. PageUp and PageDown scroll the
 transcript, as does the mouse wheel, while the composer keeps its draft.
+Because Jara captures the mouse wheel, hold Shift while dragging over history
+to use the terminal's native text selection, then copy with its usual shortcut.
 
 Submitting bare `/resume` opens a recent-session picker ordered newest first.
 Use the arrow keys to choose a conversation, Enter to open it, or Escape to
@@ -71,7 +73,8 @@ prompt to open it directly. `/reasoning` and F3 open the selected model's
 supported reasoning choices. Use the arrow keys and Enter to choose, or Escape
 to return to the chat. The model and reasoning controls remain visible below
 the composer, and the choices apply to this and later turns in the conversation.
-When Codex is working, an animated activity row shows whether it is thinking,
+When Codex is working, an animated activity row shows the latest concise
+progress summary when available; otherwise it reports whether Codex is thinking,
 running a command, applying changes, or waiting for input. Message headers show
 their timestamps when Codex provides them.
 
@@ -89,6 +92,9 @@ The theme follows the terminal background; `JARA_THEME=dark` or
 
 Enter one line of text to send a message. Replies and command output stream into
 the terminal. `/help` lists the controls:
+
+- Prefix a line with `!` (for example, `!git status`) to run a shell command in
+  the workspace and show its output in the conversation.
 
 While a turn is running, type a follow-up and press Tab to queue it. Jara sends
 queued prompts one at a time after the current turn. Use `/queue` to inspect the
