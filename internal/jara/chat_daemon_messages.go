@@ -12,7 +12,7 @@ import (
 )
 
 type chatDaemonClientClosed struct {
-	conn   net.Conn
+	client *chatDaemonClient
 	close  bool
 	detach bool
 	stop   bool
@@ -29,8 +29,8 @@ func removeChatDaemonPID(paths chatDaemonPaths, pid int) {
 	}
 }
 
-func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mutex, state *chatDaemonState, stateMu, stateWriteMu *sync.Mutex, paths chatDaemonPaths, pending map[string]string, pendingMu *sync.Mutex, serverRequests *chatDaemonRequestQueue, schedules *chatScheduleManager, crunch *chatCrunchManager, closed chan<- chatDaemonClientClosed) {
-	scanner := bufio.NewScanner(conn)
+func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputMu *sync.Mutex, state *chatDaemonState, stateMu, stateWriteMu *sync.Mutex, paths chatDaemonPaths, pending map[string]string, pendingMu *sync.Mutex, router *chatDaemonClientRouter, serverRequests *chatDaemonRequestQueue, schedules *chatScheduleManager, crunch *chatCrunchManager, closed chan<- chatDaemonClientClosed) {
+	scanner := bufio.NewScanner(client.conn)
 	scanner.Buffer(make([]byte, 4096), 8<<20)
 	requestedClose := false
 	requestedDetach := false
@@ -58,7 +58,7 @@ func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mut
 						response["result"] = result
 					}
 					if line, marshalErr := json.Marshal(response); marshalErr == nil {
-						_ = writeChatDaemonLine(conn, line)
+						_ = client.write(line)
 					}
 				}
 				continue
@@ -76,18 +76,31 @@ func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mut
 						response["result"] = result
 					}
 					if line, marshalErr := json.Marshal(response); marshalErr == nil {
-						_ = writeChatDaemonLine(conn, line)
+						_ = client.write(line)
 					}
 				}
 				continue
 			}
-			if len(message.ID) > 0 && message.Method != "" {
-				pendingMu.Lock()
-				pending[string(message.ID)] = message.Method
-				pendingMu.Unlock()
-			} else if len(message.ID) > 0 {
-				serverRequests.remove(message.ID)
+			if len(message.ID) > 0 && message.Method == "" {
+				if serverRequests.claim(message.ID) {
+					inputMu.Lock()
+					_, _ = input.Write(append(line, '\n'))
+					inputMu.Unlock()
+				}
+				continue
 			}
+		}
+		forwardLine := line
+		virtualID := message.ID
+		if len(message.ID) > 0 && message.Method != "" {
+			var rewriteErr error
+			forwardLine, virtualID, rewriteErr = router.rewrite(client, line, message.ID)
+			if rewriteErr != nil {
+				continue
+			}
+			pendingMu.Lock()
+			pending[string(virtualID)] = message.Method
+			pendingMu.Unlock()
 		}
 		inputMu.Lock()
 		if message.Method == "turn/start" {
@@ -97,8 +110,9 @@ func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mut
 			if activeTurn || schedules.running() || crunch.running() {
 				inputMu.Unlock()
 				pendingMu.Lock()
-				delete(pending, string(message.ID))
+				delete(pending, string(virtualID))
 				pendingMu.Unlock()
+				router.discard(virtualID)
 				response, _ := json.Marshal(map[string]any{
 					"id": message.ID,
 					"error": map[string]any{
@@ -106,7 +120,7 @@ func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mut
 						"message": "another turn is already running; wait for it to finish before sending another prompt",
 					},
 				})
-				_ = writeChatDaemonLine(conn, response)
+				_ = client.write(response)
 				continue
 			}
 			stateWriteMu.Lock()
@@ -125,13 +139,19 @@ func readChatDaemonClient(conn net.Conn, input io.WriteCloser, inputMu *sync.Mut
 			_ = writeChatDaemonState(paths, snapshot)
 			stateWriteMu.Unlock()
 		}
-		_, err := input.Write(append(line, '\n'))
+		_, err := input.Write(append(forwardLine, '\n'))
 		inputMu.Unlock()
 		if err != nil {
+			if len(virtualID) > 0 && message.Method != "" {
+				pendingMu.Lock()
+				delete(pending, string(virtualID))
+				pendingMu.Unlock()
+				router.discard(virtualID)
+			}
 			break
 		}
 	}
-	closed <- chatDaemonClientClosed{conn: conn, close: requestedClose, detach: requestedDetach, stop: requestedStop}
+	closed <- chatDaemonClientClosed{client: client, close: requestedClose, detach: requestedDetach, stop: requestedStop}
 }
 
 func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mutex, pending *map[string]string, pendingMu *sync.Mutex) bool {
@@ -216,7 +236,18 @@ func (q *chatDaemonRequestQueue) remove(id json.RawMessage) {
 	q.mu.Unlock()
 }
 
-func (q *chatDaemonRequestQueue) writePending(conn net.Conn) error {
+func (q *chatDaemonRequestQueue) claim(id json.RawMessage) bool {
+	key := string(id)
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if _, ok := q.byID[key]; !ok {
+		return false
+	}
+	delete(q.byID, key)
+	return true
+}
+
+func (q *chatDaemonRequestQueue) writePending(client *chatDaemonClient) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	seen := map[string]bool{}
@@ -226,7 +257,7 @@ func (q *chatDaemonRequestQueue) writePending(conn net.Conn) error {
 		}
 		seen[id] = true
 		if line, ok := q.byID[id]; ok {
-			if err := writeChatDaemonLine(conn, line); err != nil {
+			if err := client.write(line); err != nil {
 				return err
 			}
 		}
