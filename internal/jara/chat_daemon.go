@@ -15,15 +15,16 @@ import (
 const chatDaemonStartupTimeout = 3 * time.Minute
 
 type chatDaemonState struct {
-	WorkspaceID  string `json:"workspace_id"`
-	Workspace    string `json:"workspace"`
-	CWD          string `json:"cwd"`
-	Conversation string `json:"conversation,omitempty"`
-	ThreadLoaded bool   `json:"thread_loaded,omitempty"`
-	ActiveTurn   bool   `json:"active_turn,omitempty"`
-	Attached     bool   `json:"attached,omitempty"`
-	PID          int    `json:"pid"`
-	CreatedAt    int64  `json:"created_at"`
+	WorkspaceID     string `json:"workspace_id"`
+	Workspace       string `json:"workspace"`
+	CWD             string `json:"cwd"`
+	Conversation    string `json:"conversation,omitempty"`
+	ThreadLoaded    bool   `json:"thread_loaded,omitempty"`
+	ActiveTurn      bool   `json:"active_turn,omitempty"`
+	Attached        bool   `json:"attached,omitempty"`
+	AttachedClients int    `json:"attached_clients,omitempty"`
+	PID             int    `json:"pid"`
+	CreatedAt       int64  `json:"created_at"`
 }
 
 type chatDaemonPaths struct {
@@ -144,8 +145,8 @@ func chatDaemonSessions() []Session {
 		if state.ActiveTurn {
 			activity = "running"
 		}
-		attached := 0
-		if state.Attached {
+		attached := state.AttachedClients
+		if attached == 0 && state.Attached {
 			attached = 1
 		}
 		out = append(out, Session{Name: name, Workspace: id, ChatDaemon: true, CreatedAt: state.CreatedAt, Conversation: state.Conversation, Attached: attached, AgentState: activity})
