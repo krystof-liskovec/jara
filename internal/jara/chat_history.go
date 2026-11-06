@@ -36,6 +36,7 @@ type chatHistoryItem struct {
 	Text              string                            `json:"text"`
 	Command           string                            `json:"command"`
 	Status            string                            `json:"status"`
+	Changes           []chatFileChange                  `json:"changes"`
 	Summary           []chatReasoningSummaryPart        `json:"summary"`
 	Content           []chatHistoryContent              `json:"content"`
 	StartedAtMs       *int64                            `json:"startedAtMs"`
@@ -68,8 +69,12 @@ func (u *chatUI) renderChatHistory(turns []chatHistoryTurn) {
 				u.printRoleAt("assistant", item.Text+"\n", at)
 			case "plan":
 				u.printRoleAt("assistant", "Plan:\n"+item.Text+"\n", at)
+			case "fileChange":
+				u.printRoleAt("tool", formatChatFileChangeList(item.Status, item.Changes), at)
 			case "reasoning":
-				u.renderReasoningSummaryAt(item.Summary, at)
+				if !chatUIIsInteractive(u) {
+					u.renderReasoningSummaryAt(item.Summary, at)
+				}
 			case "contextCompaction":
 				u.printRoleAt("progress", "Conversation context was compacted.\n", at)
 			case "userMessage":

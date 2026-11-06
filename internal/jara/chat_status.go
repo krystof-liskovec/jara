@@ -104,11 +104,13 @@ func (u *chatUI) help() string {
 /quit            Stop idle sessions; leave active agents running
 /stop            Stop the remote session and release the workspace
 /help            Show available commands
+!COMMAND         Run a shell command in this workspace
 
 Use /crunch PROMPT to work until the task is complete. Normal completion stops it; a usage-limit interruption waits for reset and resumes. /goalcrunch OBJECTIVE stops when Codex marks its goal complete. Both require a persistent Jara session. Use /crunch status or /crunch stop to manage the active crunch task.
 Use /schedule in 30m PROMPT, /schedule at RFC3339 PROMPT, /schedule list, or /schedule cancel ID. Scheduled prompts run when this conversation is idle and continue after you disconnect.
 While a turn is running, type a follow-up and press Tab to queue it. Queued prompts run in order after the current turn; use /queue to inspect them, /queue run to start one when idle, /queue edit N to edit one in the interactive interface, or /queue clear to remove this conversation's queued prompts.
 F2 opens model selection; F3 opens reasoning selection. Choices apply to this and future turns in this conversation; they do not change Codex defaults.
+Hold Shift while dragging over chat history to select text with your terminal, then use its copy shortcut.
 Type a message to send it to the agent. In /compose, prefix a literal slash line with //.
 `
 }

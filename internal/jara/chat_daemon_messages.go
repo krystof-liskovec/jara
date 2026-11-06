@@ -55,6 +55,19 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 				_ = writeChatDaemonState(paths, snapshot)
 				stateWriteMu.Unlock()
 			}
+			if message.Method == "jara/shell" {
+				if len(message.ID) > 0 {
+					stateMu.Lock()
+					cwd := state.CWD
+					stateMu.Unlock()
+					result := runChatShellRequest(message.Params, cwd)
+					response, marshalErr := json.Marshal(map[string]any{"id": message.ID, "result": result})
+					if marshalErr == nil {
+						_ = client.write(response)
+					}
+				}
+				continue
+			}
 			if chatScheduleRequest(message.Method) {
 				if len(message.ID) > 0 {
 					stateMu.Lock()

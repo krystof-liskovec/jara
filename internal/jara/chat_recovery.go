@@ -52,7 +52,7 @@ func (u *chatUI) resetFailedTurn() {
 	u.busy = false
 	u.turn = ""
 	u.turnStartedAt = time.Time{}
-	u.activityLabel = ""
+	u.setActivityLabel("")
 	u.cancel = false
 	u.approvals = nil
 	u.questionRequests = nil

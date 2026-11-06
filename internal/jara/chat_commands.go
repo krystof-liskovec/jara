@@ -101,11 +101,11 @@ func (u *chatUI) line(line string) (bool, error) {
 		m := u.approvals[0]
 		u.approvals = u.approvals[1:]
 		if len(u.approvals) > 0 {
-			u.activityLabel = "Waiting for approval"
+			u.setActivityLabel("Waiting for approval")
 		} else if len(u.questionRequests) > 0 {
-			u.activityLabel = "Waiting for input"
+			u.setActivityLabel("Waiting for input")
 		} else if u.busy {
-			u.activityLabel = "Thinking"
+			u.setActivityLabel("Thinking")
 		}
 		u.setAgentState(u.currentState())
 		return false, u.c.reply(m.ID, map[string]string{"decision": decision})
@@ -237,6 +237,8 @@ func (u *chatUI) line(line string) (bool, error) {
 	case strings.HasPrefix(line, "/") && line != "/new" && line != "/resume" && !strings.HasPrefix(line, "/resume "):
 		u.print("Unknown command: " + line + ". Use /help to see commands.\n")
 		return false, nil
+	case strings.HasPrefix(line, "!"):
+		return false, u.runChatShellCommand(line[1:])
 	case u.busy:
 		u.print("A turn is running. Use /cancel or wait for it to finish.\n")
 		return false, nil
@@ -343,7 +345,7 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 	u.busy = true
 	u.cancel = false
 	u.turnStartedAt = time.Now()
-	u.activityLabel = "Thinking"
+	u.setActivityLabel("Thinking")
 	u.setAgentState("running")
 	params := map[string]any{
 		"threadId": u.thread,

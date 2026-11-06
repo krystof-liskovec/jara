@@ -138,11 +138,11 @@ func (u *chatUI) handleChatPlanItem(method string, item chatHistoryItem) {
 		return
 	}
 	if method == "item/started" {
-		u.activityLabel = "Planning"
+		u.setActivityLabel("Planning")
 		return
 	}
 	if method == "item/completed" {
-		u.activityLabel = "Thinking"
+		u.setActivityLabel("Thinking")
 		if item.Text != "" {
 			u.printRoleAt("assistant", "Plan:\n"+item.Text+"\n", chatHistoryItemTime(item, time.Now()))
 		}
