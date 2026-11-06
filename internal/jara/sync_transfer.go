@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -205,59 +206,87 @@ func localPushChangesPending(b Binding, root string, includeIgnored, isGit bool)
 	return pending, deletions, err
 }
 
+type localSyncSummary struct {
+	Pending   bool
+	Deletions bool
+	Size      int64
+	Files     []string
+	Deleted   []string
+}
+
 func localPushChangesSummary(b Binding, root string, includeIgnored, isGit bool) (pending, deletions bool, size int64, err error) {
+	summary, err := localPushChangesDetails(b, root, includeIgnored, isGit)
+	return summary.Pending, summary.Deletions, summary.Size, err
+}
+
+func localPushChangesDetails(b Binding, root string, includeIgnored, isGit bool) (localSyncSummary, error) {
 	state, err := syncStatePath(b, root)
 	if err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
 	data, err := os.ReadFile(state)
 	if os.IsNotExist(err) {
 		if !isGit {
-			return false, false, 0, nil
+			return localSyncSummary{}, nil
 		}
 		status, statusErr := gitOutput(root, "status", "--porcelain")
 		if statusErr != nil || status == "" {
-			return false, false, 0, statusErr
+			return localSyncSummary{}, statusErr
 		}
 		paths, pathErr := uncommittedGitPaths(root, includeIgnored)
 		if pathErr != nil {
-			return false, false, 0, pathErr
+			return localSyncSummary{}, pathErr
 		}
-		size, pathErr = localFileDataSize(root, paths)
-		return true, false, size, pathErr
+		summary := localSyncSummary{Pending: true}
+		present, pathErr := existingPaths(root, paths)
+		if pathErr != nil {
+			return localSyncSummary{}, pathErr
+		}
+		for _, name := range paths {
+			if present[name] {
+				summary.Files = append(summary.Files, name)
+			} else {
+				summary.Deleted = append(summary.Deleted, name)
+			}
+		}
+		sort.Strings(summary.Files)
+		sort.Strings(summary.Deleted)
+		summary.Size, pathErr = localFileDataSize(root, summary.Files)
+		return summary, pathErr
 	}
 	if err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
 	var baseline Baseline
 	if err = json.Unmarshal(data, &baseline); err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
+	summary := localSyncSummary{}
 	var head string
 	if isGit && !includeIgnored {
 		status, statusErr := gitOutput(root, "status", "--porcelain")
 		if statusErr != nil {
-			return false, false, 0, statusErr
+			return localSyncSummary{}, statusErr
 		}
 		head = gitHead(root)
 		if status == "" && head == baseline.LocalHead {
-			return false, false, 0, nil
+			return summary, nil
 		}
 	}
 	local, err := manifestWithIgnored(root, includeIgnored)
 	if err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
-	changed := make([]string, 0)
 	for name := range local {
 		if !snapshotFilesEquivalent(local, baseline.Local, name) {
-			pending = true
-			changed = append(changed, name)
+			summary.Pending = true
+			summary.Files = append(summary.Files, name)
 		}
 	}
-	size, err = localFileDataSize(root, changed)
+	sort.Strings(summary.Files)
+	summary.Size, err = localFileDataSize(root, summary.Files)
 	if err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
 	var missing []string
 	for name := range baseline.Local {
@@ -268,22 +297,24 @@ func localPushChangesSummary(b Binding, root string, includeIgnored, isGit bool)
 	if len(missing) > 0 {
 		present, presentErr := existingPaths(root, missing)
 		if presentErr != nil {
-			return false, false, 0, presentErr
+			return localSyncSummary{}, presentErr
 		}
 		for _, name := range missing {
 			if !present[name] {
-				pending, deletions = true, true
-				break
+				summary.Pending = true
+				summary.Deletions = true
+				summary.Deleted = append(summary.Deleted, name)
 			}
 		}
 	}
-	if !pending && head != "" && head != baseline.LocalHead {
+	sort.Strings(summary.Deleted)
+	if !summary.Pending && head != "" && head != baseline.LocalHead {
 		baseline.LocalHead = head
 		if err = writeJSON(state, baseline); err != nil {
-			return false, false, 0, err
+			return localSyncSummary{}, err
 		}
 	}
-	return pending, deletions, size, nil
+	return summary, nil
 }
 
 func gitHead(root string) string {

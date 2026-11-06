@@ -12,26 +12,31 @@ import (
 // that both endpoints currently share. It runs only after the local summary
 // has found pending changes, so the common clean-workspace path stays offline.
 func reconcileLocalPushChanges(r Remote, b Binding, root string, includeIgnored, isGit bool) (pending, deletions bool, size int64, err error) {
+	summary, err := reconcileLocalPushChangesDetails(r, b, root, includeIgnored, isGit)
+	return summary.Pending, summary.Deletions, summary.Size, err
+}
+
+func reconcileLocalPushChangesDetails(r Remote, b Binding, root string, includeIgnored, isGit bool) (localSyncSummary, error) {
 	local, err := manifestWithIgnored(root, includeIgnored)
 	if err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
 	remote, err := syncRemoteManifest(r, b, includeIgnored)
 	if err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
 	state, err := syncStatePath(b, root)
 	if err != nil {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
 	baseline := Baseline{Local: Snapshot{}, Remote: Snapshot{}}
 	data, err := os.ReadFile(state)
 	if err == nil {
 		if err = json.Unmarshal(data, &baseline); err != nil {
-			return false, false, 0, err
+			return localSyncSummary{}, err
 		}
 	} else if !os.IsNotExist(err) {
-		return false, false, 0, err
+		return localSyncSummary{}, err
 	}
 	if baseline.Local == nil {
 		baseline.Local = Snapshot{}
@@ -47,10 +52,10 @@ func reconcileLocalPushChanges(r Remote, b Binding, root string, includeIgnored,
 	changed = changed || deletionsChanged
 	if changed {
 		if err = writeJSON(state, baseline); err != nil {
-			return false, false, 0, err
+			return localSyncSummary{}, err
 		}
 	}
-	return localPushChangesSummary(b, root, includeIgnored, isGit)
+	return localPushChangesDetails(b, root, includeIgnored, isGit)
 }
 
 func syncRemoteManifest(r Remote, b Binding, includeIgnored bool) (Snapshot, error) {
