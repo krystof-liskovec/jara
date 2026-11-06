@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -49,7 +50,18 @@ func main() {
 		}
 	}
 	sort.Strings(files)
-	output, err := os.Create(filepath.Join(root, "internal", "jara", "deploy_bundle.tar.gz"))
+	bundlePath := os.Getenv("JARA_DEPLOY_BUNDLE_OUTPUT")
+	if bundlePath == "" {
+		bundlePath = filepath.Join(root, "internal", "jara", "deploy_bundle.tar.gz")
+	}
+	bundlePath, err = filepath.Abs(bundlePath)
+	if err != nil {
+		fail(err.Error())
+	}
+	if err = os.MkdirAll(filepath.Dir(bundlePath), 0700); err != nil {
+		fail(err.Error())
+	}
+	output, err := os.Create(bundlePath)
 	if err != nil {
 		fail(err.Error())
 	}
@@ -80,6 +92,25 @@ func main() {
 	}
 	if err = output.Close(); err != nil {
 		fail(err.Error())
+	}
+	if overlayPath := os.Getenv("JARA_DEPLOY_OVERLAY_OUTPUT"); overlayPath != "" {
+		sourcePath, e := filepath.Abs(filepath.Join(root, "internal", "jara", "deploy_bundle.tar.gz"))
+		if e != nil {
+			fail(e.Error())
+		}
+		overlayPath, e = filepath.Abs(overlayPath)
+		if e != nil {
+			fail(e.Error())
+		}
+		data, e := json.Marshal(struct {
+			Replace map[string]string `json:"Replace"`
+		}{Replace: map[string]string{sourcePath: bundlePath}})
+		if e != nil {
+			fail(e.Error())
+		}
+		if e = os.WriteFile(overlayPath, data, 0600); e != nil {
+			fail(e.Error())
+		}
 	}
 }
 
