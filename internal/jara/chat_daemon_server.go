@@ -30,6 +30,9 @@ func runChatDaemon(q Request) error {
 		return err
 	}
 	defer os.Remove(lockOwner)
+	if err = recoverChatDaemonWorkspaceMetadata(q.ID, paths); err != nil {
+		return fmt.Errorf("recover workspace metadata: %w", err)
+	}
 	workspace, err := workspaceInfo(q.ID)
 	if err != nil {
 		return err
