@@ -2,6 +2,7 @@ Port 22
 HostKey /var/lib/jara/ssh/ssh_host_ed25519_key
 PermitRootLogin no
 PubkeyAuthentication yes
+AuthenticationMethods publickey
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no
