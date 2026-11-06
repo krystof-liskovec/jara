@@ -436,9 +436,9 @@ func chatActivityViewLine(model chatViewModel) chatViewLine {
 	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 	text := spinner[max(0, model.ActivityFrame)%len(spinner)]
 	if model.ActivityElapsed != "" {
-		text += "  ·  " + menuText(model.ActivityElapsed)
+		text += " · " + menuText(model.ActivityElapsed)
 	}
-	text += "  ·  " + menuText(model.Activity)
+	text += " · " + menuText(model.Activity)
 	kind := "activity-progress"
 	switch strings.TrimSpace(model.Activity) {
 	case "Running command", "Applying changes", "Compacting context":
