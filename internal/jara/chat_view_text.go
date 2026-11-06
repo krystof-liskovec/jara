@@ -37,7 +37,7 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 		case "subagent":
 			label, kind = "↳ Subagent activity", "role-subagent"
 		}
-		if previousRole != "" && !chatViewActivityRole(role) && !chatViewActivityRole(previousRole) {
+		if chatViewNeedsMessageGap(previousRole, role) {
 			lines = append(lines, chatViewLine{kind: "message-gap"})
 		}
 		title := strings.TrimSpace(menuText(message.Title))
@@ -56,6 +56,16 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 
 func chatViewActivityRole(role string) bool {
 	return role == "progress" || role == "subagent"
+}
+
+func chatViewNeedsMessageGap(previousRole, role string) bool {
+	if previousRole == "" {
+		return false
+	}
+	if previousRole == "user" && chatViewActivityRole(role) {
+		return true
+	}
+	return !chatViewActivityRole(previousRole) && !chatViewActivityRole(role)
 }
 
 func chatMessageTimestamp(at time.Time) string {

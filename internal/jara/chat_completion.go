@@ -44,7 +44,7 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/schedule", description: "Schedule a prompt in this conversation", arguments: true},
 	{name: "/crunch", description: "Run a prompt through usage-limit pauses", arguments: true},
 	{name: "/goalcrunch", description: "Run a persistent goal through usage-limit pauses", arguments: true},
-	{name: "/queue", description: "Inspect, run, or clear queued prompts", arguments: true},
+	{name: "/queue", description: "Inspect, run, clear, or edit queued prompts", arguments: true},
 	{name: "/status", description: "Show connection and turn state"},
 	{name: "/answer", description: "Answer a pending question", arguments: true},
 	{name: "/cancel", description: "Stop the current turn"},

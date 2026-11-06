@@ -2,6 +2,7 @@ package jara
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,6 +17,7 @@ const (
 type chatTerminalKeyEvent struct {
 	input        *chatEditorInput
 	scroll       int
+	scrollRows   int
 	returnToLive bool
 	interrupt    bool
 	limitReached bool
@@ -152,6 +154,9 @@ func (p *chatTerminalKeyParser) consumeEscape() (int, *chatTerminalKeyEvent, boo
 }
 
 func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEvent {
+	if event := chatTerminalMouseEvent(sequence); event != nil {
+		return event
+	}
 	switch sequence {
 	case "\x1b[13;2u", "\x1b[13;2:1u", "\x1b[27;2;13~",
 		"\x1b[13;3u", "\x1b[13;3:1u", "\x1b[27;3;13~",
@@ -171,13 +176,13 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 	}
 	var key chatEditorKey
 	switch sequence {
-	case "\x1b[A", "\x1bOA":
+	case "\x1b[A", "\x1bOA", "\x1b[1;2A":
 		key = chatEditorUp
-	case "\x1b[B", "\x1bOB":
+	case "\x1b[B", "\x1bOB", "\x1b[1;2B":
 		key = chatEditorDown
-	case "\x1b[C", "\x1bOC":
+	case "\x1b[C", "\x1bOC", "\x1b[1;2C":
 		key = chatEditorRight
-	case "\x1b[D", "\x1bOD":
+	case "\x1b[D", "\x1bOD", "\x1b[1;2D":
 		key = chatEditorLeft
 	case "\x1b[H", "\x1b[1~", "\x1bOH", "\x1b[7~":
 		key = chatEditorHome
@@ -204,6 +209,30 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 	}
 	event := editorEvent(key)
 	return &event
+}
+
+func chatTerminalMouseEvent(sequence string) *chatTerminalKeyEvent {
+	if !strings.HasPrefix(sequence, "\x1b[<") || len(sequence) < 4 {
+		return nil
+	}
+	event := &chatTerminalKeyEvent{}
+	if sequence[len(sequence)-1] != 'M' {
+		return event
+	}
+	parts := strings.Split(sequence[3:len(sequence)-1], ";")
+	if len(parts) != 3 {
+		return event
+	}
+	button, err := strconv.Atoi(parts[0])
+	if err != nil || button&64 == 0 {
+		return event
+	}
+	if button&1 == 0 {
+		event.scrollRows = 3
+	} else {
+		event.scrollRows = -3
+	}
+	return event
 }
 
 func (p *chatTerminalKeyParser) consumePaste() []chatTerminalKeyEvent {

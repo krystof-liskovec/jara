@@ -36,29 +36,31 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		fg = palette.muted
 	case "activity":
 		fg, bold = palette.accent, "\x1b[1m"
+	case "activity-working":
+		fg, bold = palette.green, "\x1b[1m"
 	case "controls":
 		bg, fg = palette.surface, palette.muted
 	case "role-user":
-		bg, fg, bold = palette.surface, palette.green, "\x1b[1m"
+		bg, fg, bold = palette.canvas, palette.green, "\x1b[1m"
 	case "role-assistant", "heading", "bullet":
-		bg, fg = palette.surface, palette.accent
+		bg, fg = palette.canvas, palette.accent
 		if kind != "bullet" {
 			bold = "\x1b[1m"
 		}
 	case "role-progress", "role-subagent":
-		bg, fg = palette.surface, palette.accent
+		bg, fg = palette.canvas, palette.accent
 	case "role-tool", "role-system":
-		bg, fg = palette.surface, palette.muted
+		bg, fg = palette.canvas, palette.muted
 	case "body":
 		switch role {
 		case "user":
-			bg = palette.surface
+			bg = palette.canvas
 		case "tool":
-			bg, fg = palette.surface, palette.muted
+			bg, fg = palette.canvas, palette.muted
 		case "progress":
-			bg, fg, bold = palette.surface, palette.muted, "\x1b[3m"
+			bg, fg, bold = palette.canvas, palette.muted, "\x1b[3m"
 		case "subagent":
-			bg, fg = palette.surface, palette.text
+			bg, fg = palette.canvas, palette.text
 		}
 	case "code":
 		fg = palette.green
@@ -67,6 +69,12 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		if selected {
 			bg, fg, bold = palette.selection, menuSelectionText(palette.selection), "\x1b[1m"
 		}
+	case "queued-prompt":
+		fg = palette.text
+	case "queued-prompt-edit":
+		fg, bold = palette.green, "\x1b[1m"
+	case "queued-prompt-more":
+		fg = palette.muted
 	case "composer", "composer-border":
 		bg = palette.surface
 		if kind == "composer-border" {

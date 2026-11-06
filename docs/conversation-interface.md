@@ -60,7 +60,7 @@ the composer; it does not execute the command. Escape dismisses the dropdown.
 `/model ` and `/resume ` offer contextual choices from the most recently loaded
 `/models` and `/sessions` results. Enter submits completed input; Shift+Enter,
 Alt+Enter, or Ctrl+J inserts a newline. PageUp and PageDown scroll the
-transcript while the composer keeps its draft.
+transcript, as does the mouse wheel, while the composer keeps its draft.
 
 Submitting bare `/resume` opens a recent-session picker ordered newest first.
 Use the arrow keys to choose a conversation, Enter to open it, or Escape to
@@ -92,7 +92,9 @@ the terminal. `/help` lists the controls:
 
 While a turn is running, type a follow-up and press Tab to queue it. Jara sends
 queued prompts one at a time after the current turn. Use `/queue` to inspect the
-queue, `/queue run` to start one while idle, or `/queue clear` to remove queued
+queue, which is also shown above the composer. Use `/queue edit N` to load a
+queued prompt into the composer, then press Enter to save the edit or Escape to
+cancel it. `/queue run` starts one while idle, and `/queue clear` removes queued
 prompts for this conversation. The queue is held by the attached interface and
 is cleared when that interface exits.
 

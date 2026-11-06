@@ -28,6 +28,8 @@ type chatUI struct {
 	draft                        []string
 	draftBytes                   int
 	queuedPrompts                []chatQueuedPrompt
+	queuePromptSequence          uint64
+	queueEditRequest             uint64
 	startedAt                    time.Time
 	turnStartedAt                time.Time
 	workspaceLabel               string
@@ -160,6 +162,30 @@ func (u *chatUI) open(id string) error {
 	}
 	return u.request(method, params)
 }
+
+func (u *chatUI) initializeChatServer() error {
+	if u.connected {
+		return u.completeChatInitialization(false)
+	}
+	return u.request("initialize", chatInitializeParams())
+}
+
+func (u *chatUI) completeChatInitialization(sendNotification bool) error {
+	u.connected = true
+	if sendNotification {
+		if err := u.c.encoder.Encode(map[string]string{"method": "initialized"}); err != nil {
+			return err
+		}
+	}
+	if u.resumeAtStart && u.thread == "" {
+		u.busy = false
+		u.setAgentState("idle")
+		u.sessionPickerRequested = chatUIIsInteractive(u) && !u.resumeLatest
+		return u.startChatSessionSearch("")
+	}
+	return u.open(u.thread)
+}
+
 func (u *chatUI) interrupt() error {
 	for _, p := range u.pending {
 		if p.method == "initialize" || p.method == "thread/start" || p.method == "thread/resume" {
@@ -203,6 +229,9 @@ func (u *chatUI) response(m appMessage) error {
 		return u.acceptChatPlanResponse(m, p)
 	}
 	if m.Error != nil {
+		if p.method == "initialize" && chatAlreadyInitialized(m.Error.Message) {
+			return u.completeChatInitialization(false)
+		}
 		if p.method == "thread/list" {
 			err := fmt.Errorf("Codex app-server rejected thread/list: %s", chatText(m.Error.Message))
 			if !u.failChatSessionRequest(err) {
@@ -237,7 +266,7 @@ func (u *chatUI) response(m appMessage) error {
 		}
 		if p.method == "turn/start" {
 			if p.queuedPrompt != "" {
-				u.queuedPrompts = append([]chatQueuedPrompt{{threadID: p.threadID, text: p.queuedPrompt}}, u.queuedPrompts...)
+				u.queuedPrompts = append([]chatQueuedPrompt{u.newQueuedPrompt(p.threadID, p.queuedPrompt)}, u.queuedPrompts...)
 			}
 			request, tracked := u.pendingTurnModels[string(m.ID)]
 			delete(u.pendingTurnModels, string(m.ID))
@@ -252,17 +281,7 @@ func (u *chatUI) response(m appMessage) error {
 	}
 	switch p.method {
 	case "initialize":
-		u.connected = true
-		if err := u.c.encoder.Encode(map[string]string{"method": "initialized"}); err != nil {
-			return err
-		}
-		if u.resumeAtStart && u.thread == "" {
-			u.busy = false
-			u.setAgentState("idle")
-			u.sessionPickerRequested = chatUIIsInteractive(u) && !u.resumeLatest
-			return u.startChatSessionSearch("")
-		}
-		return u.open(u.thread)
+		return u.completeChatInitialization(true)
 	case "thread/start", "thread/resume":
 		var r chatThreadResponse
 		if err := json.Unmarshal(m.Result, &r); err != nil {

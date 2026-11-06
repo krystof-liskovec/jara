@@ -10,6 +10,7 @@ type remoteChatServerReady struct {
 	CWD            string `json:"cwd"`
 	Workspace      string `json:"workspace"`
 	Conversation   string `json:"conversation,omitempty"`
+	Initialized    bool   `json:"initialized,omitempty"`
 	ActiveTurn     bool   `json:"active_turn,omitempty"`
 	Error          string `json:"error,omitempty"`
 	ManagedSession bool   `json:"managed_session,omitempty"`

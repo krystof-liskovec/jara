@@ -1,10 +1,29 @@
 package jara
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 type chatReasoningSummaryPart struct {
 	Type string `json:"type"`
 	Text string `json:"text"`
+}
+
+func (p *chatReasoningSummaryPart) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		p.Type = "summary_text"
+		p.Text = text
+		return nil
+	}
+	type summaryPart chatReasoningSummaryPart
+	var decoded summaryPart
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*p = chatReasoningSummaryPart(decoded)
+	return nil
 }
 
 func (u *chatUI) streamReasoningSummary(itemID string, index int, delta string) {

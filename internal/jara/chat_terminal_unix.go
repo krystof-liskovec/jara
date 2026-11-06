@@ -38,18 +38,18 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		return fmt.Errorf("enable interactive terminal: %w", err)
 	}
 	defer func() {
-		_, _ = output.Write([]byte("\x1b[>4;0m\x1b[<u\x1b[?2026l\x1b[?2004l\x1b[0 q\x1b[?25h\x1b[?1049l"))
+		_, _ = output.Write([]byte("\x1b[?1006l\x1b[?1000l\x1b[>4;0m\x1b[<u\x1b[?2026l\x1b[?2004l\x1b[0 q\x1b[?25h\x1b[?1049l"))
 		if restoreErr := term.Restore(int(input.Fd()), state); returnErr == nil && restoreErr != nil {
 			returnErr = fmt.Errorf("restore terminal: %w", restoreErr)
 		}
 	}()
-	if _, err := output.Write([]byte("\x1b[?1049h\x1b[?25l\x1b[2 q\x1b[?2004h\x1b[>1u\x1b[>4;2m")); err != nil {
+	if _, err := output.Write([]byte("\x1b[?1049h\x1b[?25l\x1b[2 q\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[>1u\x1b[>4;2m")); err != nil {
 		return err
 	}
 	palette := menuColorsForTerminal()
 	terminalOutput := &chatTerminalOutput{}
 	u.out = terminalOutput
-	if err := u.request("initialize", chatInitializeParams()); err != nil {
+	if err := u.initializeChatServer(); err != nil {
 		return err
 	}
 	workspace := u.workspaceLabel
@@ -77,6 +77,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	var sessionPicker bool
 	var sessionSelection int
 	picker := &chatTerminalPicker{}
+	queueEditor := &chatQueueEditor{}
 	lastActivityFrame := -1
 	dirty := true
 	lastDraw := time.Time{}
@@ -103,6 +104,9 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			transcriptWidth = width
 		}
 		suggestions := editor.Completions()
+		if queueEditor.active() {
+			suggestions = nil
+		}
 		if sessionPicker && u.sessions != nil {
 			suggestions = chatSessionPickerChoices(u.sessions, sessionSelection)
 		} else if picker.active() {
@@ -116,7 +120,15 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		if u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(suggestions) == 0 {
 			tabHint = "Tab queue"
 		}
-		hints := []string{"↑↓ choose", tabHint, "PgUp/Dn scroll", "Shift+Enter newline", "Enter send", interruptHint}
+		hints := []string{"↑↓ choose", tabHint, "PgUp/Dn/wheel scroll", "Shift+Enter newline", "Enter send", interruptHint}
+		queueLines := u.queueViewLines(queueEditor.id)
+		queueEditNumber := 0
+		if queueEditor.active() {
+			_, queueEditNumber, _, _ = u.queuedPromptByID(queueEditor.id)
+			hints = []string{"Enter save edit", "Esc cancel", "Shift+Enter newline", "PgUp/Dn/wheel scroll"}
+		} else if len(queueLines) > 0 {
+			hints = append(hints, "/queue edit N")
+		}
 		if sessionPicker {
 			hints = []string{"↑↓ choose", "Enter open", "Esc close", interruptHint}
 		} else if picker.active() {
@@ -130,7 +142,8 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
 			ScrollOffset: scrollOffset, Activity: activity, ActivityElapsed: elapsed,
 			ActivityFrame: int(time.Now().UnixMilli() / 120),
-			ControlModel:  u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(),
+			QueuedPrompts: queueLines, QueueEditing: queueEditor.active(), QueueEditNumber: queueEditNumber,
+			ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(),
 			Hints: hints,
 		}, width, height, palette, os.Getenv("NO_COLOR") == "")
 		var screen strings.Builder
@@ -174,7 +187,11 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 				return err
 			}
 			picker.sync(u)
-			editor.SetCompletionContext(chatCompletionContextFromUI(u))
+			if queueEditor.active() {
+				editor.SetCompletionContext(chatCompletionContext{})
+			} else {
+				editor.SetCompletionContext(chatCompletionContextFromUI(u))
+			}
 			if resumePickerPending && u.sessions != nil && u.sessions.complete {
 				sessionPicker = u.sessions.failure == ""
 				resumePickerPending = false
@@ -188,6 +205,11 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			return fmt.Errorf("Codex app-server disconnected: %w", err)
 		case data := <-inputChunks:
 			for _, event := range parser.feed(data) {
+				if event.scrollRows != 0 {
+					scrollOffset = max(0, scrollOffset+event.scrollRows)
+					dirty = true
+					continue
+				}
 				if event.scroll != 0 {
 					scrollOffset = max(0, scrollOffset+event.scroll*max(1, heightForChatTerminal(output)/2))
 					dirty = true
@@ -280,7 +302,13 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 						resumePickerPending = false
 					}
 				}
-				if event.input.Key == chatEditorTab && u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(editor.Completions()) == 0 {
+				if queueEditor.active() && event.input.Key == chatEditorEscape {
+					queueEditor.cancel(u, editor)
+					scrollOffset = 0
+					dirty = true
+					continue
+				}
+				if !queueEditor.active() && event.input.Key == chatEditorTab && u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(editor.Completions()) == 0 {
 					if err := u.queuePrompt(u.thread, editor.Text()); err != nil {
 						terminalOutput.append("system", err.Error()+"\n")
 					} else {
@@ -295,6 +323,12 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 					terminalOutput.append("system", "Input reached the size limit; the remaining text was omitted.\n")
 				}
 				if result.Submitted {
+					if queueEditor.active() {
+						queueEditor.save(u, editor, result.Value)
+						scrollOffset = 0
+						dirty = true
+						continue
+					}
 					line := strings.TrimSpace(result.Value)
 					if line != "" {
 						isCommand := strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "//")
@@ -323,6 +357,13 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 						}
 						if (!isCommand || busyControl) && (wasBusy || !wasReady) {
 							editor.SetText(result.Value)
+						}
+					}
+					if u.queueEditRequest != 0 {
+						id := u.queueEditRequest
+						u.queueEditRequest = 0
+						if !queueEditor.begin(u, editor, id) {
+							terminalOutput.append("system", "That queued prompt is no longer available to edit.\n")
 						}
 					}
 					scrollOffset = 0
@@ -355,8 +396,14 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			}
 		case now := <-ticker.C:
 			if event := parser.flushEscape(now); event != nil && event.input != nil {
-				result := editor.Apply(*event.input)
-				dirty = dirty || result.Changed
+				if queueEditor.active() {
+					queueEditor.cancel(u, editor)
+					scrollOffset = 0
+					dirty = true
+				} else {
+					result := editor.Apply(*event.input)
+					dirty = dirty || result.Changed
+				}
 			}
 			for id, pending := range u.pending {
 				if now.After(pending.deadline) {
