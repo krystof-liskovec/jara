@@ -97,7 +97,8 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		if err != nil {
 			width, height = 80, 24
 		}
-		cursorLine, cursorColumn := editor.CursorPosition()
+		composerText, composerCursor := editor.previewText()
+		cursorLine, cursorColumn := chatEditorCursorPosition(composerText, composerCursor)
 		width, height = max(1, width), max(1, height)
 		transcriptWidth := width - 4
 		if height < 7 || width < 18 {
@@ -138,7 +139,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		frame := renderChatView(chatViewModel{
 			Workspace: workspace, Model: u.effectiveModelLabel(), State: u.currentState(),
 			TranscriptLines: terminalOutput.transcriptLines(transcriptWidth),
-			Composer:        editor.Text(), CursorByte: editor.CursorByte(),
+			Composer:        composerText, CursorByte: composerCursor,
 			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
 			ScrollOffset: scrollOffset, Activity: activity, ActivityElapsed: elapsed,
 			ActivityFrame: int(time.Now().UnixMilli() / 120),
