@@ -12,11 +12,11 @@ const (
 )
 
 type chatFileChange struct {
-	Path    string `json:"path"`
-	OldPath string `json:"oldPath"`
-	NewPath string `json:"newPath"`
-	Kind    string `json:"kind"`
-	Diff    string `json:"diff"`
+	Path    string          `json:"path"`
+	OldPath string          `json:"oldPath"`
+	NewPath string          `json:"newPath"`
+	Kind    json.RawMessage `json:"kind"`
+	Diff    string          `json:"diff"`
 }
 
 func formatChatFileChanges(raw json.RawMessage) string {
@@ -89,16 +89,54 @@ func formatChatFileChangeList(status string, changes []chatFileChange) string {
 	return b.String()
 }
 
-func chatFileChangeKind(kind string) string {
+func chatFileChangeKind(raw json.RawMessage) string {
+	return chatFileChangeKindValue(raw, 0)
+}
+
+func chatFileChangeKindValue(raw json.RawMessage, depth int) string {
+	value := strings.TrimSpace(string(raw))
+	if value == "" || value == "null" {
+		return ""
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		if label, _ := chatFileChangeKindLabel(text); label != "" {
+			return label
+		}
+		return ""
+	}
+	if depth >= 4 {
+		return "changed"
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return "changed"
+	}
+	for _, key := range []string{"type", "kind", "action", "changeType", "change_type", "name"} {
+		if field, ok := fields[key]; ok {
+			if label := chatFileChangeKindValue(field, depth+1); label != "" {
+				return label
+			}
+		}
+	}
+	for key := range fields {
+		if label, ok := chatFileChangeKindLabel(key); ok {
+			return label
+		}
+	}
+	return "changed"
+}
+
+func chatFileChangeKindLabel(kind string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
 	case "add", "added", "create", "created":
-		return "added"
+		return "added", true
 	case "delete", "deleted", "remove", "removed":
-		return "deleted"
+		return "deleted", true
 	case "update", "updated", "modify", "modified":
-		return "updated"
+		return "updated", true
 	default:
-		return strings.TrimSpace(chatText(kind))
+		return strings.TrimSpace(chatText(kind)), false
 	}
 }
 
