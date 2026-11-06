@@ -187,10 +187,10 @@ func (m *chatCrunchManager) tick(input io.Writer, inputMu *sync.Mutex, busy func
 		kind, method = "rateLimits", "account/rateLimits/read"
 	case "checkingGoal":
 		kind, method = "goalGet", "thread/goal/get"
-		params = map[string]string{"threadId": m.job.ThreadID}
+		params = map[string]any{"threadId": m.job.ThreadID}
 	case "resumingGoal":
 		kind, method = "goalResume", "thread/goal/set"
-		params = map[string]string{"threadId": m.job.ThreadID, "status": "active"}
+		params = map[string]any{"threadId": m.job.ThreadID, "status": "active"}
 	default:
 		m.mu.Unlock()
 		return nil
