@@ -62,6 +62,9 @@ func chatViewNeedsMessageGap(previousRole, role string) bool {
 	if previousRole == "" {
 		return false
 	}
+	if previousRole == "tool" && role == "tool" {
+		return false
+	}
 	if previousRole == "user" && chatViewActivityRole(role) {
 		return true
 	}
