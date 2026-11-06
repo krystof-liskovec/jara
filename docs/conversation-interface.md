@@ -17,6 +17,10 @@ Disconnecting SSH leaves that process running. Reattach through `jara` or the
 project browser. An existing terminal retains the interface it started with;
 use `jara new --interface jara` to try this alongside a Codex terminal.
 `--interface codex` selects the existing Codex terminal interface.
+To switch an idle persistent Jara conversation to Codex, connect with
+`jara connect --interface codex WORKSPACE_ID`; Jara hands off the saved thread
+to a Codex terminal. A running turn, another attached client, or scheduled work
+keeps the persistent session in place so its work can finish safely.
 
 When the local CLI opens an associated workspace with `--interface jara`, the
 Jara conversation UI runs on the client and connects over SSH to Codex

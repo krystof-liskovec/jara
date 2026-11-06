@@ -148,6 +148,15 @@ running:
 		case event := <-clientClosed:
 			clients.detach(event.client)
 			setAttachedCount()
+			if event.handoff {
+				stateMu.Lock()
+				idle := !state.ActiveTurn
+				stateMu.Unlock()
+				if idle && clients.count() == 0 && !schedules.hasPending() && !crunch.hasPending() {
+					shutdown.Store(true)
+					break running
+				}
+			}
 			if event.stop {
 				_ = schedules.cancelPending()
 				crunch.stopAll(input, &inputMu)
@@ -159,7 +168,7 @@ running:
 				break running
 			}
 			stateMu.Lock()
-			preserveDetachedIdle = (event.detach || event.disconnected) && clients.count() == 0
+			preserveDetachedIdle = (event.detach || event.disconnected || event.handoff) && clients.count() == 0
 			stateMu.Unlock()
 			if !event.detach && isDetachedAndIdle() {
 				shutdown.Store(true)

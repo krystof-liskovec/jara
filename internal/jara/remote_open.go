@@ -116,10 +116,10 @@ func remoteOpen(q Request) error {
 			if q.Background {
 				return fmt.Errorf("a persistent Jara conversation is already running; reconnect with `jara connect --interface jara`")
 			}
-			if q.UserInterface != "jara" {
-				return fmt.Errorf("this session uses the Jara interface; reconnect with `jara connect --interface jara`")
+			if q.UserInterface == "jara" {
+				return runRemoteChatClient(Request{UserInterface: "jara", ID: selected.Workspace})
 			}
-			return runRemoteChatClient(Request{UserInterface: "jara", ID: selected.Workspace})
+			q.ID = selected.Workspace
 		}
 		if q.Background && (selected.Kind == "terminal" || selected.Kind == "background") && selected.Workspace == "" {
 			return fmt.Errorf("this session has no workspace link; choose a workspace to start a background run")
@@ -141,8 +141,27 @@ func remoteOpen(q Request) error {
 			return runRemoteChatClientConnection(q, connection)
 		}
 	}
-	if q.UserInterface != "jara" && chatDaemonRunning(q.ID) {
-		return fmt.Errorf("workspace has a persistent Jara session; reconnect with `jara connect --interface jara %s`", q.ID)
+	if q.UserInterface != "jara" && q.ID != "" {
+		daemonWasRunning := chatDaemonRunning(q.ID)
+		state, found, handoffErr := prepareChatDaemonForCodex(q.ID)
+		if handoffErr != nil {
+			return handoffErr
+		}
+		if found {
+			if q.Conversation == "" {
+				q.Conversation = state.Conversation
+			}
+			if q.ConversationCWD == "" {
+				if info, statErr := os.Stat(state.CWD); statErr == nil && info.IsDir() {
+					q.ConversationCWD = state.CWD
+				}
+			}
+			if q.Agent == "" {
+				q.Agent = "Codex"
+			}
+			q.ResumeLatest = false
+			q.New = q.New || daemonWasRunning
+		}
 	}
 
 	unlock, err := lockWorkspace(q.ID)
