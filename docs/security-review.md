@@ -7,6 +7,20 @@ This remains a development prototype, not an independently audited isolation
 boundary. The review and fixes cover the findings below; they do not establish
 security against hostile workloads or a compromised Docker host.
 
+## Resolved: sshhole password authentication bypass
+
+OpenSSH 10.6p2 addresses the password bypass reported for Linux systems using
+musl without PAM. Jara's SSH server runs in the Debian `bookworm-slim` service
+image with glibc, and its SSH configuration permits public key authentication
+only. `AuthenticationMethods publickey` and `PasswordAuthentication no` are
+checked against OpenSSH's effective configuration before the server starts, so
+the password path remains disabled if the base image or libc changes. The
+optional rootless Docker sidecar uses Alpine but does not run an SSH server; the
+published port reaches the Debian service container's `sshd`.
+
+Sources: [OpenSSH 10.6p2 release notes](https://www.openssh.org/releasenotes.html#10.6p2)
+and the [researcher's write-up](https://sshhole.com/).
+
 ## Configurable session authority
 
 Jara adds no Codex permission flags by default. The host can set

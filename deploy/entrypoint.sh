@@ -110,4 +110,11 @@ if [ "$session_idle_timeout" != 0 ]; then
   runuser -u "$jara_ssh_user" -- env HOME=/home/agent JARA_SESSION_IDLE_TIMEOUT="$session_idle_timeout" /usr/local/bin/jara _session-janitor &
 fi
 /usr/sbin/sshd -t
+effective_sshd_config=$(/usr/sbin/sshd -T)
+for required_ssh_setting in 'authenticationmethods publickey' 'passwordauthentication no'; do
+  if ! printf '%s\n' "$effective_sshd_config" | grep -Fxq "$required_ssh_setting"; then
+    echo "Unsafe SSH configuration: expected '$required_ssh_setting'." >&2
+    exit 1
+  fi
+done
 exec /usr/sbin/sshd -D -e
