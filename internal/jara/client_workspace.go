@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -36,11 +37,11 @@ func confirmWithReader(reader *bufio.Reader, prompt string) (bool, error) {
 }
 
 func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string, includeIgnored, isGit bool, reader *bufio.Reader, persistentJara ...bool) error {
-	pending, deletions, size, err := localPushChangesSummary(b, root, includeIgnored, isGit)
+	summary, err := localPushChangesDetails(b, root, includeIgnored, isGit)
 	if err != nil {
 		return fmt.Errorf("local changes could not be checked: %w; run `jara sync push` if needed", err)
 	}
-	if !pending {
+	if !summary.Pending {
 		return nil
 	}
 	if len(persistentJara) > 0 && persistentJara[0] {
@@ -55,21 +56,18 @@ func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string,
 	// A Git pull may already have brought the remote's changes into this
 	// checkout while the saved sync baseline still describes the prior state.
 	// Only contact the remote after the local summary found something pending.
-	if reconciledPending, reconciledDeletions, reconciledSize, reconcileErr := reconcileLocalPushChanges(r, b, root, includeIgnored, isGit); reconcileErr == nil {
-		pending, deletions, size = reconciledPending, reconciledDeletions, reconciledSize
+	if reconciled, reconcileErr := reconcileLocalPushChangesDetails(r, b, root, includeIgnored, isGit); reconcileErr == nil {
+		summary = reconciled
 	} else {
 		fmt.Fprintf(os.Stderr, "Could not check remote sync state; using the local pending summary: %v\n", reconcileErr)
 	}
-	if !pending {
+	if !summary.Pending {
 		return nil
 	}
 	if reader == nil {
 		reader = bufio.NewReader(os.Stdin)
 	}
-	prompt := fmt.Sprintf("Local changes are not synced (about %s of file data). Sync them to %s before starting?", formatSyncSize(size), remoteName)
-	if deletions {
-		prompt += " This will also remove files deleted locally from the remote."
-	}
+	prompt := localChangesSyncPrompt(summary, remoteName)
 	pushChanges, err := confirmWithReader(reader, prompt)
 	if err != nil && err != io.EOF {
 		return fmt.Errorf("local changes were left here: %w; run `jara sync push` when ready", err)
@@ -82,10 +80,35 @@ func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string,
 		fmt.Fprintln(os.Stderr, message)
 		return nil
 	}
-	if err = syncWorkspace(r, b, root, "push", false, includeIgnored, deletions); err != nil {
+	if err = syncWorkspace(r, b, root, "push", false, includeIgnored, summary.Deletions); err != nil {
 		return fmt.Errorf("local changes could not be synced: %w; retry with `jara sync push`", err)
 	}
 	return nil
+}
+
+func localChangesSyncPrompt(summary localSyncSummary, remoteName string) string {
+	var prompt strings.Builder
+	fmt.Fprintf(&prompt, "Local changes are not synced (about %s of file data). Sync them to %s before starting?", formatSyncSize(summary.Size), remoteName)
+	if summary.Deletions {
+		prompt.WriteString(" This will also remove files deleted locally from the remote.")
+	}
+	if len(summary.Files) > 0 {
+		prompt.WriteString("\nFiles to upload:")
+		for _, name := range summary.Files {
+			fmt.Fprintf(&prompt, "\n  + %s", strconv.Quote(name))
+		}
+	}
+	if len(summary.Deleted) > 0 {
+		if summary.Deletions {
+			prompt.WriteString("\nFiles deleted locally:")
+		} else {
+			prompt.WriteString("\nFiles deleted locally (remote deletion is not inferred without sync history):")
+		}
+		for _, name := range summary.Deleted {
+			fmt.Fprintf(&prompt, "\n  - %s", strconv.Quote(name))
+		}
+	}
+	return prompt.String()
 }
 
 func gitOutput(dir string, args ...string) (string, error) {
