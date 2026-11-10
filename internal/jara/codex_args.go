@@ -3,6 +3,7 @@ package jara
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,17 +44,57 @@ func validateCodexArgs(args []string) error {
 }
 
 func parseCodexArgs(raw []byte) ([]string, error) {
+	return parseAgentArgs(agentCodex, raw)
+}
+
+func parseAgentArgs(runtime string, raw []byte) ([]string, error) {
 	var args []string
 	if len(raw) > 65536 || json.Unmarshal(raw, &args) != nil || args == nil {
-		return nil, fmt.Errorf("JARA_CODEX_ARGS must be a JSON array of strings, for example [\"--model\",\"gpt-6.1-sol\"]")
+		return nil, fmt.Errorf("%s must be a JSON array of strings, for example [\"--model\",\"%s\"]", agentArgsEnv(runtime), exampleModel(runtime))
 	}
 	return args, validateCodexArgs(args)
 }
 
+func exampleModel(runtime string) string {
+	if runtime == agentClaude {
+		return "opus"
+	}
+	return "gpt-6.1-sol"
+}
+
+// agentArgsEnv names the deployment variable holding default arguments; the
+// entrypoint copies it to agentArgsFile because SSH sessions do not inherit it.
+func agentArgsEnv(runtime string) string {
+	if runtime == agentClaude {
+		return "JARA_CLAUDE_ARGS"
+	}
+	return "JARA_CODEX_ARGS"
+}
+
+func agentArgsFile(runtime string) string {
+	if runtime == agentClaude {
+		return "/run/jara/claude-args.json"
+	}
+	return codexArgsFile
+}
+
+func agentArgsOverrideFile(runtime string) string {
+	if runtime == agentClaude {
+		return filepath.Join(dataRoot(), "claude-args.json")
+	}
+	return filepath.Join(dataRoot(), codexArgsOverrideFile)
+}
+
 func configuredCodexArgs(extra []string) ([]string, error) {
-	raw, present := os.LookupEnv("JARA_CODEX_ARGS")
+	return configuredAgentArgs(agentCodex, extra)
+}
+
+// configuredAgentArgs returns deployment defaults, replaced by a saved host
+// override when present, followed by per-invocation arguments.
+func configuredAgentArgs(runtime string, extra []string) ([]string, error) {
+	raw, present := os.LookupEnv(agentArgsEnv(runtime))
 	if !present {
-		data, err := os.ReadFile(codexArgsFile)
+		data, err := os.ReadFile(agentArgsFile(runtime))
 		if err != nil && !os.IsNotExist(err) {
 			return nil, err
 		}
@@ -63,36 +104,61 @@ func configuredCodexArgs(extra []string) ([]string, error) {
 			raw = "[]"
 		}
 	}
-	args, err := parseCodexArgs([]byte(raw))
+	args, err := parseAgentArgs(runtime, []byte(raw))
 	if err != nil {
 		return nil, err
 	}
-	override, err := os.ReadFile(filepath.Join(dataRoot(), codexArgsOverrideFile))
+	override, err := os.ReadFile(agentArgsOverrideFile(runtime))
 	if err == nil {
-		args, err = parseCodexArgs(override)
+		args, err = parseAgentArgs(runtime, override)
 		if err != nil {
-			return nil, fmt.Errorf("read saved Codex arguments: %w", err)
+			return nil, fmt.Errorf("read saved %s arguments: %w", agentDisplayName(runtime), err)
 		}
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read saved Codex arguments: %w", err)
+		return nil, fmt.Errorf("read saved %s arguments: %w", agentDisplayName(runtime), err)
 	}
 	args = append(args, extra...)
 	return args, validateCodexArgs(args)
 }
 
-func saveCodexArgsOverride(args []string) error {
+func saveAgentArgsOverride(runtime string, args []string) error {
 	if err := validateCodexArgs(args); err != nil {
 		return err
 	}
-	return writeJSON(filepath.Join(dataRoot(), codexArgsOverrideFile), args)
+	return writeJSON(agentArgsOverrideFile(runtime), args)
 }
 
-func clearCodexArgsOverride() error {
-	err := os.Remove(filepath.Join(dataRoot(), codexArgsOverrideFile))
+func clearAgentArgsOverride(runtime string) error {
+	err := os.Remove(agentArgsOverrideFile(runtime))
 	if os.IsNotExist(err) {
 		return nil
 	}
 	return err
+}
+
+// agentArgsRPC serves codex-args-* and claude-args-* host operations.
+func agentArgsRPC(runtime, action string, input io.Reader, output io.Writer) error {
+	switch action {
+	case "show":
+		args, err := configuredAgentArgs(runtime, nil)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(output).Encode(args)
+	case "set":
+		raw, err := io.ReadAll(io.LimitReader(input, 65537))
+		if err != nil {
+			return err
+		}
+		args, err := parseAgentArgs(runtime, raw)
+		if err != nil {
+			return err
+		}
+		return saveAgentArgsOverride(runtime, args)
+	case "clear":
+		return clearAgentArgsOverride(runtime)
+	}
+	return fmt.Errorf("unknown agent argument operation")
 }
 
 func codexCommand(resume bool, args []string) []string {

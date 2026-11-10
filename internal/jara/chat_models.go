@@ -390,6 +390,9 @@ func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt
 
 func (u *chatUI) setEffectiveModel(model string) {
 	u.effectiveModel = strings.TrimSpace(chatText(model))
+	if writer, ok := u.out.(interface{ SetChatAgent(string) }); ok {
+		writer.SetChatAgent(agentDisplayName(agentForModel(u.effectiveModel)))
+	}
 }
 
 func (u *chatUI) effectiveModelLabel() string {
@@ -405,5 +408,5 @@ func (u *chatUI) effectiveModelLabel() string {
 			}
 		}
 	}
-	return u.effectiveModel
+	return claudeModelDisplayName(u.effectiveModel)
 }

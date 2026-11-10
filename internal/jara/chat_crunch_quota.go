@@ -32,7 +32,7 @@ func chatCrunchRateLimitState(result json.RawMessage, now time.Time) (bool, time
 		RateLimitsByLimitID map[string]chatCrunchLimitBucket `json:"rateLimitsByLimitId"`
 	}
 	if err := json.Unmarshal(result, &response); err != nil {
-		return false, time.Time{}, fmt.Errorf("decode Codex rate limits: %w", err)
+		return false, time.Time{}, fmt.Errorf("decode rate limits: %w", err)
 	}
 	buckets := make([]chatCrunchLimitBucket, 0, len(response.RateLimitsByLimitID)+1)
 	for _, bucket := range response.RateLimitsByLimitID {
@@ -42,7 +42,7 @@ func chatCrunchRateLimitState(result json.RawMessage, now time.Time) (bool, time
 		buckets = append(buckets, *response.RateLimits)
 	}
 	if len(buckets) == 0 {
-		return false, time.Time{}, fmt.Errorf("Codex returned no ChatGPT rate-limit windows")
+		return false, time.Time{}, fmt.Errorf("the agent returned no usage-limit windows")
 	}
 	blocked := false
 	var nextReset time.Time

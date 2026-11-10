@@ -35,6 +35,9 @@ func chatResumeID(q Request, cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	for _, thread := range listRoutedThreads() {
+		threads = append(threads, Conversation{ID: thread.ID, Preview: thread.preview(), CWD: thread.CWD, Updated: thread.Updated, Created: thread.Created})
+	}
 	sort.Slice(threads, func(i, j int) bool { return threads[i].Updated > threads[j].Updated })
 	var items []menuItem
 	for _, thread := range threads {
@@ -67,6 +70,7 @@ func runJaraChat(q Request) error {
 	if err != nil {
 		return err
 	}
+	binary, args = agentServerCommand(binary, args, q.Runtime, q.AgentArgs)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err

@@ -18,7 +18,7 @@ import (
 
 func authCommand(c Config, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("use jara auth git|codex|gitlab|gitea [options]")
+		return fmt.Errorf("use jara auth git|codex|claude|gitlab|gitea [options]")
 	}
 	provider := args[0]
 	f := flag.NewFlagSet("auth", flag.ContinueOnError)
@@ -43,6 +43,9 @@ func authCommand(c Config, args []string) error {
 	if provider == "git" {
 		return gitAuthCommand(r, *username, *stdin)
 	}
+	if provider == agentClaude {
+		return claudeAuthCommand(r, *stdin)
+	}
 	if !*stdin {
 		return fmt.Errorf("supply --token-stdin and pipe a token from secure storage")
 	}
@@ -57,6 +60,10 @@ func authCommand(c Config, args []string) error {
 }
 func validateProvider(provider, destination string) error {
 	switch provider {
+	case agentClaude:
+		if destination != claudeTokenDestination {
+			return fmt.Errorf("Claude tokens use destination %q", claudeTokenDestination)
+		}
 	case "git":
 		_, err := parseGitCredentialTarget(destination)
 		return err
@@ -86,6 +93,9 @@ func remoteAuth(provider, destination string, usernames ...string) error {
 	secret = bytes.TrimSpace(secret)
 	if len(secret) == 0 || len(secret) > 65536 || bytes.ContainsAny(secret, "\r\n\x00") {
 		return fmt.Errorf("expected a nonempty single-line token of at most 64 KiB")
+	}
+	if provider == agentClaude {
+		return storeClaudeToken(secret)
 	}
 	if provider == "git" {
 		username := ""

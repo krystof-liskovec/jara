@@ -205,8 +205,16 @@ func newerRelease(target, current string) (bool, error) {
 }
 
 func latestCodex() (string, error) {
+	return latestNPMRelease("@openai%2fcodex")
+}
+
+func latestClaudeCode() (string, error) {
+	return latestNPMRelease("@anthropic-ai%2fclaude-code")
+}
+
+func latestNPMRelease(escapedPackage string) (string, error) {
 	client := http.Client{Timeout: 15 * time.Second}
-	res, err := client.Get("https://registry.npmjs.org/@openai%2fcodex/latest")
+	res, err := client.Get("https://registry.npmjs.org/" + escapedPackage + "/latest")
 	if err != nil {
 		return "", err
 	}

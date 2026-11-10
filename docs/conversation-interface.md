@@ -132,13 +132,19 @@ is cleared when that interface exits.
   turns. `/plan PROMPT` enables the mode and starts planning that prompt;
   `/plan off` returns to Default mode, and `/plan status` reports the mode.
   A completed Plan item is shown in chat.
-- `/crunch PROMPT` works on the task until it is complete, then stops. If Codex
-  stops it because usage is exhausted, Jara waits for the reported rate-limit
-  reset and continues from the saved conversation. `/goalcrunch OBJECTIVE` sets
-  a Codex goal and continues it until the goal is marked complete, including
-  across usage-limit resets. Both commands stop when their task is complete.
-  Use `/crunch status` or `/crunch stop` to inspect or stop the active task.
-  Crunch tasks require a persistent Jara session and ChatGPT usage-window data.
+- `/crunch PROMPT` works on the task until it is complete, then stops. If the
+  agent stops because usage is exhausted, Jara waits for the reported
+  rate-limit reset and continues from the saved conversation. `/goalcrunch
+  OBJECTIVE` sets a goal and continues it until the goal is marked complete,
+  including across usage-limit resets. Both commands stop when their task is
+  complete. Use `/crunch status` or `/crunch stop` to inspect or stop the active
+  task. Crunch tasks require a persistent Jara session and usage-window data.
+  Both commands work with both agents:
+  - Codex reports its ChatGPT windows.
+  - For Claude Code, the agent router reports the five-hour and weekly windows
+    from Claude's rate-limit events, so crunch waits for the right reset.
+  - `/goalcrunch` drives a Claude goal itself; the router's automatic goal
+    continuation stands down while it does.
 - `/schedule in DURATION PROMPT` or `/schedule at RFC3339 PROMPT` schedules a
   one-time prompt for this conversation. Use `/schedule list` to review jobs and
   `/schedule cancel ID` to cancel a pending one. Scheduled prompts run when the
@@ -250,3 +256,83 @@ live inference remain outside their verified scope.
 Reference: [Codex app-server](https://learn.chatgpt.com/docs/app-server).
 Runtime ownership and future adapter requirements are described in
 [agent providers](agent-providers.md).
+
+## Changes pane and motion
+
+When the terminal is at least 100 columns wide and 12 rows tall, file changes
+appear in a pane to the right of the conversation, newest edit first:
+
+- Each file shows its path and `+added −removed` counts, then its hunks with
+  tinted additions and deletions.
+- The pane opens automatically with the first change. **F4** hides or shows
+  it, and **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
+- History loaded with `/resume` fills the pane without animation.
+
+While a turn runs, a highlight sweeps across the activity label and the header
+mark pulses. New changes wipe into the pane from the top, and the newest file
+briefly glows. The welcome mark twinkles. Only changed rows are redrawn, and
+idle sessions without visible animation do not redraw. Set
+`JARA_REDUCED_MOTION=1` to turn all animation off; `NO_COLOR` also disables
+it.
+
+## Codex and Claude in one conversation
+
+The conversation UI runs on Jara's agent router (`jara _agent-server`). It
+speaks the app-server protocol to the UI:
+
+- Codex conversations are proxied to `codex app-server`.
+- Claude Code conversations are served by driving `claude` in stream-json
+  mode.
+
+Start a conversation on Claude Code with `jara new --interface jara --agent
+claude`, or switch at any time:
+
+- `/model` (F2) lists Codex models followed by Claude Code entries
+  (`claude/default`, `claude/opus`, `claude/sonnet`, `claude/haiku`,
+  `claude/fable`). F3 offers Claude's effort levels, `low` to `max`.
+- Picking another model from the same agent changes the model for the next
+  turn. A Claude model change uses Claude Code's runtime model switch. An
+  effort change restarts Claude Code on the same session.
+- Picking the other agent's model moves the conversation to that agent. The UI
+  keeps the same conversation ID. The receiving agent gets a briefing with the
+  earlier exchange (messages and edited files); the working tree already holds
+  every change. Switching back opens a new segment again.
+
+The briefing replays each earlier turn: messages, commands run with their
+exit status and last output line, plans, edited files, and the active goal.
+Hidden context (internal reasoning, tool call details) does not carry over,
+because the agents' histories are not interchangeable. An active goal moves
+with the conversation: Codex pursues it natively, and the router pursues it
+for Claude Code.
+
+For Claude Code turns:
+
+- Replies stream as usual. Shell commands, file edits, and other tools appear
+  as tool items. Edits show real diffs from Claude's structured patches,
+  including in the changes pane.
+- Tool permissions arrive as ordinary approvals: `/approve` or `/deny`.
+- Ctrl+C interrupts the turn, and `/plan` switches Claude Code to plan mode.
+- Claude Code does not expose thinking text in stream-json mode, even with
+  `showThinkingSummaries`. The activity line instead shows live progress such
+  as *Thinking · ~330 tokens*.
+- `/goal` works as with Codex. Each turn carries the objective, and after each
+  turn the router starts another until one of these happens:
+  - Claude ends a reply with `GOAL COMPLETE: …` or `GOAL BLOCKED: …`;
+  - the token budget is reached;
+  - you interrupt (the goal is paused);
+  - 50 automatic turns have run.
+
+  Time and tokens are tracked as for Codex goals. A message you send while an
+  automatic turn runs is queued and goes before the next continuation.
+- Arguments after `--` with `--interface jara --agent claude` are passed to
+  every Claude Code process the conversation starts, after the
+  `jara config claude-args` defaults.
+
+Conversations that involved Claude Code are kept under
+`~/.local/share/jara/agent-threads/`. They appear in `/resume` and in the
+project browser, labeled with their current agent (*(switched)* marks mixed
+ones), and each conversation is listed once. A resumed conversation continues
+on the agent that ran its last segment, and its history labels every reply
+with the agent that wrote it. From the browser, the native interface reopens
+the latest segment with `claude --resume` or `codex resume` in the
+conversation's directory.

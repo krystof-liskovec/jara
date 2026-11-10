@@ -47,6 +47,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		return err
 	}
 	palette := menuColorsForTerminal()
+	motion := chatMotionEnabled()
 	terminalOutput := &chatTerminalOutput{}
 	u.out = terminalOutput
 	if err := u.initializeChatServer(); err != nil {
@@ -100,6 +101,9 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		composerText, composerCursor := editor.previewText()
 		cursorLine, cursorColumn := chatEditorCursorPosition(composerText, composerCursor)
 		width, height = max(1, width), max(1, height)
+		fullWidth := width
+		paneWidth := chatDiffPaneWidth(&u.diff, width, height)
+		width -= paneWidth
 		transcriptWidth := width - 4
 		if height < 7 || width < 18 {
 			transcriptWidth = width
@@ -113,40 +117,26 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		} else if picker.active() {
 			suggestions = picker.choices(u)
 		}
-		interruptHint := "Ctrl+C stop idle session"
-		if u.agentTurnActive() || (u.busy && !u.persistentSession) {
-			interruptHint = "Ctrl+C cancel turn"
-		}
-		tabHint := "Tab accept"
-		if u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(suggestions) == 0 {
-			tabHint = "Tab queue"
-		}
-		hints := []string{"Shift+drag select", tabHint, "PgUp/Dn/wheel", "Shift+Enter", "Enter send", interruptHint}
-		queueLines := u.queueViewLines(queueEditor.id)
-		queueEditNumber := 0
-		if queueEditor.active() {
-			_, queueEditNumber, _, _ = u.queuedPromptByID(queueEditor.id)
-			hints = []string{"Shift+drag select", "Enter save edit", "Esc cancel", "PgUp/Dn/wheel"}
-		} else if len(queueLines) > 0 {
-			hints = append(hints, "/queue edit N")
-		}
-		if sessionPicker {
-			hints = []string{"↑↓ choose", "Enter open", "Esc close", interruptHint}
-		} else if picker.active() {
-			hints = []string{"↑↓ choose", "Enter select", "Esc close", "F2 model", "F3 reasoning", interruptHint}
-		}
-		activity, elapsed := chatTerminalActivity(u, time.Now())
+		hints, queueLines, queueEditNumber := chatTerminalHints(u, editor, queueEditor, picker, sessionPicker, suggestions, paneWidth > 0)
+		now := time.Now()
+		activity, elapsed := chatTerminalActivity(u, now)
 		frame := renderChatView(chatViewModel{
 			Workspace: workspace, Model: u.effectiveModelLabel(), State: u.currentState(),
 			TranscriptLines: terminalOutput.transcriptLines(transcriptWidth),
 			Composer:        composerText, CursorByte: composerCursor,
 			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
 			ScrollOffset: scrollOffset, Activity: activity, ActivityElapsed: elapsed,
-			ActivityFrame: int(time.Now().UnixMilli() / 120),
+			ActivityFrame: int(now.UnixMilli() / 120),
 			QueuedPrompts: queueLines, QueueEditing: queueEditor.active(), QueueEditNumber: queueEditNumber,
 			ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(),
-			Hints: hints,
+			Hints: hints, Motion: motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
+			Pulse: chatBusyPulse(u.busy, motion, now), Mark: chatWelcomeMark(motion, now),
 		}, width, height, palette, os.Getenv("NO_COLOR") == "")
+		if paneWidth > 0 {
+			pane := renderChatDiffPane(&u.diff, paneWidth-1, height, now, motion, palette, os.Getenv("NO_COLOR") == "")
+			frame = composeChatScreen(frame, pane, palette, os.Getenv("NO_COLOR") == "")
+		}
+		width = fullWidth
 		var screen strings.Builder
 		// Synchronized updates keep capable terminals from showing half a frame.
 		screen.WriteString("\x1b[?2026h")
@@ -213,6 +203,11 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 				}
 				if event.scroll != 0 {
 					scrollOffset = max(0, scrollOffset+event.scroll*max(1, heightForChatTerminal(output)/2))
+					dirty = true
+					continue
+				}
+				if event.diffPane || event.paneScroll != 0 {
+					handleChatPaneKey(&u.diff, event, output)
 					dirty = true
 					continue
 				}
@@ -431,8 +426,8 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 				// Preserve a useful timer while the start request is pending.
 				u.turnStartedAt = now
 			}
-			activityFrame := int(now.UnixMilli() / 120)
-			if u.busy && activityFrame != lastActivityFrame {
+			activityFrame := chatAnimationFrame(u, motion, now)
+			if activityFrame >= 0 && activityFrame != lastActivityFrame {
 				lastActivityFrame = activityFrame
 				dirty = true
 			}

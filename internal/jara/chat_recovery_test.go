@@ -16,7 +16,8 @@ func TestRecoverChatRequestErrorsRestoresUsableState(t *testing.T) {
 	var output bytes.Buffer
 	u := &chatUI{out: &output, thread: "thread-old", threadReady: true, busy: true, cancel: true, turn: "turn-pending", approvals: []appMessage{{}}, questionRequests: []chatQuestionRequest{{}}, items: map[string]json.RawMessage{"item": json.RawMessage(`{}`)}}
 	if !recoverChatRequestError(u, chatPending{method: "turn/start"}, appMessage{Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: "request rejected\x1b[31m"}}) {
 		t.Fatal("turn/start error was not recovered")
 	}
@@ -29,7 +30,8 @@ func TestRecoverChatRequestErrorsRestoresUsableState(t *testing.T) {
 
 	u.busy = true
 	if !recoverChatRequestError(u, chatPending{method: "thread/resume"}, appMessage{Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: "resume rejected"}}) {
 		t.Fatal("thread/resume error was not recovered")
 	}
@@ -42,7 +44,8 @@ func TestRecoverChatRequestErrorsRestoresUsableState(t *testing.T) {
 
 	u.busy = true
 	if !recoverChatRequestError(u, chatPending{method: "thread/start"}, appMessage{Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: "new conversation rejected"}}) {
 		t.Fatal("thread/start error was not recovered")
 	}
@@ -52,7 +55,8 @@ func TestRecoverChatRequestErrorsRestoresUsableState(t *testing.T) {
 
 	u.thread, u.threadReady, u.busy = "missing-thread", false, true
 	if !recoverChatRequestError(u, chatPending{method: "thread/resume"}, appMessage{Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: "not found"}}) {
 		t.Fatal("initial thread/resume error was not recovered")
 	}
@@ -61,7 +65,8 @@ func TestRecoverChatRequestErrorsRestoresUsableState(t *testing.T) {
 	}
 
 	if recoverChatRequestError(u, chatPending{method: "initialize"}, appMessage{Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: "handshake failed"}}) {
 		t.Fatal("initialize failure must remain fatal")
 	}

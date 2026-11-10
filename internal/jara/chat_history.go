@@ -48,6 +48,7 @@ type chatHistoryItem struct {
 	Prompt            string                            `json:"prompt"`
 	ReceiverThreadIDs []string                          `json:"receiverThreadIds"`
 	AgentsStates      map[string]chatSubagentAgentState `json:"agentsStates"`
+	Agent             string                            `json:"jaraAgent"` // set by the agent router
 }
 
 func (u *chatUI) renderChatHistory(turns []chatHistoryTurn) {
@@ -66,11 +67,13 @@ func (u *chatUI) renderChatHistory(turns []chatHistoryTurn) {
 			at := chatHistoryItemTime(item, fallback)
 			switch item.Type {
 			case "agentMessage":
+				u.labelHistoryAgent(item.Agent)
 				u.printRoleAt("assistant", item.Text+"\n", at)
 			case "plan":
 				u.printRoleAt("assistant", "Plan:\n"+item.Text+"\n", at)
 			case "fileChange":
 				u.printRoleAt("tool", formatChatFileChangeList(item.Status, item.Changes), at)
+				u.diff.record(item.Changes, false)
 			case "reasoning":
 				if !chatUIIsInteractive(u) {
 					u.renderReasoningSummaryAt(item.Summary, at)
@@ -94,6 +97,20 @@ func (u *chatUI) renderChatHistory(turns []chatHistoryTurn) {
 			}
 		}
 	}
+	u.labelHistoryAgent("")
+}
+
+// labelHistoryAgent labels replayed replies with the agent that wrote them;
+// an empty agent restores the label of the active model.
+func (u *chatUI) labelHistoryAgent(agent string) {
+	writer, ok := u.out.(interface{ SetChatAgent(string) })
+	if !ok {
+		return
+	}
+	if agent == "" {
+		agent = agentForModel(u.effectiveModel)
+	}
+	writer.SetChatAgent(agentDisplayName(agent))
 }
 
 func chatHistoryItemTime(item chatHistoryItem, fallback time.Time) time.Time {

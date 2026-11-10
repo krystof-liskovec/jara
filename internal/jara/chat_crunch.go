@@ -89,10 +89,11 @@ func (u *chatUI) acceptChatCrunchResponse(message appMessage, action string) err
 		}
 		objective := strings.TrimPrefix(action, "goalcrunch-check:")
 		return u.requestWithAction("thread/goal/set", map[string]any{
-			"threadId":  u.thread,
-			"origin":    "user",
-			"objective": objective,
-			"status":    "active",
+			"threadId":   u.thread,
+			"origin":     "user",
+			"objective":  objective,
+			"status":     "active",
+			"jaraDriver": "crunch", // removed by the agent router
 		}, "goalcrunch:"+objective)
 	}
 	switch action {

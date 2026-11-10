@@ -143,6 +143,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 			return err
 		}
 	}
+	claudeAdded := addMissingClaudePin(settings, latestClaudeCode, log)
 	runDocker := func(timeout time.Duration, args []string, stream bool) ([]byte, error) {
 		return runner.run(timeout, "", args, nil, stream)
 	}
@@ -230,14 +231,20 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	if _, err = runner.shell(30*time.Second, copySettings, nil, false); err != nil {
 		return fmt.Errorf("preserve host settings in the candidate source tree: %w", err)
 	}
-	if targetCodexVersion != codexVersion {
-		updatedEnv, pinErr := replaceCodexPin(envBefore, targetCodexVersion)
-		if pinErr != nil {
-			return pinErr
+	if targetCodexVersion != codexVersion || claudeAdded {
+		updatedEnv := envBefore
+		if targetCodexVersion != codexVersion {
+			var pinErr error
+			if updatedEnv, pinErr = replaceCodexPin(envBefore, targetCodexVersion); pinErr != nil {
+				return pinErr
+			}
+		}
+		if claudeAdded {
+			updatedEnv = appendEnvSetting(updatedEnv, "CLAUDE_CODE_VERSION", settings["CLAUDE_CODE_VERSION"])
 		}
 		stageEnv := path.Join(stage, "deploy/.env")
 		if _, err = runner.shell(30*time.Second, "cat > "+quote(stageEnv), bytes.NewReader(updatedEnv), false); err != nil {
-			return fmt.Errorf("pin the candidate Codex version: %w", err)
+			return fmt.Errorf("pin the candidate agent versions: %w", err)
 		}
 	}
 	build := nativeBuildArgs(settings, candidate, targetCodexVersion)

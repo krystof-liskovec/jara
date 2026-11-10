@@ -33,12 +33,19 @@ COPY --from=dockercli /usr/local/libexec/docker/cli-plugins/ /out/cli-plugins/
 
 FROM node:${NODE_VERSION}-bookworm-slim
 ARG CODEX_VERSION
+ARG CLAUDE_CODE_VERSION=""
 ARG EDITOR_PACKAGES=""
 RUN test -n "$CODEX_VERSION" \
  && apt-get update \
  && apt-get install -y --no-install-recommends openssh-server openssh-client git tmux bubblewrap bash ca-certificates curl tar xz-utils libatomic1 ${EDITOR_PACKAGES} \
  && rm -rf /var/lib/apt/lists/* \
  && npm install --global "@openai/codex@${CODEX_VERSION}" \
+ && if [ -n "$CLAUDE_CODE_VERSION" ]; then \
+      npm install --global "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+      && mkdir -p /opt/jara \
+      && ln -s "$(readlink -f /usr/local/bin/claude)" /opt/jara/claude-cli \
+      && rm /usr/local/bin/claude; \
+    fi \
  && useradd --uid 1001 --create-home --shell /bin/bash agent \
  && passwd -d agent \
  && mkdir -p /run/sshd /var/lib/jara/ssh /home/agent/.ssh \
@@ -57,11 +64,13 @@ RUN for binary in /opt/jara/bin/*; do ln -s "$binary" "/usr/local/bin/$(basename
       && ln -s /opt/jara/go/bin/gofmt /usr/local/bin/gofmt; \
     fi
 COPY deploy/codex-launcher.sh /opt/jara/codex-launcher
+COPY deploy/claude-launcher.sh /opt/jara/claude-launcher
 COPY deploy/mise.toml /etc/mise/config.toml
 COPY deploy/profile.sh /etc/profile.d/jara-tools.sh
 RUN rm /usr/local/bin/codex \
  && ln -s /opt/jara/codex-launcher /usr/local/bin/codex \
- && chmod 755 /opt/jara/codex-launcher \
+ && chmod 755 /opt/jara/codex-launcher /opt/jara/claude-launcher \
+ && if [ -e /opt/jara/claude-cli ]; then ln -s /opt/jara/claude-launcher /usr/local/bin/claude; fi \
  && mkdir -p /usr/local/share/mise/shims \
  && for tool in node npm npx corepack go gofmt; do ln -s /usr/local/bin/mise "/usr/local/share/mise/shims/$tool"; done
 RUN mkdir -p /usr/local/libexec/docker && ln -s /opt/jara/cli-plugins /usr/local/libexec/docker/cli-plugins

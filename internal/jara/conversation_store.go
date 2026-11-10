@@ -41,9 +41,12 @@ func (codexConversations) ResumeCommand(id, cwd string, args []string) []string 
 	return append(command, args...)
 }
 func conversationProviders() []conversationProvider {
-	return []conversationProvider{codexConversations{}}
+	return []conversationProvider{codexConversations{}, routedConversations{}}
 }
 func resumeConversationCommand(agent, id, cwd string, args []string) ([]string, error) {
+	if thread := loadRoutedThread(id); thread != nil {
+		return thread.resumeCommand(), nil
+	}
 	for _, p := range conversationProviders() {
 		if p.Name() == agent || agent == "" {
 			return p.ResumeCommand(id, cwd, args), nil
@@ -162,9 +165,11 @@ func listConversations(ctx context.Context, providers []conversationProvider) ([
 			failures = append(failures, fmt.Errorf("%s: %w", provider.Name(), err))
 		}
 		for i := range threads {
-			threads[i].Agent = provider.Name()
+			if threads[i].Agent == "" {
+				threads[i].Agent = provider.Name()
+			}
 		}
 		all = append(all, threads...)
 	}
-	return all, errors.Join(failures...)
+	return hideRoutedSegments(all), errors.Join(failures...)
 }

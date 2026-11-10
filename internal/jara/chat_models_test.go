@@ -210,7 +210,8 @@ func TestChatModelSelectionBusyRejectionAndFailedTurnPreservation(t *testing.T) 
 		t.Fatalf("selected model was not sent: %s", string(requests[0].Params["model"]))
 	}
 	if err := u.response(appMessage{ID: requests[0].ID, Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: "model unavailable"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +230,8 @@ func TestChatModelListFailureAndResumeModel(t *testing.T) {
 	_, _ = u.line("/models")
 	requests := decodeModelRequests(t, &wire)
 	if err := u.response(appMessage{ID: requests[0].ID, Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: "catalog unavailable"}}); err != nil {
 		t.Fatalf("model/list error should not close the chat: %v", err)
 	}
@@ -315,7 +317,8 @@ func TestLateTurnStartCannotChangeModelOrStateAfterThreadSwitch(t *testing.T) {
 			late := appMessage{ID: turnRequest.ID}
 			if lateError {
 				late.Error = &struct {
-					Message string `json:"message"`
+					Message string          `json:"message"`
+					Data    json.RawMessage `json:"data"`
 				}{Message: "old thread failed"}
 			} else {
 				late.Result = json.RawMessage(`{"turn":{"id":"turn-old"}}`)

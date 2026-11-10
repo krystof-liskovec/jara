@@ -96,6 +96,9 @@ func runBackgroundCodex(q Request) error {
 	if strings.TrimSpace(q.Prompt) == "" {
 		return fmt.Errorf("background Codex run requires a prompt")
 	}
+	if q.Runtime == agentClaude {
+		return runBackgroundClaude(q)
+	}
 	command := backgroundCodexCommand(q)
 	cmd := exec.Command(command[0], command[1:]...)
 	cmd.Stdin = strings.NewReader("")

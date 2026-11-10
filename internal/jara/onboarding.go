@@ -103,6 +103,9 @@ func guidedSetup(c Config) error {
 	} else {
 		fmt.Println("Codex is already signed in on this Jara host.")
 	}
+	if err = offerClaudeSignIn(c, name, diagnosis, reader); err != nil {
+		return err
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err

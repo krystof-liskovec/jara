@@ -9,8 +9,8 @@ import (
 )
 
 type chatViewMessage struct {
-	Role, Title, Text string
-	At                time.Time
+	Role, Title, Text, Agent string
+	At                       time.Time
 }
 
 type chatViewModel struct {
@@ -32,6 +32,10 @@ type chatViewModel struct {
 	ControlReasoning        string
 	ScrollOffset            int
 	Hints                   []string
+	Motion                  bool // animations enabled
+	Tick                    int  // shimmer frame
+	Pulse                   float64
+	Mark                    string // welcome mark glyph
 }
 
 type chatFrame struct {
@@ -97,12 +101,12 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		transcript = expandChatTranscript(model.Messages, width-4)
 	}
 	if len(transcript) == 0 {
-		transcript = chatWelcomeTranscript(transcriptRows, width-2)
+		transcript = chatWelcomeTranscript(transcriptRows, width-2, model.Mark)
 	}
 	visibleTranscript, clippedAbove, clippedBelow := chatTranscriptWindow(transcript, transcriptRows, model.ScrollOffset)
 
 	row := 0
-	frame.Lines[row] = paintChatViewLine(chatViewHeader(model, width, false), "header", "", false, width, palette, color)
+	frame.Lines[row] = pulseChatHeader(paintChatViewLine(chatViewHeader(model, width, false), "header", "", false, width, palette, color), model, palette, color)
 	row++
 	frame.Lines[row] = paintChatViewLine(chatViewHeader(model, width, true), "subheader", "", false, width, palette, color)
 	row++
@@ -117,7 +121,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	row += separatorRows
 	if activityRows > 0 {
 		line := chatActivityViewLine(model)
-		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, "", false, width, palette, color)
+		frame.Lines[row] = paintChatActivity(chatViewLine{text: " " + fitChatView(line.text, width-2), kind: line.kind}, model, width, palette, color)
 		row++
 	}
 	for _, line := range chatQueueWindow(model.QueuedPrompts, queueRows) {
@@ -186,11 +190,14 @@ func chatViewHeader(model chatViewModel, width int, sub bool) string {
 	return modelName + "   ·   " + state
 }
 
-func chatWelcomeTranscript(rows, width int) []chatViewLine {
+func chatWelcomeTranscript(rows, width int, mark string) []chatViewLine {
+	if mark == "" {
+		mark = "✦"
+	}
 	content := []chatViewLine{
-		{text: "✦", kind: "welcome-mark"},
+		{text: mark, kind: "welcome-mark"},
 		{text: "Ready when you are", kind: "welcome-title"},
-		{text: "Ask Codex to explore or change this project.", kind: "welcome-copy"},
+		{text: "Ask Codex or Claude to explore or change this project.", kind: "welcome-copy"},
 		{text: "/resume  recent sessions     /help  command guide", kind: "welcome-hint"},
 	}
 	top := max(0, (rows-len(content))/2)
@@ -337,7 +344,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	}
 	content = append(content, transcript...)
 	if len(transcript) == 0 {
-		content = append(content, chatWelcomeTranscript(max(0, transcriptRows-len(content)), width)...)
+		content = append(content, chatWelcomeTranscript(max(0, transcriptRows-len(content)), width, model.Mark)...)
 	}
 	visibleHistory, _, _ := chatTranscriptWindow(content, transcriptRows, model.ScrollOffset)
 	row := 1
@@ -352,7 +359,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	row += separatorRows
 	if activityRows > 0 {
 		line := chatActivityViewLine(model)
-		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, "", false, width, palette, color)
+		frame.Lines[row] = paintChatActivity(chatViewLine{text: fitChatView(line.text, width), kind: line.kind}, model, width, palette, color)
 		row++
 	}
 	for _, line := range chatQueueWindow(model.QueuedPrompts, queueRows) {
@@ -440,7 +447,8 @@ func chatActivityViewLine(model chatViewModel) chatViewLine {
 	}
 	text += " · " + menuText(model.Activity)
 	kind := "activity-progress"
-	switch strings.TrimSpace(model.Activity) {
+	label, _, _ := strings.Cut(strings.TrimSpace(model.Activity), " · ") // "Thinking · ~N tokens"
+	switch label {
 	case "Running command", "Applying changes", "Compacting context":
 		kind = "activity-working"
 	case "Thinking", "Planning", "Waiting for approval", "Waiting for input", "Opening conversation", "Retrying", "Reconnecting", "Stopping":

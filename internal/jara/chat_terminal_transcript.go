@@ -18,12 +18,14 @@ type chatTerminalOutput struct {
 	trimmed bool
 
 	width     int
+	agent     string
 	viewDirty bool
 	viewLines []chatViewLine
 }
 
 type chatTerminalEntry struct {
 	role    string
+	agent   string // agent label for assistant and progress headers
 	at      time.Time
 	text    strings.Builder
 	bytes   int
@@ -54,6 +56,9 @@ func (o *chatTerminalOutput) WriteChatRoleAt(role, text string, at time.Time) {
 
 func (o *chatTerminalOutput) InteractiveChat() bool { return true }
 
+// SetChatAgent labels following assistant output with the active agent.
+func (o *chatTerminalOutput) SetChatAgent(agent string) { o.agent = agent }
+
 func (o *chatTerminalOutput) append(role, text string) {
 	o.appendAt(role, text, time.Now())
 }
@@ -68,10 +73,10 @@ func (o *chatTerminalOutput) appendAt(role, text string, at time.Time) {
 		o.trimmed = true
 	}
 	var entry *chatTerminalEntry
-	if count := len(o.entries); count > 0 && o.entries[count-1].role == role {
+	if count := len(o.entries); count > 0 && o.entries[count-1].role == role && o.entries[count-1].agent == o.agent {
 		entry = o.entries[count-1]
 	} else {
-		entry = &chatTerminalEntry{role: role, at: at}
+		entry = &chatTerminalEntry{role: role, agent: o.agent, at: at}
 		o.entries = append(o.entries, entry)
 	}
 	entry.text.WriteString(text)
@@ -172,7 +177,7 @@ func (o *chatTerminalOutput) transcriptLines(width int) []chatViewLine {
 		if chatViewNeedsMessageGap(previousRole, entry.role) {
 			lines = append(lines, chatViewLine{kind: "message-gap"})
 		}
-		header := expandChatTranscript([]chatViewMessage{{Role: entry.role, At: entry.at}}, width)
+		header := expandChatTranscript([]chatViewMessage{{Role: entry.role, At: entry.at, Agent: entry.agent}}, width)
 		lines = append(lines, header...)
 		lines = append(lines, entry.lines...)
 		if entry.hasLine {

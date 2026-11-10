@@ -16,6 +16,8 @@ const (
 
 type chatTerminalKeyEvent struct {
 	input        *chatEditorInput
+	diffPane     bool // toggle the changes pane
+	paneScroll   int  // rows to scroll the changes pane; negative scrolls up
 	scroll       int
 	scrollRows   int
 	returnToLive bool
@@ -202,6 +204,12 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		key = chatEditorReasoningPicker
 	case "\x1b[Z":
 		key = chatEditorTab
+	case "\x1bOS", "\x1b[14~", "\x1b[S":
+		return &chatTerminalKeyEvent{diffPane: true}
+	case "\x1b[5;3~", "\x1b[15~":
+		return &chatTerminalKeyEvent{paneScroll: -chatDiffPaneScrollStep}
+	case "\x1b[6;3~", "\x1b[17~":
+		return &chatTerminalKeyEvent{paneScroll: chatDiffPaneScrollStep}
 	case "\x1b[5~":
 		return &chatTerminalKeyEvent{scroll: 1}
 	case "\x1b[6~":

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -140,6 +139,17 @@ func Run(args []string) error {
 			return hostCommand(args[1:])
 		case "_maintenance":
 			return maintenanceCommand(args[1:])
+		case "_agent-server":
+			return agentServerMain(args[1:])
+		case "mcp":
+			return mcpCommand(args[1:])
+		case "delegation":
+			return delegationCommand(args[1:])
+		case "_delegate-run":
+			if len(args) != 3 {
+				return fmt.Errorf("invalid internal invocation")
+			}
+			return runDelegatedTask(args[1], args[2])
 		case "_session-janitor":
 			return sessionJanitorCommand(args[1:])
 		case "_session-attached", "_session-count":
@@ -217,6 +227,8 @@ func Run(args []string) error {
 	var codexArgs codexArgList
 	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
 	chatInterface := f.String("interface", "codex", "conversation interface: codex or jara")
+	agentName := f.String("agent", "", "agent runtime: codex or claude")
+	note := f.String("note", "", "handoff note for the receiving agent")
 	remoteName := f.String("remote", "", "named remote")
 	clone := f.Bool("clone", false, "skip workspace discovery and clone confirmation")
 	chooseWorkspace := f.Bool("choose-workspace", false, "choose an existing checkout for this local folder")
@@ -251,6 +263,9 @@ func Run(args []string) error {
 	if err = validateChatInterface(*chatInterface); err != nil {
 		return err
 	}
+	if err = validateAgentFlags(action, *agentName, *chatInterface, *note); err != nil {
+		return err
+	}
 	if *chatInterface == "jara" && action != "open" && action != "new" && action != "resume" && action != "sessions" {
 		return fmt.Errorf("--interface jara requires open, new, resume, or sessions")
 	}
@@ -270,11 +285,11 @@ func Run(args []string) error {
 	if err = validateCodexArgs(codexArgs); err != nil {
 		return err
 	}
-	if len(codexArgs) > 0 && action != "open" && action != "new" && action != "resume" && action != "run" && action != "sessions" {
-		return fmt.Errorf("Codex arguments require open, new, resume, run, or sessions")
+	if len(codexArgs) > 0 && action != "open" && action != "new" && action != "resume" && action != "run" && action != "handoff" && action != "sessions" {
+		return fmt.Errorf("agent arguments require open, new, resume, run, handoff, or sessions")
 	}
 	switch action {
-	case "open", "resume", "new", "run", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tunnel", "tools":
+	case "open", "resume", "new", "run", "handoff", "sessions", "edit", "sync", "doctor", "forward", "reverse", "tunnel", "tools":
 	default:
 		return fmt.Errorf("unknown command %q; see jara --help", action)
 	}
@@ -333,6 +348,15 @@ func Run(args []string) error {
 	openSession := func(q Request) error {
 		q.CodexArgs = codexArgs
 		q.UserInterface = *chatInterface
+		if q.Runtime, err = resolveClientAgent(c, root, chosen, action, *agentName); err != nil {
+			return err
+		}
+		if err = validateAgentInterface(q.Runtime, q.UserInterface); err != nil {
+			return err
+		}
+		if action == "handoff" {
+			q.New, q.Handoff, q.Prompt = true, true, *note
+		}
 		if action == "resume" {
 			q.ResumeLatest = *latest
 		}
@@ -426,7 +450,7 @@ func Run(args []string) error {
 	if err = saveConfig(c); err != nil {
 		return err
 	}
-	if action == "open" || action == "new" || action == "resume" || action == "run" {
+	if action == "open" || action == "new" || action == "resume" || action == "run" || action == "handoff" {
 		if err = syncLocalChangesBeforeSession(r, b, root, chosen, *includeIgnored, isGit, clonePromptReader, *chatInterface == "jara" && action != "run"); err != nil {
 			return err
 		}
@@ -446,49 +470,7 @@ func Run(args []string) error {
 	}
 	q := Request{ID: b.Workspace, Subdir: filepath.ToSlash(rel), Resume: action == "resume", New: action == "new", Worktree: *newTree, Takeover: *takeover}
 	if action == "edit" || action == "tools" {
-		var info Workspace
-		if err = rpc(r, Request{Op: "info", ID: b.Workspace}, nil, &info); err != nil {
-			return err
-		}
-		selected := *editor
-		if selected == "" {
-			selected = r.Editor
-		}
-		if selected == "" {
-			selected = c.Editor
-		}
-		if selected == "" {
-			selected = "code"
-		}
-		remotePath := info.Path
-		if rel != "." {
-			remotePath += "/" + filepath.ToSlash(rel)
-		}
-		if action == "tools" {
-			return interactive(sshCommand(r, toolsAction == "install", shellArgs("jara", "_tools", toolsAction, remotePath)))
-		}
-		if err = interactive(sshCommand(r, true, shellArgs("jara", "_tools", "install", remotePath))); err != nil {
-			return err
-		}
-		if selected == "vim" || selected == "nvim" {
-			return interactive(sshCommand(r, true, shellArgs("jara", "_tools", "exec", remotePath, selected, "--", remotePath)))
-		}
-		alias, err := editorAlias(chosen, r)
-		if err != nil {
-			return err
-		}
-		if selected != "code" {
-			argv, ok := c.EditorCommands[selected]
-			if !ok || len(argv) == 0 {
-				return fmt.Errorf("unknown editor %q; configure an editor-command argument array", selected)
-			}
-			expanded := make([]string, len(argv))
-			for i, arg := range argv {
-				expanded[i] = strings.NewReplacer("{ssh_alias}", alias, "{remote_path}", remotePath).Replace(arg)
-			}
-			return interactive(exec.Command(expanded[0], expanded[1:]...))
-		}
-		return interactive(exec.Command("code", "--remote", "ssh-remote+"+alias, remotePath))
+		return openEditorOrTools(c, r, chosen, b, rel, action, toolsAction, *editor)
 	}
 	return openSession(q)
 }

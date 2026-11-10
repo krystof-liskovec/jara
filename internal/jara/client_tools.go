@@ -36,6 +36,9 @@ func diagnoseRemote(remoteName string, r Remote) (Diagnosis, error) {
 			}
 			s = fmt.Sprintf("SETUP Codex authentication: run %s auth codex --remote %s", command, remoteName)
 		}
+		if strings.HasPrefix(s, "SETUP Claude Code authentication:") {
+			s = fmt.Sprintf("SETUP Claude Code authentication: run claude setup-token locally, then jara auth claude --remote %s", remoteName)
+		}
 		fmt.Println(s)
 	}
 	if !d.OK {

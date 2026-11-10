@@ -185,6 +185,7 @@ func (m *chatCrunchManager) tick(input io.Writer, inputMu *sync.Mutex, busy func
 			return nil
 		}
 		kind, method = "rateLimits", "account/rateLimits/read"
+		params = map[string]any{"threadId": m.job.ThreadID}
 	case "checkingGoal":
 		kind, method = "goalGet", "thread/goal/get"
 		params = map[string]any{"threadId": m.job.ThreadID}
@@ -354,16 +355,25 @@ func crunchJobActive(status string) bool {
 	}
 }
 
+// crunchGoalName keeps Codex's wording, which cues its goal tool; Claude Code
+// conversations complete goals through the router's GOAL COMPLETE marker.
+func crunchGoalName(job chatCrunchJob) string {
+	if thread := loadRoutedThread(job.ThreadID); thread != nil && thread.current().Agent == agentClaude {
+		return "goal"
+	}
+	return "Codex goal"
+}
+
 func crunchContinuationPrompt(job chatCrunchJob) string {
 	if job.Mode == "goal" {
-		return "Continue the active goal in this conversation from the current workspace state. Review the prior work and avoid repeating completed steps. When the objective is complete, mark the Codex goal complete and stop: " + job.Prompt
+		return "Continue the active goal in this conversation from the current workspace state. Review the prior work and avoid repeating completed steps. When the objective is complete, mark the " + crunchGoalName(job) + " complete and stop: " + job.Prompt
 	}
-	return "Continue the task from where Codex stopped due to a usage limit. Review the conversation and current workspace state, avoid repeating completed work, and stop once this original task is complete: " + job.Prompt
+	return "Continue the task from where you stopped due to a usage limit. Review the conversation and current workspace state, avoid repeating completed work, and stop once this original task is complete: " + job.Prompt
 }
 
 func crunchInitialPrompt(job chatCrunchJob) string {
 	if job.Mode == "goal" {
-		return "Work toward the active Codex goal in this conversation. When its objective is complete, mark the goal complete and stop: " + job.Prompt
+		return "Work toward the active " + crunchGoalName(job) + " in this conversation. When its objective is complete, mark the goal complete and stop: " + job.Prompt
 	}
 	return "Complete this task and stop when it is done. If usage limits interrupt the work, Jara will resume it after the usage window resets: " + job.Prompt
 }

@@ -19,6 +19,7 @@ type Remote struct {
 	User     string `json:"user,omitempty"`
 	Identity string `json:"identity,omitempty"`
 	Editor   string `json:"editor,omitempty"`
+	Agent    string `json:"agent,omitempty"`
 }
 type Binding struct {
 	Remote    string `json:"remote"`
@@ -47,6 +48,8 @@ func validGuidedDeploymentDirectory(name, directory string) bool {
 type Config struct {
 	Default         string                    `json:"default,omitempty"`
 	Editor          string                    `json:"editor,omitempty"`
+	Agent           string                    `json:"agent,omitempty"`
+	WorkspaceAgents map[string]string         `json:"workspace_agents,omitempty"`
 	Remotes         map[string]Remote         `json:"remotes"`
 	Bindings        map[string]Binding        `json:"bindings"`
 	Associations    map[string]Binding        `json:"associations"`

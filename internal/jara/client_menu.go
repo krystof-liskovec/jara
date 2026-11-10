@@ -43,9 +43,11 @@ func clientMenuItems(c Config) []menuItem {
 			menuItem{Title: "Projects", Detail: "Conversations and live terminals", Kind: "running", Action: "browse"},
 			menuItem{Title: "Browse repositories", Detail: "Search GitLab and Gitea repositories available to your tokens", Kind: "project", Action: "browse-repositories"},
 			menuItem{Title: "Clean stale Docker containers", Detail: "Remove exited containers stopped for at least 24h", Kind: "tools", Action: "docker-cleanup"},
-			menuItem{Title: "New conversation", Detail: "Codex", Kind: "new", Action: "new"},
+			menuItem{Title: "New Codex conversation", Detail: "Codex terminal", Kind: "new", Action: "new"},
+			menuItem{Title: "New Claude Code conversation", Detail: "Claude Code terminal", Kind: "new", Action: "new-claude"},
+			menuItem{Title: "Hand off this workspace", Detail: "Continue the work with the other agent", Kind: "new", Action: "handoff"},
 			menuItem{Title: "Connections", Detail: fmt.Sprintf("%d configured", len(c.Remotes)), Kind: "remote", Action: "remote"},
-			menuItem{Title: "Credentials", Detail: "Codex and Git", Kind: "tools", Action: "auth"},
+			menuItem{Title: "Credentials", Detail: "Codex, Claude Code and Git", Kind: "tools", Action: "auth"},
 			menuItem{Title: "Diagnostics", Detail: "Host health", Kind: "tools", Action: "doctor"},
 		)
 	}
@@ -76,12 +78,21 @@ func runClientMenuAction(c Config, action string) error {
 		return browseRepositories(c)
 	case "docker-cleanup":
 		return dockerCleanupMenu(c)
-	case "new":
+	case "new", "new-claude":
 		name, err := chooseMenuRemote(c, "Start a new session")
 		if err != nil || name == "" {
 			return err
 		}
-		return Run([]string{"new", "--remote", name})
+		if action == "new-claude" {
+			return Run([]string{"new", "--remote", name, "--agent", agentClaude})
+		}
+		return Run([]string{"new", "--remote", name, "--agent", agentCodex})
+	case "handoff":
+		name, err := chooseMenuRemote(c, "Hand off on which remote")
+		if err != nil || name == "" {
+			return err
+		}
+		return Run([]string{"handoff", "--remote", name})
 	case "setup":
 		return guidedSetup(c)
 	case "remote":
@@ -137,6 +148,7 @@ func remoteConnectionsMenu(c Config) error {
 func authenticationMenu(c Config) error {
 	items := []menuItem{
 		{Title: "Sign in to Codex", Detail: "Use device authorization on a remote", Kind: "tools", Action: "codex"},
+		{Title: "Sign in to Claude Code", Detail: "Store a token from claude setup-token on a remote", Kind: "tools", Action: agentClaude},
 		{Title: "Configure Git credentials", Detail: "Share credentials across repositories on one Git server", Kind: "tools", Action: "git"},
 	}
 	selected, err := selectMenu("Sign-in and Git access", items)

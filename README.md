@@ -2,15 +2,14 @@
 
 **Just Another Remote Agent**
 
-Persistent remote Codex workspaces over standard OpenSSH, hosted with Docker or
-Compose. The Go CLI remembers environments and workspace associations.
+Persistent remote Codex and Claude Code workspaces over standard OpenSSH, hosted
+with Docker or Compose. The Go CLI remembers environments and workspace associations.
 
-Jara launches Codex inside tmux. Its own [conversation interface](docs/conversation-interface.md)
-is available with `jara new --interface jara`: streamed replies, saved sessions,
-multiline prompts, explicit approvals and questions, and agent activity tracking.
-Codex continues to own inference, authentication, tools, and sandboxing.
-Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain
-available to the environment owner.
+Jara launches Codex, or Claude Code with `--agent claude` ([agent runtimes](docs/agent-providers.md)),
+inside tmux. For Codex, Jara's [conversation interface](docs/conversation-interface.md) is
+available with `jara new --interface jara`: streamed replies, saved sessions, multiline prompts,
+explicit approvals and questions, and agent activity tracking. Each agent CLI owns inference,
+its authentication, and tools. Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain available.
 
 Codex startup arguments are configurable through `JARA_CODEX_ARGS` in the
 container and arguments forwarded by the local Jara client. No extra Codex flags
@@ -60,6 +59,7 @@ For a noninteractive client setup, use:
 ```sh
 jara remote add work --host my-agent-alias
 jara auth codex --remote work
+jara auth claude --remote work   # optional: paste a token from `claude setup-token`
 ```
 
 Configure commit name/email separately with [Git identity settings](docs/git-identity.md).
