@@ -83,6 +83,7 @@ func runChatDaemon(q Request) error {
 	if err != nil {
 		return err
 	}
+	binary, args = agentServerCommand(binary, args, q.Runtime, q.AgentArgs)
 	server := projectToolCommand(cwd, append([]string{binary}, args...)...)
 	isolatePersistentChatProcess(server)
 	input, err := server.StdinPipe()

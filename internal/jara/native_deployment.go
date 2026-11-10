@@ -50,7 +50,7 @@ func nativeManifestBytes(d nativeDeployment) ([]byte, error) {
 
 func nativeBuildArgs(settings map[string]string, image, codexVersion string) []string {
 	args := []string{"docker", "build", "--tag", image, "--file", "deploy/Dockerfile"}
-	for _, key := range []string{"CODEX_VERSION", "NODE_VERSION", "GO_VERSION", "EDITOR_PACKAGES", "GLAB_VERSION", "TEA_VERSION", "DOCKER_VERSION", "MISE_VERSION"} {
+	for _, key := range []string{"CODEX_VERSION", "CLAUDE_CODE_VERSION", "NODE_VERSION", "GO_VERSION", "EDITOR_PACKAGES", "GLAB_VERSION", "TEA_VERSION", "DOCKER_VERSION", "MISE_VERSION"} {
 		value := settings[key]
 		if key == "CODEX_VERSION" && codexVersion != "" {
 			value = codexVersion
@@ -77,7 +77,7 @@ func nativeRunArgs(d nativeDeployment, settings map[string]string, image, deploy
 	if apparmorProfile != "" {
 		args = append(args, "--security-opt", "apparmor="+apparmorProfile)
 	}
-	for _, key := range []string{"JARA_DOCKER", "JARA_GATEWAY_PORTS", "JARA_CODEX_ARGS", "JARA_TMUX_BACKGROUND", "JARA_MAX_SESSIONS", "JARA_SESSION_IDLE_TIMEOUT", "GITLAB_HOST", "GITEA_URL"} {
+	for _, key := range []string{"JARA_DOCKER", "JARA_GATEWAY_PORTS", "JARA_CODEX_ARGS", "JARA_CLAUDE_ARGS", "JARA_TMUX_BACKGROUND", "JARA_MAX_SESSIONS", "JARA_SESSION_IDLE_TIMEOUT", "GITLAB_HOST", "GITEA_URL"} {
 		args = append(args, "--env", key+"="+settings[key])
 	}
 	args = append(args, "--env", "JARA_SSH_USER="+nativeSSHUser(d))

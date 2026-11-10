@@ -251,7 +251,7 @@ func nativeSmokeArgsWithSeccomp(seccomp, image, target, apparmorProfile string) 
 		args = append(args, "--security-opt", "apparmor="+apparmorProfile)
 	}
 	return append(args,
-		"--entrypoint", "/bin/sh", image, "-ec", `test "$(codex --version)" = "codex-cli `+target+`"; jara version; mkdir -p /home/agent/update-check; cd /home/agent/update-check; codex sandbox -c 'sandbox_mode="workspace-write"' -- /bin/sh -c 'printf update-ok > inside; if (printf forbidden > /home/agent/outside) 2>/dev/null; then exit 73; fi'; test "$(cat inside)" = update-ok; test ! -e /home/agent/outside`)
+		"--entrypoint", "/bin/sh", image, "-ec", `test "$(codex --version)" = "codex-cli `+target+`"; jara version; if [ -e /usr/local/bin/claude ]; then claude --version >/dev/null; fi; mkdir -p /home/agent/update-check; cd /home/agent/update-check; codex sandbox -c 'sandbox_mode="workspace-write"' -- /bin/sh -c 'printf update-ok > inside; if (printf forbidden > /home/agent/outside) 2>/dev/null; then exit 73; fi'; test "$(cat inside)" = update-ok; test ! -e /home/agent/outside`)
 }
 
 func waitNativeHealth(run func(time.Duration, []string, bool) ([]byte, error), container string) error {

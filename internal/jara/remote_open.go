@@ -18,6 +18,7 @@ func connectCommand(args []string) error {
 	var codexArgs codexArgList
 	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
 	chatInterface := f.String("interface", "codex", "conversation interface: codex or jara")
+	agentName := f.String("agent", os.Getenv("JARA_AGENT"), "agent runtime: codex or claude")
 	resume := f.Bool("resume", false, "use plain codex resume when starting a terminal")
 	fresh := f.Bool("new", false, "start another Codex terminal")
 	worktree := f.Bool("worktree", false, "start a new terminal in a Git worktree")
@@ -38,15 +39,31 @@ func connectCommand(args []string) error {
 	if err := validateChatInterface(*chatInterface); err != nil {
 		return err
 	}
-	return remoteOpen(Request{UserInterface: *chatInterface, ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
+	runtime, err := normalizeAgentRuntime(*agentName)
+	if err != nil {
+		return err
+	}
+	return remoteOpen(Request{UserInterface: *chatInterface, Runtime: runtime, ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
 }
 
 func remoteOpen(q Request) error {
 	if err := validateChatInterface(q.UserInterface); err != nil {
 		return err
 	}
+	if q.Handoff && q.Runtime == "" {
+		q.Runtime = handoffTarget(q.ID)
+	}
+	runtime, err := normalizeAgentRuntime(q.Runtime)
+	if err != nil {
+		return err
+	}
+	q.Runtime = runtime
+	if err = validateAgentInterface(q.Runtime, q.UserInterface); err != nil {
+		return err
+	}
+	claude := q.Runtime == agentClaude
 	if q.Background && strings.TrimSpace(q.Prompt) == "" {
-		return fmt.Errorf("background Codex runs require a prompt")
+		return fmt.Errorf("background %s runs require a prompt", agentDisplayName(q.Runtime))
 	}
 	if len(q.Prompt) > maxBackgroundPrompt {
 		return fmt.Errorf("prompt exceeds 64 KiB")
@@ -59,7 +76,20 @@ func remoteOpen(q Request) error {
 			}
 		}
 	}()
-	codexArgs, err := configuredCodexArgs(q.CodexArgs)
+	// Each agent receives only its own deployment and host default arguments.
+	codexArgs := q.CodexArgs
+	if claude && q.UserInterface == "jara" {
+		// The Jara UI's app-server keeps Codex defaults. Arguments given for
+		// Claude Code travel separately to the agent router.
+		if len(q.CodexArgs) > 0 {
+			q.AgentArgs, q.CodexArgs = q.CodexArgs, nil
+		}
+		codexArgs, err = configuredCodexArgs(nil)
+	} else if claude {
+		codexArgs, err = configuredAgentArgs(agentClaude, q.CodexArgs)
+	} else {
+		codexArgs, err = configuredCodexArgs(q.CodexArgs)
+	}
 	if err != nil {
 		return err
 	}
@@ -85,9 +115,24 @@ func remoteOpen(q Request) error {
 				return fmt.Errorf("Codex session browsing is interactive; use `jara resume`")
 			}
 			command := codexResumeAllCommand(codexArgs)
+			if claude {
+				command = claudeCommand(true, false, codexArgs)
+			}
 			return interactive(exec.Command(command[0], command[1:]...))
 		}
 		if selected.Kind == "conversation" {
+			// The saved conversation decides which agent resumes it.
+			if runtime := conversationRuntime(selected.Agent, selected.Action); runtime != q.Runtime {
+				q.Runtime, claude = runtime, runtime == agentClaude
+				defaults := runtime
+				if q.UserInterface == "jara" {
+					defaults = agentCodex
+				}
+				// Extra arguments were meant for the other agent; use defaults.
+				if codexArgs, err = configuredAgentArgs(defaults, nil); err != nil {
+					return err
+				}
+			}
 			if q.Background {
 				return fmt.Errorf("select a workspace for a background run")
 			}
@@ -104,7 +149,9 @@ func remoteOpen(q Request) error {
 					}
 					return runJaraChat(q)
 				}
-				return interactive(exec.Command(command[0], command[1:]...))
+				resume := exec.Command(command[0], command[1:]...)
+				resume.Dir = selected.Path // Claude Code finds sessions by working directory
+				return interactive(resume)
 			}
 			q.Conversation = selected.Action
 			q.Agent = selected.Agent
@@ -131,6 +178,20 @@ func remoteOpen(q Request) error {
 
 		q.ID = selected.Workspace
 		q.New = q.New || selected.Kind == "new"
+		if selected.Kind == "new" && selected.Agent != "" && selected.Agent != q.Runtime {
+			q.Runtime = selected.Agent
+			claude = q.Runtime == agentClaude
+			if err = validateAgentInterface(q.Runtime, q.UserInterface); err != nil {
+				return err
+			}
+			runtimeArgs := q.Runtime
+			if q.UserInterface == "jara" {
+				runtimeArgs = agentCodex // the Jara UI's app-server always takes Codex defaults
+			}
+			if codexArgs, err = configuredAgentArgs(runtimeArgs, q.CodexArgs); err != nil {
+				return err
+			}
+		}
 	}
 	if q.UserInterface == "jara" && q.ID != "" && !q.Background {
 		connection, managed, err := ensureChatDaemon(q)
@@ -158,6 +219,13 @@ func remoteOpen(q Request) error {
 			}
 			if q.Agent == "" {
 				q.Agent = "Codex"
+			}
+			// The handed-off conversation decides which agent resumes it.
+			if runtime := conversationRuntime(q.Agent, q.Conversation); runtime != q.Runtime {
+				q.Runtime, claude = runtime, runtime == agentClaude
+				if codexArgs, err = configuredAgentArgs(runtime, nil); err != nil {
+					return err
+				}
 			}
 			q.ResumeLatest = false
 			q.New = q.New || daemonWasRunning
@@ -246,12 +314,24 @@ func remoteOpen(q Request) error {
 			return err
 		}
 	}
+	if q.Conversation != "" && !q.Worktree {
+		if info, e := os.Stat(q.ConversationCWD); e == nil && info.IsDir() {
+			path = q.ConversationCWD // resume where the conversation ran
+		}
+	}
 	if info, e := os.Stat(path); e != nil || !info.IsDir() {
 		return fmt.Errorf("remote working directory is missing: %s", path)
 	}
 	if err = prepareToolsQuiet(path); err != nil {
 		return err
 	}
+	if q.Handoff {
+		if q.Background || q.UserInterface == "jara" {
+			return fmt.Errorf("a handoff starts an interactive agent terminal")
+		}
+		q.Prompt = handoffPrompt(path, handoffSource(q.ID), q.Runtime, q.Prompt)
+	}
+	ensureDelegationRegistered()
 	background, err := terminalBackground()
 	if !q.Background {
 		background, err = detectTerminalBackground()
@@ -305,6 +385,10 @@ func remoteOpen(q Request) error {
 		_ = tmux("kill-session", "-t", name).Run()
 		return err
 	}
+	if err = runTmux("set-option", "-t", name, "@jara_agent", q.Runtime); err != nil {
+		_ = tmux("kill-session", "-t", name).Run()
+		return err
+	}
 	if q.Conversation != "" {
 		if err = runTmux("set-option", "-t", name, "@jara_codex_thread", q.Conversation); err != nil {
 			_ = tmux("kill-session", "-t", name).Run()
@@ -323,16 +407,10 @@ func remoteOpen(q Request) error {
 		}
 		args = []string{"respawn-pane", "-k", "-t", name, "mise", "exec", "--", "jara", "_background", token(q)}
 	} else {
-		terminalCommand := codexCommand(q.Resume, codexArgs)
-		if q.Conversation != "" {
-			terminalCommand, err = resumeConversationCommand(q.Agent, q.Conversation, q.ConversationCWD, codexArgs)
-			if err != nil {
-				_ = tmux("kill-session", "-t", name).Run()
-				return err
-			}
-		}
-		if q.ResumeLatest {
-			terminalCommand = codexResumeLatestCommand(codexArgs)
+		terminalCommand, err := agentTerminalCommand(q, codexArgs)
+		if err != nil {
+			_ = tmux("kill-session", "-t", name).Run()
+			return err
 		}
 		if q.UserInterface == "jara" {
 			terminalCommand = chatTerminalCommand(q, codexArgs)
@@ -353,7 +431,7 @@ func remoteOpen(q Request) error {
 	unlock()
 	locked = false
 	if q.Background {
-		fmt.Fprintf(os.Stdout, "Started background Codex run in session %s. Use `jara sessions` to attach.\n", name)
+		fmt.Fprintf(os.Stdout, "Started background %s run in session %s. Use `jara sessions` to attach.\n", agentDisplayName(q.Runtime), name)
 		return nil
 	}
 	return attach(Session{Name: name, Workspace: q.ID}, q.Takeover)

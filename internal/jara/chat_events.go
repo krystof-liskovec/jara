@@ -28,6 +28,7 @@ func (u *chatUI) event(m appMessage) error {
 		Item         json.RawMessage
 		ItemID       string `json:"itemId"`
 		SummaryIndex int    `json:"summaryIndex"`
+		Label        string `json:"label"`
 	}
 	if err := json.Unmarshal(m.Params, &p); err != nil {
 		return err
@@ -55,6 +56,10 @@ func (u *chatUI) event(m appMessage) error {
 	case "thread/compacted":
 		if p.ThreadID == "" || p.ThreadID == u.thread {
 			u.printRole("progress", "Conversation context compacted.\n")
+		}
+	case "jara/activity":
+		if u.busy && (p.ThreadID == "" || p.ThreadID == u.thread) && p.Label != "" {
+			u.setActivityLabel(chatText(p.Label))
 		}
 	case "item/reasoning/summaryTextDelta":
 		u.streamReasoningSummary(p.ItemID, p.SummaryIndex, p.Delta)
@@ -110,6 +115,7 @@ func (u *chatUI) event(m appMessage) error {
 			} else {
 				u.setActivityLabel("Thinking")
 				u.printRole("tool", "\n"+formatChatFileChanges(p.Item))
+				u.diff.recordFileChanges(p.Item, true)
 			}
 		}
 		if item.Type == "commandExecution" && m.Method == "item/completed" {

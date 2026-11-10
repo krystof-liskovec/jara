@@ -85,9 +85,11 @@ func chatGoalRequest(method string) bool {
 	}
 }
 
-func (u *chatUI) acceptChatGoalResponse(m appMessage, action string) error {
+// acceptChatGoalResponse handles the reply to a goal request. JSON-RPC
+// responses carry no method, so the caller passes the request's method.
+func (u *chatUI) acceptChatGoalResponse(m appMessage, method, action string) error {
 	message := ""
-	switch m.Method {
+	switch method {
 	case "thread/goal/get":
 		var response struct {
 			Goal *chatThreadGoal `json:"goal"`

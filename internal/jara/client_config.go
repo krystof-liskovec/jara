@@ -90,6 +90,12 @@ func configCommand(c *Config, args []string) error {
 	if len(args) > 0 && args[0] == "codex-args" {
 		return codexArgsConfigCommand(*c, args[1:])
 	}
+	if len(args) > 0 && args[0] == "claude-args" {
+		return agentArgsConfigCommand(*c, agentClaude, args[1:])
+	}
+	if len(args) >= 3 && args[0] == "set" && args[1] == "agent" {
+		return agentConfigCommand(c, args[2:])
+	}
 	if len(args) == 4 && args[0] == "set" && args[1] == "editor-command" {
 		if !nameRE.MatchString(args[2]) {
 			return fmt.Errorf("invalid editor name")
@@ -105,7 +111,7 @@ func configCommand(c *Config, args []string) error {
 		return saveConfig(*c)
 	}
 	if len(args) < 3 || args[0] != "set" || args[1] != "editor" {
-		return fmt.Errorf("use config set editor code|vim|nvim [--remote NAME]")
+		return fmt.Errorf("use config set editor code|vim|nvim [--remote NAME] or config set agent codex|claude [--remote NAME | --workspace]")
 	}
 	e := args[2]
 	if e != "code" && e != "vim" && e != "nvim" && len(c.EditorCommands[e]) == 0 {
@@ -127,8 +133,14 @@ func configCommand(c *Config, args []string) error {
 }
 
 func codexArgsConfigCommand(c Config, args []string) error {
+	return agentArgsConfigCommand(c, agentCodex, args)
+}
+
+func agentArgsConfigCommand(c Config, runtime string, args []string) error {
+	agent := agentDisplayName(runtime)
+	usage := fmt.Errorf("use jara config %s-args show|clear [--remote NAME] or set [--remote NAME] -- ARGS...", runtime)
 	if len(args) == 0 {
-		return fmt.Errorf("use jara config codex-args show|clear [--remote NAME] or set [--remote NAME] -- CODEX_ARGS...")
+		return usage
 	}
 	action := args[0]
 	flags := args[1:]
@@ -136,13 +148,13 @@ func codexArgsConfigCommand(c Config, args []string) error {
 	if action == "set" {
 		flags, values = splitCodexArgs(flags)
 	}
-	set := flag.NewFlagSet("config codex-args "+action, flag.ContinueOnError)
+	set := flag.NewFlagSet("config "+runtime+"-args "+action, flag.ContinueOnError)
 	remoteName := set.String("remote", c.Default, "named remote")
 	if err := set.Parse(flags); err != nil {
 		return err
 	}
 	if set.NArg() != 0 {
-		return fmt.Errorf("unexpected argument %q; put Codex arguments after --", set.Arg(0))
+		return fmt.Errorf("unexpected argument %q; put %s arguments after --", set.Arg(0), agent)
 	}
 	name, remote, err := resolveConfigRemote(c, *remoteName)
 	if err != nil {
@@ -150,11 +162,11 @@ func codexArgsConfigCommand(c Config, args []string) error {
 	}
 	switch action {
 	case "show":
-		current, readErr := readRemoteCodexArgs(remote)
-		if readErr != nil {
-			return fmt.Errorf("read Codex arguments from %s: %w", name, readErr)
+		var current []string
+		if err = rpc(remote, Request{Op: runtime + "-args-show"}, nil, &current); err != nil {
+			return fmt.Errorf("read %s arguments from %s: %w", agent, name, err)
 		}
-		fmt.Printf("Effective Codex arguments on %s:\n", name)
+		fmt.Printf("Effective %s arguments on %s:\n", agent, name)
 		if len(current) == 0 {
 			fmt.Println("  (none)")
 			return nil
@@ -167,19 +179,20 @@ func codexArgsConfigCommand(c Config, args []string) error {
 		if err = validateCodexArgs(values); err != nil {
 			return err
 		}
-		if err = setRemoteCodexArgs(remote, values); err != nil {
-			return fmt.Errorf("set Codex arguments on %s; update Jara on that host if needed: %w", name, err)
+		raw, _ := json.Marshal(values)
+		if err = rpc(remote, Request{Op: runtime + "-args-set"}, bytes.NewReader(raw), nil); err != nil {
+			return fmt.Errorf("set %s arguments on %s; update Jara on that host if needed: %w", agent, name, err)
 		}
-		fmt.Printf("Saved %d default Codex argument(s) on %s. They apply to new Codex processes.\n", len(values), name)
+		fmt.Printf("Saved %d default %s argument(s) on %s. They apply to new %s processes.\n", len(values), agent, name, agent)
 		return nil
 	case "clear":
-		if err = clearRemoteCodexArgs(remote); err != nil {
-			return fmt.Errorf("clear Codex arguments on %s; update Jara on that host if needed: %w", name, err)
+		if err = rpc(remote, Request{Op: runtime + "-args-clear"}, nil, nil); err != nil {
+			return fmt.Errorf("clear %s arguments on %s; update Jara on that host if needed: %w", agent, name, err)
 		}
-		fmt.Printf("Cleared the saved Codex arguments on %s; deployment defaults now apply.\n", name)
+		fmt.Printf("Cleared the saved %s arguments on %s; deployment defaults now apply.\n", agent, name)
 		return nil
 	default:
-		return fmt.Errorf("use jara config codex-args show|clear [--remote NAME] or set [--remote NAME] -- CODEX_ARGS...")
+		return usage
 	}
 }
 

@@ -229,7 +229,9 @@ func browseProject(p conversationProject, terminals []Session) (menuItem, error)
 			rows = append(rows, menuItem{Title: title, Detail: detail, Workspace: p.Workspace.ID, Path: c.CWD, Kind: "conversation", Action: c.ID, Agent: c.Agent})
 		}
 		if p.Workspace.Ready {
-			rows = append(rows, menuItem{Title: "New conversation", Detail: "Codex", Workspace: p.Workspace.ID, Kind: "new"})
+			for _, runtime := range installedAgentRuntimes() {
+				rows = append(rows, menuItem{Title: "New " + agentDisplayName(runtime) + " conversation", Detail: "Start an agent terminal", Workspace: p.Workspace.ID, Kind: "new", Agent: runtime})
+			}
 		}
 		if len(p.Terminals) > 0 {
 			rows = append(rows, menuItem{Title: "Project terminals", Detail: fmt.Sprintf("%d terminals", len(p.Terminals)), Kind: "terminals"})

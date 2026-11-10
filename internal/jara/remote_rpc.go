@@ -19,24 +19,9 @@ func remoteRPC(q Request) error {
 		return json.NewEncoder(os.Stdout).Encode(map[string]string{"version": Version, "goos": runtime.GOOS, "goarch": runtime.GOARCH})
 	case "git-identity-show", "git-identity-set", "git-identity-clear":
 		return gitIdentityRPC(q.Op, os.Stdin, os.Stdout)
-	case "codex-args-show":
-		args, err := configuredCodexArgs(nil)
-		if err != nil {
-			return err
-		}
-		return json.NewEncoder(os.Stdout).Encode(args)
-	case "codex-args-set":
-		raw, err := io.ReadAll(io.LimitReader(os.Stdin, 65537))
-		if err != nil {
-			return err
-		}
-		args, err := parseCodexArgs(raw)
-		if err != nil {
-			return err
-		}
-		return saveCodexArgsOverride(args)
-	case "codex-args-clear":
-		return clearCodexArgsOverride()
+	case "codex-args-show", "codex-args-set", "codex-args-clear", "claude-args-show", "claude-args-set", "claude-args-clear":
+		runtime, action, _ := strings.Cut(q.Op, "-args-")
+		return agentArgsRPC(runtime, action, os.Stdin, os.Stdout)
 	case "image-upload":
 		return receiveClipboardImage(os.Stdin, os.Stdout)
 	case "editor-snapshot", "editor-apply":
@@ -108,6 +93,7 @@ func remoteRPC(q Request) error {
 		} else {
 			d.Checks = append(d.Checks, "OK Codex authentication")
 		}
+		d.Checks = append(d.Checks, claudeDiagnostics()...)
 		probe, err := os.MkdirTemp(dataRoot(), ".sandbox-check-")
 		if err != nil {
 			return err

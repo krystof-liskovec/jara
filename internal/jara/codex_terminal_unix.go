@@ -18,8 +18,8 @@ import (
 )
 
 func runCodexTerminal(args []string) error {
-	if len(args) == 0 || args[0] != "/usr/local/bin/codex" {
-		return fmt.Errorf("invalid Codex terminal command")
+	if len(args) == 0 || !terminalBinaryAllowed(args[0]) {
+		return fmt.Errorf("invalid agent terminal command")
 	}
 	background, err := terminalBackground()
 	if err != nil {

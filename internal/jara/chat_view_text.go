@@ -23,17 +23,21 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 	previousRole := ""
 	for _, message := range messages {
 		role := message.Role
+		agent := message.Agent
+		if agent == "" {
+			agent = "Codex"
+		}
 		label := "• Jara"
 		kind := "role-system"
 		switch role {
 		case "user":
 			label, kind = "● You", "role-user"
 		case "assistant":
-			label, kind = "✦ Codex", "role-assistant"
+			label, kind = "✦ "+agent, "role-assistant"
 		case "tool":
 			label, kind = "⌁ Tool", "role-tool"
 		case "progress":
-			label, kind = "↳ Codex progress", "role-progress"
+			label, kind = "↳ "+agent+" progress", "role-progress"
 		case "subagent":
 			label, kind = "↳ Subagent activity", "role-subagent"
 		}

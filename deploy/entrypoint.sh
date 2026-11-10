@@ -89,6 +89,9 @@ mkdir -p /run/jara
 printf '%s' "${JARA_CODEX_ARGS:-[]}" > /run/jara/codex-args.json
 jara _validate-codex-args < /run/jara/codex-args.json
 chmod 644 /run/jara/codex-args.json
+printf '%s' "${JARA_CLAUDE_ARGS:-[]}" > /run/jara/claude-args.json
+jara _validate-codex-args < /run/jara/claude-args.json
+chmod 644 /run/jara/claude-args.json
 if [ -n "$tmux_background" ]; then
   printf '%s' "$tmux_background" > /run/jara/tmux-background
   chmod 644 /run/jara/tmux-background

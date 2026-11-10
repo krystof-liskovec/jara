@@ -64,6 +64,7 @@ type chatUI struct {
 	reasoningSummaryIndexes      map[string]int
 	subagentPaths                map[string]string
 	subagentItemDisplays         map[string]string
+	diff                         chatDiffState
 }
 
 // Text from the model and tools is untrusted terminal content.
@@ -341,7 +342,7 @@ func (u *chatUI) response(m appMessage) error {
 	case "model/list":
 		return u.acceptChatModelPage(m.Result)
 	case "thread/goal/get", "thread/goal/set", "thread/goal/clear":
-		return u.acceptChatGoalResponse(m, p.action)
+		return u.acceptChatGoalResponse(m, p.method, p.action)
 	case "jara/schedule/create", "jara/schedule/list", "jara/schedule/cancel":
 		return u.acceptChatScheduleResponse(m, p.action)
 	case "jara/crunch/create", "jara/crunch/status", "jara/crunch/stop":

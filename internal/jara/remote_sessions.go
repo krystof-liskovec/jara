@@ -22,7 +22,7 @@ func tmux(args ...string) *exec.Cmd {
 
 func sessions() ([]Session, error) {
 	// has-session distinguishes an absent server from malformed output.
-	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}|#{@jara_created_at}|#{@jara_last_attached}|#{@jara_session_label}|#{@jara_codex_thread}|#{@jara_agent_state}|#{@jara_agent_pid}")
+	probe := tmux("list-sessions", "-F", "#{session_name}|#{@jara_workspace}|#{session_attached}|#{@jara_background}|#{pane_dead}|#{@jara_created_at}|#{@jara_last_attached}|#{@jara_session_label}|#{@jara_codex_thread}|#{@jara_agent_state}|#{@jara_agent_pid}|#{@jara_agent}")
 	b, err := probe.Output()
 	if err != nil {
 		var ee *exec.ExitError
@@ -52,6 +52,9 @@ func sessions() ([]Session, error) {
 		}
 		if len(p) > 8 {
 			session.Conversation = p[8]
+		}
+		if len(p) > 11 {
+			session.Agent = p[11]
 		}
 		if len(p) > 10 {
 			if agent, ok := parseAgentMetadata(session.Name, p[9], p[10]); ok {

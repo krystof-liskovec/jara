@@ -37,7 +37,7 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 					} `json:"turn"`
 				}
 				if json.Unmarshal(message.Result, &response) != nil || response.Turn.ID == "" {
-					m.failLocked("Codex did not return a turn ID")
+					m.failLocked("the agent did not return a turn ID")
 				} else {
 					m.job.TurnID = response.Turn.ID
 					m.job.Started = true
@@ -48,7 +48,7 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 			case "rateLimits":
 				blocked, next, err := chatCrunchRateLimitState(message.Result, time.Now())
 				if err != nil {
-					m.failLocked("could not read ChatGPT usage reset time: " + err.Error())
+					m.failLocked("could not read the usage reset time: " + err.Error())
 				} else if blocked {
 					m.job.ResetAt = next
 					m.job.Status = "waitingUsage"
@@ -68,7 +68,7 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 					} `json:"goal"`
 				}
 				if json.Unmarshal(message.Result, &response) != nil || response.Goal == nil {
-					m.failLocked("Codex no longer has a goal for this goal crunch")
+					m.failLocked("the conversation no longer has a goal for this goal crunch")
 				} else {
 					m.job.GoalStatus = response.Goal.Status
 					switch response.Goal.Status {
@@ -77,7 +77,7 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 					case "active":
 						m.job.Status = "pending"
 					case "usageLimited":
-						m.waitForUsageLocked("Codex marked the goal usage-limited")
+						m.waitForUsageLocked("the goal is usage-limited")
 						followUp = "rateLimits"
 					default:
 						m.failLocked("goal status is " + chatGoalStatusLabel(response.Goal.Status))
@@ -174,6 +174,7 @@ func (m *chatCrunchManager) queueFollowUp(kind string, input io.Writer, inputMu 
 	switch kind {
 	case "rateLimits":
 		method = "account/rateLimits/read"
+		params["threadId"] = m.job.ThreadID // the router answers per agent
 	case "goalGet":
 		method = "thread/goal/get"
 		params["threadId"] = m.job.ThreadID

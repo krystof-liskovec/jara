@@ -375,6 +375,9 @@ func sessionItem(w Workspace, s Session, number int) menuItem {
 		viewers = "detached"
 	}
 	detail := []string{state, viewers}
+	if s.Agent != "" {
+		detail = append([]string{agentDisplayName(s.Agent)}, detail...)
+	}
 	if validAgentState(s.AgentState) {
 		detail = append(detail, "Agent "+s.AgentState)
 	}

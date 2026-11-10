@@ -176,7 +176,8 @@ func TestChatSessionListErrorsAndTimeoutStayNonfatal(t *testing.T) {
 	requests := decodeChatRequests(t, &wire)
 	errorMessage := "history unavailable"
 	if err := u.response(appMessage{ID: requests[0].ID, Error: &struct {
-		Message string `json:"message"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
 	}{Message: errorMessage}}); err != nil {
 		t.Fatalf("history error should not end the chat: %v", err)
 	}

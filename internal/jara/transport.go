@@ -63,6 +63,8 @@ func interactive(cmd *exec.Cmd) error {
 type Request struct {
 	UserInterface      string   `json:"interface,omitempty"`
 	Agent              string   `json:"agent,omitempty"`
+	Runtime            string   `json:"runtime,omitempty"`
+	Handoff            bool     `json:"handoff,omitempty"`
 	ConversationCWD    string   `json:"conversation_cwd,omitempty"`
 	Conversation       string   `json:"conversation,omitempty"`
 	Op                 string   `json:"op"`
@@ -88,6 +90,7 @@ type Request struct {
 	Force              bool     `json:"force,omitempty"`
 	IncludeIgnored     bool     `json:"include_ignored,omitempty"`
 	CodexArgs          []string `json:"codex_args,omitempty"`
+	AgentArgs          []string `json:"agent_args,omitempty"` // Claude Code arguments for the Jara UI
 }
 
 func rpc(r Remote, q Request, input io.Reader, v any) error {

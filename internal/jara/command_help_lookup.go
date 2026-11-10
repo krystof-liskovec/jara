@@ -57,7 +57,7 @@ func commandHelpKey(args []string) string {
 	switch command {
 	case "help", "--help", "-h":
 		return "root"
-	case "open", "resume", "new", "run", "connect", "sessions", "clone", "edit", "doctor", "forward", "reverse", "tunnel", "setup", "menu", "ui", "keygen", "environment", "migrate", "version":
+	case "open", "resume", "new", "run", "connect", "sessions", "clone", "edit", "doctor", "forward", "reverse", "tunnel", "setup", "menu", "ui", "keygen", "environment", "migrate", "version", "handoff", "delegation", "mcp":
 		return command
 	case "sync", "tools":
 		return command
