@@ -94,7 +94,8 @@ func (u *chatUI) help() string {
 /plan [PROMPT|off|status] Use Plan mode for this and later turns
 /auto [on|off|status] Let an automatic reviewer handle approvals (default on)
 /btw QUESTION    Ask a side question; works during a turn and is not saved
-/default [ID|N]  Set the default model for new conversations on this host
+/default [ID|N]  Set the default model (and provider) for new conversations
+/fallback [ID|N|off] Continue on another model when a usage limit is reached
 /goalcrunch ...  Run a goal through usage-limit pauses
 /schedule ...    Schedule a prompt for this conversation
 /crunch ...      Run a prompt through usage-limit pauses

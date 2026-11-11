@@ -127,6 +127,8 @@ func (u *chatUI) line(line string) (bool, error) {
 		return false, u.runChatBtwCommand(line)
 	case isChatDefaultCommand(line):
 		return false, u.runChatDefaultCommand(line)
+	case isChatFallbackCommand(line):
+		return false, u.runChatFallbackCommand(line)
 	case isChatScheduleCommand(line):
 		return false, u.runChatScheduleCommand(line)
 	case isChatCrunchCommand(line):
@@ -353,6 +355,9 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 		return nil
 	}
 	u.recordRole("user", message)
+	if message != u.lastPrompt {
+		u.lastPrompt, u.fallbackRetried = message, false
+	}
 	u.busy = true
 	u.cancel = false
 	u.turnStartedAt = time.Now()

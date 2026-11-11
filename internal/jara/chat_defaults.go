@@ -24,14 +24,14 @@ func (u *chatUI) requestDefaultModels() error {
 // expireChatDefaultRequest drops a default-model request that timed out;
 // the conversation keeps working without it.
 func (u *chatUI) expireChatDefaultRequest(id string, pending chatPending) bool {
-	if pending.method != "jara/defaultModel/get" && pending.method != "jara/defaultModel/set" {
+	if !chatDefaultRequest(pending.method) {
 		return false
 	}
 	delete(u.pending, id)
 	if pending.method == "jara/defaultModel/get" {
 		u.defaults = &defaultModels{}
 	} else {
-		u.printRole("system", "Saving the default model timed out.\n")
+		u.printRole("system", "Saving the model choice timed out.\n")
 	}
 	return true
 }
@@ -45,20 +45,34 @@ func (u *chatUI) acceptChatDefaultResponse(m appMessage, p chatPending) {
 		return
 	}
 	if m.Error != nil {
-		u.printRole("system", "Could not set the default model: "+chatText(m.Error.Message)+"\n")
+		u.printRole("system", "Could not save the model choice: "+chatText(m.Error.Message)+"\n")
 		return
 	}
 	if u.defaults == nil {
 		u.defaults = &defaultModels{}
 	}
+	if p.method == "jara/fallbackModel/set" {
+		u.defaults.Fallback = p.action
+		if p.action == "" {
+			u.printRole("system", "Fallback model turned off; usage limits wait for the reset.\n")
+		} else {
+			u.printRole("system", "Fallback model: "+u.modelName(p.action)+". When a turn or /crunch hits a usage limit, Jara continues on it.\n")
+		}
+		return
+	}
 	agent := agentForModel(p.action)
+	u.defaults.Default, u.defaults.Agent = p.action, agent
 	if agent == agentClaude {
 		u.defaults.Claude = p.action
 	} else {
 		u.defaults.Codex = p.action
 	}
-	u.printRole("system", "Default model for new "+agentDisplayName(agent)+" conversations: "+u.modelName(p.action)+
-		". "+agentDisplayName(agent)+" terminals on this host use it too.\n")
+	u.printRole("system", "Default model for new conversations: "+u.modelName(p.action)+" ("+agentDisplayName(agent)+
+		"). "+agentDisplayName(agent)+" terminals on this host use it too; --agent still picks a provider explicitly.\n")
+}
+
+func chatDefaultRequest(method string) bool {
+	return method == "jara/defaultModel/get" || method == "jara/defaultModel/set" || method == "jara/fallbackModel/set"
 }
 
 func isChatDefaultCommand(line string) bool {
@@ -137,6 +151,9 @@ func (u *chatUI) newConversationModelLabel() string {
 	if agent == "" {
 		agent = agentCodex
 	}
+	if u.defaults.Default != "" && agentForModel(u.defaults.Default) == agent {
+		return u.modelName(u.defaults.Default)
+	}
 	return u.defaultLabel(agent)
 }
 
@@ -190,23 +207,40 @@ func claudeModelPrettyName(id string) string {
 	return name + suffix
 }
 
-// chatDefaultPickerChoices lists models for /default, marking each agent's
-// current default.
-func chatDefaultPickerChoices(u *chatUI, selected int) []chatCompletionChoice {
+// chatDefaultPickerChoices lists models for /default or /fallback, marking
+// the current choice.
+func chatDefaultPickerChoices(u *chatUI, selected int, kind string) []chatCompletionChoice {
 	choices := chatModelPickerChoices(u.models, "", "", selected)
+	current := u.pickerCurrentChoice(kind)
 	for index := range choices {
 		choice := &choices[index]
 		if choice.Total == 0 {
-			if choice.Value == "Choose a model" {
+			if choice.Value == "Choose a model" && kind == "fallback" {
+				choice.Value, choice.Description = "Choose the fallback model", "Used when a provider hits its usage limit"
+			} else if choice.Value == "Choose a model" {
 				choice.Value, choice.Description = "Choose the default model", "For new conversations on this host"
 			}
 			continue
 		}
 		id, _, _ := modelOverride(u.models.models[choice.Index])
 		choice.Description = strings.TrimSuffix(choice.Description, " · default")
-		if id == u.defaults.forAgent(agentForModel(id)) {
-			choice.Description += " · default"
+		if id == current {
+			choice.Description += " · " + kind
 		}
 	}
 	return choices
+}
+
+// pickerCurrentChoice is the model /default or /fallback currently names.
+func (u *chatUI) pickerCurrentChoice(kind string) string {
+	if u.defaults == nil {
+		return ""
+	}
+	if kind == "fallback" {
+		return u.defaults.Fallback
+	}
+	if u.defaults.Default != "" {
+		return u.defaults.Default
+	}
+	return u.defaults.forAgent(u.defaults.Agent)
 }

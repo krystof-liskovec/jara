@@ -93,23 +93,26 @@ func expandChatMessage(text string, width int, role string) []chatViewLine {
 	}
 	width = max(1, width)
 	var lines []chatViewLine
-	inCode := false
+	code := ""
 	for _, raw := range strings.Split(text, "\n") {
-		row, nextCode := expandChatTranscriptLine(raw, width, role, inCode)
+		row, nextCode := expandChatTranscriptLine(raw, width, role, code)
 		lines = append(lines, row...)
-		inCode = nextCode
+		code = nextCode
 	}
 	return lines
 }
 
-func expandChatTranscriptLine(raw string, width int, role string, inCode bool) ([]chatViewLine, bool) {
+// expandChatTranscriptLine renders one line; code is the open fence's info
+// ("" outside code blocks) and the result is the state for the next line.
+func expandChatTranscriptLine(raw string, width int, role string, code string) ([]chatViewLine, string) {
+	inCode := code
 	raw = menuText(strings.ReplaceAll(raw, "\t", "    "))
 	trimmed := strings.TrimSpace(raw)
 	if strings.HasPrefix(trimmed, "```") {
-		return nil, !inCode
+		return nil, chatCodeFence(trimmed, code)
 	}
-	if inCode {
-		return wrapChatLine(raw, width, "  │ ", "  │ ", "code", role, true), inCode
+	if inCode != "" {
+		return chatCodeLines(raw, width, role, code), inCode
 	}
 	if trimmed == "" {
 		return []chatViewLine{{kind: "body", role: role}}, inCode

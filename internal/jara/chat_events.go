@@ -149,6 +149,9 @@ func (u *chatUI) event(m appMessage) error {
 		if p.Turn.Error != nil {
 			u.print(p.Turn.Error.Message + "\n")
 		}
+		if retried, err := u.retryOnFallback(m.Params); retried || err != nil {
+			return err
+		}
 		started, err := u.dispatchQueuedPrompt()
 		if err != nil {
 			return err

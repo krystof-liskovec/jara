@@ -354,6 +354,7 @@ func Run(args []string) error {
 		if q.Runtime, err = resolveClientAgent(c, root, chosen, action, *agentName); err != nil {
 			return err
 		}
+		q.AgentExplicit = *agentName != ""
 		if err = validateAgentInterface(q.Runtime, q.UserInterface); err != nil {
 			return err
 		}

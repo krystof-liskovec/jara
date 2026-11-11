@@ -119,21 +119,33 @@ func TestAgentRouterSwitchesBetweenCodexAndClaude(t *testing.T) {
 	}
 	turns := readFakeLog(t, "codex-turn")
 	last := turns[len(turns)-1]
-	if !strings.HasPrefix(last, "codex-thread-2|") || !strings.Contains(last, "started with Codex") && !strings.Contains(last, "switched it to you (Codex)") || !strings.Contains(last, "edited /w/app.txt") {
+	// Codex resumes its own thread and hears only about the turns it missed.
+	if !strings.HasPrefix(last, "codex-thread-1|") || !strings.Contains(last, "you are back") || !strings.Contains(last, "edited /w/app.txt") || strings.Contains(last, "User: hello") {
 		t.Fatalf("codex briefing: %q", last)
+	}
+
+	// Returning to Claude Code resumes its session the same way.
+	h.request("turn/start", map[string]any{"threadId": thread, "model": "claude/sonnet", "input": []any{map[string]any{"type": "text", "text": "claude again"}}})
+	h.waitFor(isMethod("turn/completed"))
+	prompts = readFakeLog(t, "claude-prompt")
+	if back := prompts[len(prompts)-1]; !strings.Contains(back, "you are back") || !strings.Contains(back, "User: back to codex") || strings.Contains(back, "User: continue please") {
+		t.Fatalf("returning Claude briefing: %q", back)
+	}
+	if args := readFakeLog(t, "claude-args"); !strings.Contains(args[len(args)-1], "--resume ") {
+		t.Fatalf("returning Claude must resume its session: %q", args)
 	}
 
 	// The mixed conversation is listed once and resumes with its history.
 	list := h.response(h.request("thread/list", map[string]any{"cwd": cwd}))
 	encoded, _ = json.Marshal(list)
-	if strings.Count(string(encoded), `"id":"`+thread+`"`) != 1 || strings.Contains(string(encoded), "codex-thread-2") || !strings.Contains(string(encoded), "codex-other") {
+	if strings.Count(string(encoded), `"id":"`+thread+`"`) != 1 || !strings.Contains(string(encoded), "codex-other") {
 		t.Fatalf("thread list: %s", encoded)
 	}
 	h2 := startRouterHarness(t, agentCodex)
 	h2.response(h2.request("initialize", map[string]any{}))
 	resumed := h2.response(h2.request("thread/resume", map[string]any{"threadId": thread}))
 	history, _ := json.Marshal(resumed["result"].(map[string]any)["thread"])
-	for _, want := range []string{"hello", "continue please", "EDIT now", "back to codex", "BETA"} {
+	for _, want := range []string{"hello", "continue please", "EDIT now", "back to codex", "claude again", "BETA"} {
 		if !strings.Contains(string(history), want) {
 			t.Fatalf("resumed history lacks %q: %s", want, history)
 		}
@@ -309,7 +321,7 @@ func TestRoutedConversationsInBrowser(t *testing.T) {
 func TestAgentRouterPassesClaudeArguments(t *testing.T) {
 	setupFakeAgents(t)
 	t.Setenv("JARA_CLAUDE_ARGS", `["--fallback-model","haiku"]`)
-	binary, args := agentServerCommand("/usr/local/bin/codex", []string{"app-server"}, agentClaude, []string{"--add-dir", "/data"})
+	binary, args := agentServerCommand("/usr/local/bin/codex", []string{"app-server"}, agentClaude, false, []string{"--add-dir", "/data"})
 	if binary == "" || strings.Join(args, " ") != `_agent-server --default-agent claude --claude-args ["--add-dir","/data"] -- /usr/local/bin/codex app-server` {
 		t.Fatalf("agent server command %q", args)
 	}

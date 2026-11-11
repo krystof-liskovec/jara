@@ -349,7 +349,7 @@ func (u *chatUI) chooseChatModel(value string) error {
 			effort = u.effectiveReasoning
 		}
 		if !chatSupportsReasoning(catalogModel, effort) {
-			effort = catalogModel.DefaultReasoningEffort
+			effort = chatNearestReasoning(catalogModel, effort)
 		}
 		if effort != u.nextReasoning {
 			u.nextReasoning = effort

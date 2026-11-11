@@ -23,39 +23,6 @@ func (t *routedThread) historyTurns() []map[string]any {
 	return turns
 }
 
-// switchBriefing tells the receiving agent what happened before it joined.
-// Agent histories are not interchangeable, so the earlier exchange is replayed
-// as text; the working tree already contains the file changes.
-func (t *routedThread) switchBriefing(from, to, message string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "[Jara: this conversation started with %s. The user switched it to you (%s). The earlier exchange is replayed below; "+
-		"files in the working tree already include every change made so far. Continue from here.]\n\n", agentDisplayName(from), agentDisplayName(to))
-	var replay []string
-	for _, turn := range t.Turns {
-		entry := "User: " + turn.User
-		if turn.Reply != "" {
-			entry += "\n" + agentDisplayName(turn.Agent) + ": " + turn.Reply
-		}
-		for _, action := range turn.Actions {
-			entry += "\n(" + agentDisplayName(turn.Agent) + " " + action + ")"
-		}
-		for _, change := range turn.Changes {
-			entry += "\n(" + agentDisplayName(turn.Agent) + " edited " + firstNonEmpty(change.Path, change.NewPath, change.OldPath) + ")"
-		}
-		replay = append(replay, entry)
-	}
-	if t.Goal != nil && t.Goal.Status == "active" {
-		fmt.Fprintf(&b, "[Active goal: %s]\n\n", t.Goal.Objective)
-	}
-	text := strings.Join(replay, "\n\n")
-	if len(text) > 40000 {
-		text = "… (earlier turns omitted)\n" + text[len(text)-40000:]
-	}
-	b.WriteString(text)
-	b.WriteString("\n\n[New message from the user]\n" + message)
-	return b.String()
-}
-
 func turnText(params json.RawMessage) string {
 	var request struct {
 		Input []struct {

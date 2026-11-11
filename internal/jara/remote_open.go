@@ -43,7 +43,9 @@ func connectCommand(args []string) error {
 	if err != nil {
 		return err
 	}
-	return remoteOpen(Request{UserInterface: *chatInterface, Runtime: runtime, ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
+	explicit := false
+	f.Visit(func(set *flag.Flag) { explicit = explicit || set.Name == "agent" })
+	return remoteOpen(Request{UserInterface: *chatInterface, Runtime: runtime, AgentExplicit: explicit, ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
 }
 
 func remoteOpen(q Request) error {
@@ -178,6 +180,9 @@ func remoteOpen(q Request) error {
 
 		q.ID = selected.Workspace
 		q.New = q.New || selected.Kind == "new"
+		if selected.Kind == "new" && selected.Agent != "" {
+			q.AgentExplicit = true
+		}
 		if selected.Kind == "new" && selected.Agent != "" && selected.Agent != q.Runtime {
 			q.Runtime = selected.Agent
 			claude = q.Runtime == agentClaude

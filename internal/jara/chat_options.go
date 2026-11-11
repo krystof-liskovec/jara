@@ -82,7 +82,7 @@ func runJaraChat(q Request) error {
 	if err != nil {
 		return err
 	}
-	binary, args = agentServerCommand(binary, args, q.Runtime, q.AgentArgs)
+	binary, args = agentServerCommand(binary, args, q.Runtime, q.AgentExplicit, q.AgentArgs)
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err

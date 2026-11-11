@@ -25,6 +25,8 @@ type chatCrunchJob struct {
 	Error      string    `json:"error,omitempty"`
 	ResetAt    time.Time `json:"resetAt,omitempty"`
 	Started    bool      `json:"started,omitempty"`
+	Fallback   string    `json:"fallback,omitempty"` // model to continue on at a usage limit
+	FellBack   bool      `json:"fellBack,omitempty"` // turns now use the fallback model
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
@@ -133,6 +135,7 @@ func (m *chatCrunchManager) create(threadID, mode, prompt string) (chatCrunchJob
 	job := &chatCrunchJob{
 		ID: "cr-" + hex.EncodeToString(idBytes[:]), ThreadID: threadID,
 		Mode: mode, Prompt: prompt, Status: "pending", CreatedAt: now, UpdatedAt: now,
+		Fallback: loadModelPrefs().Fallback,
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -177,6 +180,9 @@ func (m *chatCrunchManager) tick(input io.Writer, inputMu *sync.Mutex, busy func
 			"threadId": m.job.ThreadID,
 			"input":    []any{map[string]any{"type": "text", "text": text}},
 			"summary":  "concise",
+		}
+		if m.job.FellBack {
+			params["model"] = m.job.Fallback // the router switches providers
 		}
 		m.job.Status = "running"
 	case "waitingUsage":
@@ -255,6 +261,26 @@ func (m *chatCrunchManager) failLocked(message string) {
 		m.job.TurnID = ""
 	}
 	m.requestID, m.requestKind = "", ""
+}
+
+// usageLimitedLocked continues once on the fallback model, which may belong
+// to the other provider, and otherwise waits for the usage reset. It returns
+// the follow-up request to send.
+func (m *chatCrunchManager) usageLimitedLocked(message string) string {
+	if m.job.Fallback == "" || m.job.FellBack {
+		m.waitForUsageLocked(message)
+		return "rateLimits"
+	}
+	m.job.FellBack = true
+	m.job.Error = ""
+	m.job.TurnID = ""
+	m.requestID, m.requestKind = "", ""
+	if m.job.Mode == "goal" {
+		m.job.Status = "resumingGoal"
+		return "goalResume"
+	}
+	m.job.Status = "pending"
+	return ""
 }
 
 func (m *chatCrunchManager) waitForUsageLocked(message string) {

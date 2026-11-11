@@ -25,6 +25,8 @@ type chatUI struct {
 	manualApprovals              bool           // auto mode is the default
 	defaults                     *defaultModels // host defaults; nil while loading
 	resolvedModel                string         // concrete model behind a Claude alias
+	lastPrompt                   string         // most recent prompt, for a fallback retry
+	fallbackRetried              bool           // lastPrompt was already retried on the fallback
 	threadReady                  bool
 	connected                    bool
 	composing                    bool
@@ -242,7 +244,7 @@ func (u *chatUI) response(m appMessage) error {
 		u.acceptChatBtwResponse(m)
 		return nil
 	}
-	if p.method == "jara/defaultModel/get" || p.method == "jara/defaultModel/set" {
+	if chatDefaultRequest(p.method) {
 		u.acceptChatDefaultResponse(m, p)
 		return nil
 	}

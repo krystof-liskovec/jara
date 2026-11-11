@@ -97,28 +97,85 @@ func paintChatShimmer(text string, tick int, base, glow, bg, bold string) string
 	return b.String()
 }
 
-// paintChatActivity renders the activity row: the spinner and elapsed time in
-// the activity color and the label with a shimmer while motion is enabled.
+// The activity row follows Claude Code's spinner: a star that grows and
+// shrinks, the label with a trailing ellipsis under a sweeping shimmer, and
+// muted details in parentheses, e.g. "✻ Thinking… (12s · ctrl+c to interrupt)".
+var chatSpinnerGlyphs = []string{"·", "✢", "✳", "✶", "✻", "✽"}
+
+// chatSpinnerGlyph ping-pongs through the glyphs so the star breathes.
+func chatSpinnerGlyph(frame int) string {
+	cycle := 2*len(chatSpinnerGlyphs) - 2
+	index := max(0, frame) % cycle
+	if index >= len(chatSpinnerGlyphs) {
+		index = cycle - index
+	}
+	return chatSpinnerGlyphs[index]
+}
+
+func chatActivityViewLine(model chatViewModel) chatViewLine {
+	label, detail, _ := strings.Cut(strings.TrimSpace(menuText(model.Activity)), " · ") // "Thinking · ~N tokens"
+	kind := "activity-progress"
+	switch label {
+	case "Running command", "Applying changes", "Compacting context":
+		kind = "activity-working"
+	case "Thinking", "Planning", "Waiting for approval", "Waiting for input", "Opening conversation", "Retrying", "Reconnecting", "Stopping":
+		kind = "activity"
+	}
+	if verb := chatThinkingVerb(label, model.ActivitySeed); verb != "" {
+		label = verb
+	}
+	var details []string
+	for _, part := range []string{menuText(model.ActivityElapsed), detail, model.ActivityHint} {
+		if part = strings.TrimSpace(part); part != "" {
+			details = append(details, part)
+		}
+	}
+	text := chatSpinnerGlyph(model.ActivityFrame) + " " + strings.TrimSuffix(label, "…") + "…"
+	if len(details) > 0 {
+		text += " (" + strings.Join(details, " · ") + ")"
+	}
+	return chatViewLine{text: text, kind: kind}
+}
+
+// chatThinkingVerbs replace the generic "Thinking" label, one per turn, as
+// Claude Code does.
+var chatThinkingVerbs = []string{"Thinking", "Pondering", "Cogitating", "Mulling", "Considering", "Deliberating",
+	"Reasoning", "Ruminating", "Musing", "Contemplating", "Noodling", "Percolating", "Brewing", "Synthesizing"}
+
+func chatThinkingVerb(label string, seed int64) string {
+	if label != "Thinking" || seed == 0 {
+		return ""
+	}
+	return chatThinkingVerbs[uint64(seed)%uint64(len(chatThinkingVerbs))]
+}
+
+// paintChatActivity colors the spinner and label in the activity color with
+// the shimmer over the label, and the parenthetical details muted.
 func paintChatActivity(line chatViewLine, model chatViewModel, width int, palette menuPalette, color bool) string {
 	plain := paintChatViewLine(line.text, line.kind, "", false, width, palette, color)
-	if !color || !model.Motion || os.Getenv("NO_COLOR") != "" {
+	if !color || os.Getenv("NO_COLOR") != "" {
 		return plain
 	}
 	text := fitChatView(line.text, width)
-	split := strings.LastIndex(text, " · ")
-	if split < 0 {
+	glyph, rest, found := strings.Cut(text, " ")
+	if !found {
 		return plain
 	}
-	prefix, label := text[:split+3], text[split+3:]
+	label, details := rest, ""
+	if split := strings.LastIndex(rest, " ("); split >= 0 {
+		label, details = rest[:split], rest[split:]
+	}
 	base := palette.accent
 	if line.kind == "activity-working" {
 		base = palette.green
 	}
-	glow := blendChatColor(base, palette.text, 0.85)
+	painted := menuFG(base) + "\x1b[1m" + label
+	if model.Motion {
+		painted = paintChatShimmer(label, model.Tick, base, blendChatColor(base, palette.text, 0.85), palette.canvas, "\x1b[1m")
+	}
 	padding := strings.Repeat(" ", max(0, width-uniseg.StringWidth(text)))
-	return menuBG(palette.canvas) + menuFG(base) + "\x1b[1m" + prefix +
-		paintChatShimmer(label, model.Tick, base, glow, palette.canvas, "\x1b[1m") +
-		menuFG(palette.text) + padding + "\x1b[0m"
+	return menuBG(palette.canvas) + menuFG(base) + "\x1b[1m" + glyph + " " + painted + "\x1b[22m" +
+		menuFG(palette.muted) + details + padding + "\x1b[0m"
 }
 
 // pulseChatHeader breathes the header mark between the muted and brand colors

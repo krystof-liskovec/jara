@@ -75,7 +75,7 @@ func formatChatFileChangeList(status string, changes []chatFileChange) string {
 			continue
 		}
 		shown := min(len(diffLines), min(chatFileChangeDiffLimit, remainingDiffLines))
-		b.WriteString("  ```diff\n")
+		b.WriteString("  ```diff " + strings.Join(strings.Fields(path), "_") + "\n")
 		for _, line := range diffLines[:shown] {
 			b.WriteString(line + "\n")
 		}

@@ -32,7 +32,7 @@ type chatTerminalEntry struct {
 	lines   []chatViewLine
 	pending strings.Builder
 	hasLine bool
-	inCode  bool
+	inCode  string // open code fence info, "" outside code
 }
 
 func (o *chatTerminalOutput) Write(data []byte) (int, error) {
@@ -123,7 +123,7 @@ func (e *chatTerminalEntry) reflow(width int) {
 	e.lines = nil
 	e.pending.Reset()
 	e.hasLine = false
-	e.inCode = false
+	e.inCode = ""
 	e.appendVisual(text, width)
 }
 

@@ -54,6 +54,7 @@ type agentRouter struct {
 	codexCalls     map[string]codexCall
 	sequence       int
 	defaultAgent   string
+	agentExplicit  bool     // defaultAgent was chosen explicitly, not configured
 	claudeArgs     []string // per-invocation Claude Code arguments
 	claudeLimits   *claudeRateLimits
 	threads        map[string]*routedThread
@@ -65,7 +66,9 @@ type agentRouter struct {
 }
 
 // agentServerCommand wraps the Codex app-server command in the router.
-func agentServerCommand(binary string, args []string, defaultAgent string, claudeArgs []string) (string, []string) {
+// An explicitly chosen agent (--agent or the browser's "New ... conversation")
+// starts new conversations even when a default model names the other agent.
+func agentServerCommand(binary string, args []string, defaultAgent string, explicit bool, claudeArgs []string) (string, []string) {
 	self, err := os.Executable()
 	if err != nil {
 		self = jaraBinary
@@ -74,6 +77,9 @@ func agentServerCommand(binary string, args []string, defaultAgent string, claud
 		defaultAgent = agentCodex
 	}
 	command := []string{"_agent-server", "--default-agent", defaultAgent}
+	if explicit {
+		command = append(command, "--agent-explicit", "true")
+	}
 	if len(claudeArgs) > 0 {
 		encoded, _ := json.Marshal(claudeArgs)
 		command = append(command, "--claude-args", string(encoded))
@@ -82,12 +88,14 @@ func agentServerCommand(binary string, args []string, defaultAgent string, claud
 }
 
 func agentServerMain(args []string) error {
-	defaultAgent := agentCodex
+	defaultAgent, explicit := agentCodex, false
 	var claudeArgs []string
 	for len(args) >= 2 && strings.HasPrefix(args[0], "--") && args[0] != "--" {
 		switch args[0] {
 		case "--default-agent":
 			defaultAgent = args[1]
+		case "--agent-explicit":
+			explicit = args[1] == "true"
 		case "--claude-args":
 			parsed, err := parseAgentArgs(agentClaude, []byte(args[1]))
 			if err != nil {
@@ -106,12 +114,16 @@ func agentServerMain(args []string) error {
 	if err != nil {
 		return err
 	}
-	return runAgentRouter(os.Stdin, os.Stdout, args[1:], runtime, claudeArgs...)
+	return runAgentRouterWith(os.Stdin, os.Stdout, args[1:], runtime, explicit, claudeArgs...)
 }
 
 func runAgentRouter(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, claudeArgs ...string) error {
+	return runAgentRouterWith(input, output, codexCommand, defaultAgent, false, claudeArgs...)
+}
+
+func runAgentRouterWith(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, explicit bool, claudeArgs ...string) error {
 	r := &agentRouter{claudeArgs: claudeArgs, out: output, events: make(chan routerEvent, 256), codexCalls: map[string]codexCall{},
-		defaultAgent: defaultAgent, threads: map[string]*routedThread{}, codexToVirtual: map[string]string{},
+		defaultAgent: defaultAgent, agentExplicit: explicit, threads: map[string]*routedThread{}, codexToVirtual: map[string]string{},
 		approvals: map[string]*claudeSession{}}
 	if err := r.startCodex(codexCommand); err != nil {
 		return err
@@ -321,6 +333,8 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		return r.getDefaultModels(m.ID, params)
 	case "jara/defaultModel/set":
 		return r.setDefaultModel(m.ID, params)
+	case "jara/fallbackModel/set":
+		return r.setFallbackModel(m.ID, params)
 	case "account/rateLimits/read":
 		return r.readRateLimits(m.ID, params)
 	case "thread/goal/set":
