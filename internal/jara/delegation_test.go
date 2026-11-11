@@ -9,6 +9,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func mcpExchange(t *testing.T, requests ...string) []map[string]any {
@@ -76,9 +79,9 @@ func toolText(response map[string]any) string {
 
 func TestDelegatedCommands(t *testing.T) {
 	t.Setenv("JARA_DATA", t.TempDir())
-	claude := delegatedTask{ID: "t-0123456789ab", Agent: agentClaude, Permission: permissionEdit, Session: "uuid", Model: "opus"}
+	claude := delegatedTask{ID: "t-0123456789ab", Agent: protocol.AgentClaude, Permission: permissionEdit, Session: "uuid", Model: "opus"}
 	got := delegatedCommand(claude, 1)
-	if got[0] != claudeBinary || !slices.Contains(got, "--print") || !containsPair(got, "--session-id", "uuid") || !containsPair(got, "--permission-mode", "acceptEdits") || !containsPair(got, "--permission-prompts", "none") {
+	if got[0] != protocol.ClaudeBinary || !slices.Contains(got, "--print") || !containsPair(got, "--session-id", "uuid") || !containsPair(got, "--permission-mode", "acceptEdits") || !containsPair(got, "--permission-prompts", "none") {
 		t.Fatalf("claude first run: %q", got)
 	}
 	if !containsPair(delegatedCommand(claude, 2), "--resume", "uuid") {
@@ -88,9 +91,9 @@ func TestDelegatedCommands(t *testing.T) {
 	if !containsPair(delegatedCommand(claude, 1), "--permission-mode", "plan") {
 		t.Fatal("read-only claude must use plan mode")
 	}
-	codex := delegatedTask{ID: "t-0123456789ab", Agent: agentCodex, Permission: permissionEdit, Session: "thread"}
+	codex := delegatedTask{ID: "t-0123456789ab", Agent: protocol.AgentCodex, Permission: permissionEdit, Session: "thread"}
 	got = delegatedCommand(codex, 1)
-	if !slices.Equal(got[:2], []string{codexBinary, "exec"}) || got[len(got)-1] != "-" || !slices.Contains(got, `sandbox_mode="workspace-write"`) {
+	if !slices.Equal(got[:2], []string{protocol.CodexBinary, "exec"}) || got[len(got)-1] != "-" || !slices.Contains(got, `sandbox_mode="workspace-write"`) {
 		t.Fatalf("codex first run: %q", got)
 	}
 	got = delegatedCommand(codex, 2)
@@ -156,7 +159,7 @@ func gitFixture(t *testing.T) string {
 func TestTaskWorktreeMerge(t *testing.T) {
 	t.Setenv("JARA_DATA", t.TempDir())
 	repo := gitFixture(t)
-	task := delegatedTask{ID: "t-00000000000a", Agent: agentClaude, Title: "add b", OriginCWD: repo, Status: taskSucceeded}
+	task := delegatedTask{ID: "t-00000000000a", Agent: protocol.AgentClaude, Title: "add b", OriginCWD: repo, Status: taskSucceeded}
 	if err := prepareTaskWorktree(&task); err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +234,7 @@ func TestTaskStateAndLimits(t *testing.T) {
 	if _, err := taskDir("../escape"); err == nil {
 		t.Fatal("task IDs must be validated")
 	}
-	task := delegatedTask{ID: "t-00000000000b", Agent: agentCodex, Status: taskSucceeded, Runs: 1, Title: "x"}
+	task := delegatedTask{ID: "t-00000000000b", Agent: protocol.AgentCodex, Status: taskSucceeded, Runs: 1, Title: "x"}
 	_ = os.MkdirAll(filepath.Join(tasksRoot(), task.ID), 0700)
 	if err := saveTask(task); err != nil {
 		t.Fatal(err)
@@ -250,7 +253,7 @@ func TestTaskStateAndLimits(t *testing.T) {
 	if got := envLimit("JARA_MAX_DELEGATED_TASKS", 4, 50); got != 0 {
 		t.Fatalf("env limit %d", got)
 	}
-	if workspaceForPath(filepath.Join(dataRoot(), "workspaces", "w-abc", "src")) != "w-abc" || workspaceForPath("/tmp") != "" {
+	if workspaceForPath(filepath.Join(fsutil.DataRoot(), "workspaces", "w-abc", "src")) != "w-abc" || workspaceForPath("/tmp") != "" {
 		t.Fatal("workspace mapping")
 	}
 }
@@ -259,28 +262,28 @@ func TestHandoffPromptAndTarget(t *testing.T) {
 	t.Setenv("JARA_DATA", t.TempDir())
 	repo := gitFixture(t)
 	_ = os.WriteFile(filepath.Join(repo, "a.txt"), []byte("changed\n"), 0600)
-	prompt := handoffPrompt(repo, agentCodex, agentClaude, "finish the parser")
+	prompt := handoffPrompt(repo, protocol.AgentCodex, protocol.AgentClaude, "finish the parser")
 	for _, want := range []string{"from Codex", "finish the parser", "M a.txt", "init", "You are Claude Code"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("handoff prompt lacks %q:\n%s", want, prompt)
 		}
 	}
-	command, err := agentTerminalCommand(Request{Runtime: agentClaude, Handoff: true, Prompt: "p"}, []string{"--add-dir", "x"})
-	if err != nil || !slices.Equal(command, []string{claudeBinary, "--add-dir", "x", "--", "p"}) {
+	command, err := agentTerminalCommand(Request{Runtime: protocol.AgentClaude, Handoff: true, Prompt: "p"}, []string{"--add-dir", "x"})
+	if err != nil || !slices.Equal(command, []string{protocol.ClaudeBinary, "--add-dir", "x", "--", "p"}) {
 		t.Fatalf("handoff command %q, %v", command, err)
 	}
-	if got := sessionMenuLabel(Request{Handoff: true, Runtime: agentCodex}); got != "Handoff to Codex" {
+	if got := sessionMenuLabel(Request{Handoff: true, Runtime: protocol.AgentCodex}); got != "Handoff to Codex" {
 		t.Fatalf("label %q", got)
 	}
 }
 
 func TestResolveClientAgent(t *testing.T) {
-	c := Config{Agent: agentCodex, Remotes: map[string]Remote{"work": {Agent: agentClaude}}, WorkspaceAgents: map[string]string{"/repo": agentCodex}}
+	c := Config{Agent: protocol.AgentCodex, Remotes: map[string]Remote{"work": {Agent: protocol.AgentClaude}}, WorkspaceAgents: map[string]string{"/repo": protocol.AgentCodex}}
 	cases := []struct{ root, remote, action, explicit, want string }{
-		{"/repo", "work", "open", "", agentCodex},
-		{"/other", "work", "open", "", agentClaude},
-		{"/other", "home", "open", "", agentCodex},
-		{"/repo", "work", "open", "claude", agentClaude},
+		{"/repo", "work", "open", "", protocol.AgentCodex},
+		{"/other", "work", "open", "", protocol.AgentClaude},
+		{"/other", "home", "open", "", protocol.AgentCodex},
+		{"/repo", "work", "open", "claude", protocol.AgentClaude},
 		{"/repo", "work", "handoff", "", ""},
 	}
 	for _, c2 := range cases {

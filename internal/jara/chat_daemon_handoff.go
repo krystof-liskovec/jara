@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -48,7 +49,13 @@ func prepareChatDaemonForCodex(id string) (chatDaemonState, bool, error) {
 	if err != nil {
 		return state, true, fmt.Errorf("persistent Jara session is not accepting a handoff: %w", err)
 	}
-	_ = conn.SetWriteDeadline(time.Now().Add(2 * time.Second))
+	// The daemon greets every client with jara/ready before it reads; a client
+	// that hangs up first makes that write fail and the handoff is never seen.
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+	if _, err = bufio.NewReader(conn).ReadBytes('\n'); err != nil {
+		_ = conn.Close()
+		return state, true, fmt.Errorf("persistent Jara session did not answer the handoff: %w", err)
+	}
 	if err = json.NewEncoder(conn).Encode(map[string]string{"method": "jara/handoff"}); err != nil {
 		_ = conn.Close()
 		return state, true, fmt.Errorf("request Codex handoff: %w", err)

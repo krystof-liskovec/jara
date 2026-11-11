@@ -26,6 +26,7 @@ const (
 	chatEditorEscape          chatEditorKey = "escape"
 	chatEditorModelPicker     chatEditorKey = "model-picker"
 	chatEditorReasoningPicker chatEditorKey = "reasoning-picker"
+	chatEditorClipboardImage  chatEditorKey = "clipboard-image"
 )
 
 type chatEditorInput struct {

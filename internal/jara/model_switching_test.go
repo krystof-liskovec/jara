@@ -7,50 +7,26 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func TestChatNearestReasoningAcrossProviders(t *testing.T) {
-	options := func(values ...string) *codexModel {
-		model := &codexModel{DefaultReasoningEffort: "medium"}
+	options := func(values ...string) *protocol.CodexModel {
+		model := &protocol.CodexModel{DefaultReasoningEffort: "medium"}
 		for _, value := range values {
-			model.SupportedReasoningEfforts = append(model.SupportedReasoningEfforts, chatReasoningEffortOption{Value: value})
+			model.SupportedReasoningEfforts = append(model.SupportedReasoningEfforts, protocol.ReasoningEffortOption{Value: value})
 		}
 		return model
 	}
 	claude, codex := options("low", "medium", "high", "xhigh", "max"), options("minimal", "low", "medium", "high", "xhigh")
 	for _, c := range []struct {
-		model        *codexModel
+		model        *protocol.CodexModel
 		effort, want string
 	}{{claude, "minimal", "low"}, {codex, "max", "xhigh"}, {claude, "high", "high"}, {codex, "turbo", "medium"}, {options("low", "high"), "medium", "low"}} {
 		if got := chatNearestReasoning(c.model, c.effort); got != c.want {
 			t.Errorf("%s: got %s, want %s", c.effort, got, c.want)
 		}
-	}
-}
-
-func TestDefaultModelChoosesTheStartingAgent(t *testing.T) {
-	setupFakeAgents(t)
-	if err := saveModelPrefs(modelPrefs{Default: "claude/opus"}); err != nil {
-		t.Fatal(err)
-	}
-	h := startRouterHarness(t, agentCodex)
-	h.response(h.request("initialize", map[string]any{}))
-	started := h.response(h.request("thread/start", map[string]any{"cwd": t.TempDir()}))["result"].(map[string]any)
-	if started["model"] != "claude/opus" || started["thread"].(map[string]any)["id"] == "codex-thread-1" {
-		t.Fatalf("a Claude default must start Claude conversations: %v", started)
-	}
-	defaults := h.response(h.request("jara/defaultModel/get", map[string]any{}))["result"].(map[string]any)
-	if defaults["agent"] != agentClaude || defaults["default"] != "claude/opus" {
-		t.Fatalf("defaults %v", defaults)
-	}
-
-	// An explicitly chosen agent still wins over the default model.
-	r := &agentRouter{defaultAgent: agentCodex, agentExplicit: true}
-	if agent, model := r.startAgent(); agent != agentCodex || model != "" {
-		t.Fatalf("explicit agent: %s %s", agent, model)
-	}
-	if reply := h.response(h.request("jara/fallbackModel/set", map[string]any{"model": "gpt-x"})); reply["error"] != nil || loadModelPrefs().Fallback != "gpt-x" {
-		t.Fatalf("fallback not saved: %v", reply)
 	}
 }
 
@@ -84,7 +60,7 @@ func TestTurnRetriesOnTheFallbackModelOnce(t *testing.T) {
 	t.Setenv("TMUX", "")
 	var output, sent bytes.Buffer
 	u := &chatUI{out: &output, c: &appConnection{encoder: json.NewEncoder(&sent)}, thread: "t1", threadReady: true,
-		effectiveModel: "gpt-x", defaults: &defaultModels{Fallback: "claude/opus"}}
+		effectiveModel: "gpt-x", defaults: &protocol.DefaultModels{Fallback: "claude/opus"}}
 	if err := u.sendPrompt("fix the bug"); err != nil {
 		t.Fatal(err)
 	}

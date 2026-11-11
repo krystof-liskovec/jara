@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 type modelWireRequest struct {
@@ -13,11 +15,11 @@ type modelWireRequest struct {
 	Params map[string]json.RawMessage `json:"params"`
 }
 
-func modelPageJSON(t *testing.T, models []codexModel, next string) json.RawMessage {
+func modelPageJSON(t *testing.T, models []protocol.CodexModel, next string) json.RawMessage {
 	t.Helper()
 	page := struct {
-		Data       []codexModel `json:"data"`
-		NextCursor *string      `json:"nextCursor,omitempty"`
+		Data       []protocol.CodexModel `json:"data"`
+		NextCursor *string               `json:"nextCursor,omitempty"`
 	}{Data: models}
 	if next != "" {
 		page.NextCursor = &next
@@ -46,10 +48,10 @@ func decodeModelRequests(t *testing.T, wire *bytes.Buffer) []modelWireRequest {
 func TestChatModelListSchemaParamsAndFrozenChoices(t *testing.T) {
 	browser := newChatModelBrowser()
 	params := browser.requestParams()
-	if params["limit"] != chatModelPageSize || params["includeHidden"] != false {
+	if params["limit"] != protocol.ModelPageSize || params["includeHidden"] != false {
 		t.Fatalf("unexpected model/list params: %#v", params)
 	}
-	page := modelPageJSON(t, []codexModel{
+	page := modelPageJSON(t, []protocol.CodexModel{
 		{ID: "gpt-6", Model: "gpt-6-codex", DisplayName: "GPT-6 Codex"},
 		{ID: "gpt-6-fast", Model: "gpt-6-fast", DisplayName: "GPT-6 Fast"},
 		{ID: "hidden", Model: "hidden", Hidden: true},
@@ -67,10 +69,10 @@ func TestChatModelListSchemaParamsAndFrozenChoices(t *testing.T) {
 	if model, label, err := browser.model("gpt-6-fast"); err != nil || model != "gpt-6-fast" || label != "GPT-6 Fast" {
 		t.Fatalf("ID selection: model=%q label=%q err=%v", model, label, err)
 	}
-	if !validChatModelID("provider:gpt-6/model") {
+	if !protocol.ValidModelID("provider:gpt-6/model") {
 		t.Fatal("provider-qualified model ID should be accepted")
 	}
-	if validChatModelID("model id") || validChatModelID("model\x1b[31m") {
+	if protocol.ValidModelID("model id") || protocol.ValidModelID("model\x1b[31m") {
 		t.Fatal("model IDs must not contain whitespace or control characters")
 	}
 }
@@ -102,7 +104,7 @@ func TestChatModelsAreAsyncAndSelectionChangesNextTurnOnlyLocally(t *testing.T) 
 	if len(u.pending) != 1 || u.busy {
 		t.Fatalf("model listing blocked or changed chat state: pending=%v busy=%v", u.pending, u.busy)
 	}
-	page := modelPageJSON(t, []codexModel{
+	page := modelPageJSON(t, []protocol.CodexModel{
 		{ID: "gpt-6", Model: "gpt-6", DisplayName: "GPT-6"},
 		{ID: "gpt-6-codex", Model: "gpt-6-codex", DisplayName: "GPT-6 Codex"},
 	}, "")

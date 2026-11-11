@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 func dockerCommand(c Config, args []string) error {
@@ -62,7 +64,7 @@ func cleanupDockerOnRemote(remote Remote, olderThan string, age time.Duration) e
 		if len(id) > 12 {
 			id = id[:12]
 		}
-		fmt.Fprintf(os.Stderr, "  %-12s  %-28s  %-32s  %s\n", fitMenu(id, 12), fitMenu(container.Name, 28), fitMenu(container.Image, 32), container.Age)
+		fmt.Fprintf(os.Stderr, "  %-12s  %-28s  %-32s  %s\n", textutil.FitText(id, 12), textutil.FitText(container.Name, 28), textutil.FitText(container.Image, 32), container.Age)
 	}
 	remove, err := confirm("Remove these containers? Their volumes will be kept.")
 	if err != nil {

@@ -10,6 +10,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func connectCommand(args []string) error {
@@ -39,7 +42,7 @@ func connectCommand(args []string) error {
 	if err := validateChatInterface(*chatInterface); err != nil {
 		return err
 	}
-	runtime, err := normalizeAgentRuntime(*agentName)
+	runtime, err := protocol.NormalizeAgent(*agentName)
 	if err != nil {
 		return err
 	}
@@ -55,7 +58,7 @@ func remoteOpen(q Request) error {
 	if q.Handoff && q.Runtime == "" {
 		q.Runtime = handoffTarget(q.ID)
 	}
-	runtime, err := normalizeAgentRuntime(q.Runtime)
+	runtime, err := protocol.NormalizeAgent(q.Runtime)
 	if err != nil {
 		return err
 	}
@@ -63,9 +66,9 @@ func remoteOpen(q Request) error {
 	if err = validateAgentInterface(q.Runtime, q.UserInterface); err != nil {
 		return err
 	}
-	claude := q.Runtime == agentClaude
+	claude := q.Runtime == protocol.AgentClaude
 	if q.Background && strings.TrimSpace(q.Prompt) == "" {
-		return fmt.Errorf("background %s runs require a prompt", agentDisplayName(q.Runtime))
+		return fmt.Errorf("background %s runs require a prompt", protocol.AgentDisplayName(q.Runtime))
 	}
 	if len(q.Prompt) > maxBackgroundPrompt {
 		return fmt.Errorf("prompt exceeds 64 KiB")
@@ -79,7 +82,7 @@ func remoteOpen(q Request) error {
 		}
 	}()
 	// Each agent receives only its own deployment and host default arguments.
-	codexArgs := q.CodexArgs
+	var codexArgs []string
 	if claude && q.UserInterface == "jara" {
 		// The Jara UI's app-server keeps Codex defaults. Arguments given for
 		// Claude Code travel separately to the agent router.
@@ -88,7 +91,7 @@ func remoteOpen(q Request) error {
 		}
 		codexArgs, err = configuredCodexArgs(nil)
 	} else if claude {
-		codexArgs, err = configuredAgentArgs(agentClaude, q.CodexArgs)
+		codexArgs, err = configuredAgentArgs(protocol.AgentClaude, q.CodexArgs)
 	} else {
 		codexArgs, err = configuredCodexArgs(q.CodexArgs)
 	}
@@ -125,10 +128,10 @@ func remoteOpen(q Request) error {
 		if selected.Kind == "conversation" {
 			// The saved conversation decides which agent resumes it.
 			if runtime := conversationRuntime(selected.Agent, selected.Action); runtime != q.Runtime {
-				q.Runtime, claude = runtime, runtime == agentClaude
+				q.Runtime = runtime
 				defaults := runtime
 				if q.UserInterface == "jara" {
-					defaults = agentCodex
+					defaults = protocol.AgentCodex
 				}
 				// Extra arguments were meant for the other agent; use defaults.
 				if codexArgs, err = configuredAgentArgs(defaults, nil); err != nil {
@@ -185,13 +188,12 @@ func remoteOpen(q Request) error {
 		}
 		if selected.Kind == "new" && selected.Agent != "" && selected.Agent != q.Runtime {
 			q.Runtime = selected.Agent
-			claude = q.Runtime == agentClaude
 			if err = validateAgentInterface(q.Runtime, q.UserInterface); err != nil {
 				return err
 			}
 			runtimeArgs := q.Runtime
 			if q.UserInterface == "jara" {
-				runtimeArgs = agentCodex // the Jara UI's app-server always takes Codex defaults
+				runtimeArgs = protocol.AgentCodex // the Jara UI's app-server always takes Codex defaults
 			}
 			if codexArgs, err = configuredAgentArgs(runtimeArgs, q.CodexArgs); err != nil {
 				return err
@@ -227,7 +229,7 @@ func remoteOpen(q Request) error {
 			}
 			// The handed-off conversation decides which agent resumes it.
 			if runtime := conversationRuntime(q.Agent, q.Conversation); runtime != q.Runtime {
-				q.Runtime, claude = runtime, runtime == agentClaude
+				q.Runtime = runtime
 				if codexArgs, err = configuredAgentArgs(runtime, nil); err != nil {
 					return err
 				}
@@ -304,7 +306,7 @@ func remoteOpen(q Request) error {
 	sessionLabel := sessionMenuLabel(q)
 	worktreeRoot := ""
 	if q.Worktree {
-		path = filepath.Join(dataRoot(), "worktrees", name)
+		path = filepath.Join(fsutil.DataRoot(), "worktrees", name)
 		if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 			return err
 		}
@@ -436,7 +438,7 @@ func remoteOpen(q Request) error {
 	unlock()
 	locked = false
 	if q.Background {
-		fmt.Fprintf(os.Stdout, "Started background %s run in session %s. Use `jara sessions` to attach.\n", agentDisplayName(q.Runtime), name)
+		fmt.Fprintf(os.Stdout, "Started background %s run in session %s. Use `jara sessions` to attach.\n", protocol.AgentDisplayName(q.Runtime), name)
 		return nil
 	}
 	return attach(Session{Name: name, Workspace: q.ID}, q.Takeover)

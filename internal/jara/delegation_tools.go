@@ -8,6 +8,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 const (
@@ -111,12 +115,12 @@ func callDelegationTool(name string, raw json.RawMessage) (string, error) {
 }
 
 func startDelegatedTask(args delegateArguments) (delegatedTask, error) {
-	agent, err := normalizeAgentRuntime(args.Agent)
+	agent, err := protocol.NormalizeAgent(args.Agent)
 	if err != nil || args.Agent == "" {
 		return delegatedTask{}, fmt.Errorf("agent must be claude or codex")
 	}
-	if agent == agentClaude {
-		if _, err = os.Stat(claudeBinary); err != nil {
+	if agent == protocol.AgentClaude {
+		if _, err = os.Stat(protocol.ClaudeBinary); err != nil {
 			return delegatedTask{}, fmt.Errorf("Claude Code is not installed on this host")
 		}
 	}
@@ -154,7 +158,7 @@ func startDelegatedTask(args delegateArguments) (delegatedTask, error) {
 		return delegatedTask{}, err
 	}
 	title := strings.SplitN(prompt, "\n", 2)[0]
-	task := delegatedTask{ID: id, Agent: agent, Title: fitMenu(title, 100), OriginCWD: cwd, CWD: cwd, Permission: args.Permission,
+	task := delegatedTask{ID: id, Agent: agent, Title: textutil.FitText(title, 100), OriginCWD: cwd, CWD: cwd, Permission: args.Permission,
 		Model: args.Model, Status: taskRunning, Runs: 1, Depth: depth, Parent: parent, TmuxSession: "jara-task-" + strings.TrimPrefix(id, "t-"),
 		Workspace: workspaceForPath(cwd), Created: time.Now().Unix()}
 	if task.Workspace == "" && parent != "" {
@@ -177,8 +181,8 @@ func startDelegatedTask(args delegateArguments) (delegatedTask, error) {
 			return delegatedTask{}, err
 		}
 	}
-	if agent == agentClaude {
-		if task.Session, err = newUUID(); err != nil {
+	if agent == protocol.AgentClaude {
+		if task.Session, err = protocol.NewUUID(); err != nil {
 			return delegatedTask{}, err
 		}
 	}
@@ -241,7 +245,7 @@ func waitForTask(task delegatedTask, seconds int) delegatedTask {
 }
 
 func describeTask(task delegatedTask, detailed bool) string {
-	line := fmt.Sprintf("%s · %s · %s · run %d", task.ID, agentDisplayName(task.Agent), task.Status, task.Runs)
+	line := fmt.Sprintf("%s · %s · %s · run %d", task.ID, protocol.AgentDisplayName(task.Agent), task.Status, task.Runs)
 	if task.Branch != "" {
 		line += " · branch " + task.Branch
 		if task.Merged {
@@ -268,7 +272,7 @@ func describeTask(task delegatedTask, detailed bool) string {
 // workspaceForPath maps a directory inside a Jara workspace to its ID so a
 // task's tmux session is listed with that workspace.
 func workspaceForPath(path string) string {
-	rel, err := filepath.Rel(filepath.Join(dataRoot(), "workspaces"), path)
+	rel, err := filepath.Rel(filepath.Join(fsutil.DataRoot(), "workspaces"), path)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return ""
 	}

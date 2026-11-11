@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 func TestDuplicateProjectLabelsIdentifyCheckouts(t *testing.T) {
@@ -82,7 +84,7 @@ func TestProjectProvenancePersistsAndBrowserReadsCurrentBranch(t *testing.T) {
 		t.Fatalf("git init: %v: %s", err, output)
 	}
 	w.Ready, w.Branch, w.URL = true, "old-branch", "https://example.com/team/jara.git"
-	if err := writeJSON(w.Path+".json", w); err != nil {
+	if err := fsutil.WriteJSON(w.Path+".json", w); err != nil {
 		t.Fatal(err)
 	}
 	workspaces, err := readBrowserWorkspaces()

@@ -1,8 +1,6 @@
 package jara
 
 import (
-	"bufio"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +9,9 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 // Permission levels for delegated runs, mapped to each CLI's own controls.
@@ -29,8 +30,8 @@ func validPermission(p string) bool {
 // delegatedCommand builds the non-interactive command for one run. The prompt
 // is always written to standard input.
 func delegatedCommand(task delegatedTask, run int) []string {
-	if task.Agent == agentClaude {
-		command := []string{claudeBinary, "--print", "--output-format", "text", "--permission-prompts", "none"}
+	if task.Agent == protocol.AgentClaude {
+		command := []string{protocol.ClaudeBinary, "--print", "--output-format", "text", "--permission-prompts", "none"}
 		switch task.Permission {
 		case permissionReadOnly:
 			command = append(command, "--permission-mode", "plan")
@@ -47,7 +48,7 @@ func delegatedCommand(task delegatedTask, run int) []string {
 		}
 		return append(command, "--resume", task.Session)
 	}
-	command := []string{codexBinary, "exec"}
+	command := []string{protocol.CodexBinary, "exec"}
 	if run > 1 {
 		command = append(command, "resume")
 	}
@@ -69,16 +70,6 @@ func delegatedCommand(task delegatedTask, run int) []string {
 	return append(command, "-")
 }
 
-func newUUID() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", err
-	}
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:]), nil
-}
-
 // launchTaskRun starts a run in a fresh tmux session that stays visible after
 // it exits. The previous run's finished session is replaced.
 func launchTaskRun(task delegatedTask, run int) error {
@@ -93,7 +84,7 @@ func launchTaskRun(task delegatedTask, run int) error {
 	if err := initializeSessionLifecycle(task.TmuxSession); err != nil {
 		return fail(err)
 	}
-	label := fmt.Sprintf("%s task: %s", agentDisplayName(task.Agent), fitMenu(task.Title, 60))
+	label := fmt.Sprintf("%s task: %s", protocol.AgentDisplayName(task.Agent), textutil.FitText(task.Title, 60))
 	options := [][2]string{{"@jara_background", "1"}, {"@jara_agent", task.Agent}, {"@jara_session_label", encodeSessionMenuLabel(label)}}
 	if task.Workspace != "" {
 		options = append(options, [2]string{"@jara_workspace", task.Workspace})
@@ -127,7 +118,7 @@ func runDelegatedTask(id, rawRun string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Jara task %s · %s · %s permissions\n%s\n\n", task.ID, agentDisplayName(task.Agent), task.Permission, strings.TrimSpace(string(prompt)))
+	fmt.Printf("Jara task %s · %s · %s permissions\n%s\n\n", task.ID, protocol.AgentDisplayName(task.Agent), task.Permission, strings.TrimSpace(string(prompt)))
 	exitCode, session := executeTaskRun(task, run, prompt)
 	status := taskSucceeded
 	if exitCode != 0 {
@@ -161,7 +152,7 @@ func executeTaskRun(task delegatedTask, run int, prompt []byte) (int, string) {
 	cmd.Stderr = io.MultiWriter(os.Stderr, logFile)
 	session := ""
 	var copyDone chan struct{}
-	if task.Agent == agentClaude {
+	if task.Agent == protocol.AgentClaude {
 		result, e := os.OpenFile(taskFile(task, "result", run), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 		if e != nil {
 			fmt.Fprintln(os.Stderr, "open task result:", e)
@@ -202,8 +193,7 @@ func executeTaskRun(task delegatedTask, run int, prompt []byte) (int, string) {
 // returns the thread ID needed to continue the conversation.
 func renderCodexEvents(events io.Reader, terminal, log io.Writer) string {
 	thread := ""
-	scanner := bufio.NewScanner(events)
-	scanner.Buffer(make([]byte, 64*1024), 16<<20)
+	scanner := protocol.NewLineScanner(events)
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		var event struct {

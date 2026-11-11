@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 type promptReadTracker struct{ read bool }
@@ -260,5 +262,5 @@ func writeSyncBaseline(t *testing.T, binding Binding, root string, snapshot Snap
 	if err != nil {
 		return err
 	}
-	return writeJSON(state, Baseline{Local: metadata(snapshot), Remote: metadata(snapshot), LocalHead: gitHead(root)})
+	return fsutil.WriteJSON(state, Baseline{Local: metadata(snapshot), Remote: metadata(snapshot), LocalHead: gitHead(root)})
 }

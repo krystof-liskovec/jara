@@ -84,3 +84,16 @@ func chatWelcomeMark(motion bool, now time.Time) string {
 	}
 	return chatTwinkleMark(now)
 }
+
+// chatTerminalAttachImages turns Ctrl+V and pasted image paths into
+// [Image #N] placeholders before the editor sees the input.
+func chatTerminalAttachImages(u *chatUI, input *chatEditorInput) {
+	switch input.Key {
+	case chatEditorClipboardImage:
+		input.Key, input.Text = chatEditorText, u.clipboardChatImagePlaceholder()
+	case chatEditorPaste:
+		if text, ok := u.pastedChatImage(input.Text); ok {
+			input.Key, input.Text = chatEditorText, text
+		}
+	}
+}

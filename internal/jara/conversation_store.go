@@ -1,7 +1,6 @@
 package jara
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +8,9 @@ import (
 	"io"
 	"os/exec"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/agentrouter"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 // Conversation is independent of terminal transport and can support more agents.
@@ -44,8 +46,8 @@ func conversationProviders() []conversationProvider {
 	return []conversationProvider{codexConversations{}, routedConversations{}}
 }
 func resumeConversationCommand(agent, id, cwd string, args []string) ([]string, error) {
-	if thread := loadRoutedThread(id); thread != nil {
-		return thread.resumeCommand(), nil
+	if thread := agentrouter.LoadThread(id); thread != nil {
+		return thread.ResumeCommand(), nil
 	}
 	for _, p := range conversationProviders() {
 		if p.Name() == agent || agent == "" {
@@ -75,8 +77,7 @@ func (provider codexConversations) List(ctx context.Context) ([]Conversation, er
 		return nil, err
 	}
 	defer func() { in.Close(); _ = cmd.Process.Kill(); _ = cmd.Wait() }()
-	scanner := bufio.NewScanner(out)
-	scanner.Buffer(make([]byte, 4096), 8<<20)
+	scanner := protocol.NewLineScanner(out)
 	encoder := json.NewEncoder(in)
 	sequence := 0
 	request := func(method string, params any, result any) error {

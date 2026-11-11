@@ -2,6 +2,7 @@ package jara
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -16,11 +17,19 @@ func recoverChatRequestError(u *chatUI, pending chatPending, message appMessage)
 	if message.Error == nil {
 		return false
 	}
-	detail := strings.TrimSpace(chatText(message.Error.Message))
+	return u.recoverChatRequest(pending, strings.TrimSpace(chatText(message.Error.Message)))
+}
+
+// recoverChatRequest keeps the session usable after a request failed or got
+// no reply. Only a failed initialize, which leaves nothing to work with,
+// ends the session; other failures are reported in the transcript.
+func (u *chatUI) recoverChatRequest(pending chatPending, detail string) bool {
 	if detail == "" {
 		detail = "the app-server rejected the request"
 	}
 	switch pending.method {
+	case "initialize":
+		return false
 	case "turn/start":
 		u.resetFailedTurn()
 		u.setAgentState("idle")
@@ -46,9 +55,35 @@ func recoverChatRequestError(u *chatUI, pending chatPending, message appMessage)
 			u.print("Use /resume ID or /new to open a conversation.\n")
 		}
 		return true
+	case "turn/interrupt":
+		u.cancel = false
+		u.setActivityLabel("Thinking")
+		u.printRole("system", "Could not stop the turn: "+detail+". Try /cancel again.\n")
+		return true
 	default:
-		return false
+		u.printRole("system", "Request "+pending.method+" failed: "+detail+"\n")
+		return true
 	}
+}
+
+// expireChatRequest handles a request that got no reply in time.
+func (u *chatUI) expireChatRequest(id string, pending chatPending) error {
+	switch {
+	case u.expireChatDefaultRequest(id, pending), u.expireChatExtraRequest(id, pending):
+		return nil
+	case pending.method == "thread/list":
+		u.expireChatSessionRequest(id)
+		return nil
+	case pending.method == "model/list":
+		u.expireChatModelRequest(id)
+		return nil
+	}
+	delete(u.pending, id)
+	delete(u.pendingTurnModels, id)
+	if !u.recoverChatRequest(pending, "no reply from the app-server in time") {
+		return fmt.Errorf("Codex app-server timed out during %s", pending.method)
+	}
+	return nil
 }
 
 func (u *chatUI) resetFailedTurn() {

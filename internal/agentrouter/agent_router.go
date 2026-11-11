@@ -1,7 +1,10 @@
-package jara
+// Package agentrouter is the process between the Jara interface and the
+// agents (`jara _agent-server`). It speaks the Codex app-server protocol to the
+// interface, proxies Codex, runs Claude Code in stream-json mode behind the
+// same protocol, and keeps conversations that switch between them.
+package agentrouter
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 // The agent router is the app-server behind Jara's conversation UI. It speaks
@@ -41,7 +46,6 @@ type routerEvent struct {
 type codexCall struct {
 	uiID     json.RawMessage // nil for router-internal requests
 	method   string
-	thread   string
 	callback func(result json.RawMessage, failure json.RawMessage)
 }
 
@@ -57,73 +61,33 @@ type agentRouter struct {
 	agentExplicit  bool     // defaultAgent was chosen explicitly, not configured
 	claudeArgs     []string // per-invocation Claude Code arguments
 	claudeLimits   *claudeRateLimits
-	threads        map[string]*routedThread
+	threads        map[string]*Thread
 	codexToVirtual map[string]string
 	approvals      map[string]*claudeSession // UI request ID -> session awaiting a decision
 	btw            map[string]*btwFork       // Codex fork thread -> pending side question
 	btwForking     int                       // side-question forks awaiting their thread ID
-	initialized    bool
-}
-
-// agentServerCommand wraps the Codex app-server command in the router.
-// An explicitly chosen agent (--agent or the browser's "New ... conversation")
-// starts new conversations even when a default model names the other agent.
-func agentServerCommand(binary string, args []string, defaultAgent string, explicit bool, claudeArgs []string) (string, []string) {
-	self, err := os.Executable()
-	if err != nil {
-		self = jaraBinary
-	}
-	if defaultAgent == "" {
-		defaultAgent = agentCodex
-	}
-	command := []string{"_agent-server", "--default-agent", defaultAgent}
-	if explicit {
-		command = append(command, "--agent-explicit", "true")
-	}
-	if len(claudeArgs) > 0 {
-		encoded, _ := json.Marshal(claudeArgs)
-		command = append(command, "--claude-args", string(encoded))
-	}
-	return self, append(append(command, "--", binary), args...)
-}
-
-func agentServerMain(args []string) error {
-	defaultAgent, explicit := agentCodex, false
-	var claudeArgs []string
-	for len(args) >= 2 && strings.HasPrefix(args[0], "--") && args[0] != "--" {
-		switch args[0] {
-		case "--default-agent":
-			defaultAgent = args[1]
-		case "--agent-explicit":
-			explicit = args[1] == "true"
-		case "--claude-args":
-			parsed, err := parseAgentArgs(agentClaude, []byte(args[1]))
-			if err != nil {
-				return err
-			}
-			claudeArgs = parsed
-		default:
-			return fmt.Errorf("unknown agent server option %s", args[0])
-		}
-		args = args[2:]
-	}
-	if len(args) < 2 || args[0] != "--" {
-		return fmt.Errorf("use jara _agent-server [--default-agent NAME] -- CODEX_APP_SERVER_COMMAND")
-	}
-	runtime, err := normalizeAgentRuntime(defaultAgent)
-	if err != nil {
-		return err
-	}
-	return runAgentRouterWith(os.Stdin, os.Stdout, args[1:], runtime, explicit, claudeArgs...)
 }
 
 func runAgentRouter(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, claudeArgs ...string) error {
-	return runAgentRouterWith(input, output, codexCommand, defaultAgent, false, claudeArgs...)
+	return runRouter(input, output, codexCommand, defaultAgent, false, claudeArgs...)
 }
 
-func runAgentRouterWith(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, explicit bool, claudeArgs ...string) error {
+// Options configure the router for this host.
+type Options struct {
+	DefaultAgent  string   // agent new conversations start with
+	AgentExplicit bool     // the agent was chosen explicitly, overriding the default model
+	ClaudeArgs    []string // arguments for every Claude Code process, host defaults included
+}
+
+// Run serves one Jara interface on input and output until it disconnects,
+// with codexCommand starting the Codex app-server.
+func Run(input io.Reader, output io.Writer, codexCommand []string, options Options) error {
+	return runRouter(input, output, codexCommand, options.DefaultAgent, options.AgentExplicit, options.ClaudeArgs...)
+}
+
+func runRouter(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, explicit bool, claudeArgs ...string) error {
 	r := &agentRouter{claudeArgs: claudeArgs, out: output, events: make(chan routerEvent, 256), codexCalls: map[string]codexCall{},
-		defaultAgent: defaultAgent, agentExplicit: explicit, threads: map[string]*routedThread{}, codexToVirtual: map[string]string{},
+		defaultAgent: defaultAgent, agentExplicit: explicit, threads: map[string]*Thread{}, codexToVirtual: map[string]string{},
 		approvals: map[string]*claudeSession{}}
 	if err := r.startCodex(codexCommand); err != nil {
 		return err
@@ -142,8 +106,7 @@ func runAgentRouterWith(input io.Reader, output io.Writer, codexCommand []string
 }
 
 func readRPC(input io.Reader, source string, events chan<- routerEvent) {
-	scanner := bufio.NewScanner(input)
-	scanner.Buffer(make([]byte, 64*1024), 16<<20)
+	scanner := protocol.NewLineScanner(input)
 	for scanner.Scan() {
 		var message rpcMessage
 		if json.Unmarshal(scanner.Bytes(), &message) == nil {
@@ -329,6 +292,11 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		return r.startTurn(m.ID, params)
 	case "jara/btw":
 		return r.askBtw(m.ID, params)
+	case "jara/rewind":
+		return r.rewindThread(m.ID, params)
+	case "jara/commands/list":
+		r.reply(m.ID, map[string]any{"commands": LoadCustomCommands(params)})
+		return nil
 	case "jara/defaultModel/get":
 		return r.getDefaultModels(m.ID, params)
 	case "jara/defaultModel/set":
@@ -344,7 +312,12 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 	if thread == nil {
 		return r.callCodex(codexCall{uiID: m.ID, method: m.Method}, r.codexParams(params))
 	}
+	if thread.claude == nil { // released by /rewind
+		thread.claude = newClaudeSession(r, thread, thread.Current().BackendID, thread.Current().Started)
+	}
 	switch m.Method {
+	case "thread/compact/start":
+		r.compactClaude(m.ID, thread)
 	case "turn/interrupt":
 		thread.claude.interrupt()
 		r.reply(m.ID, map[string]any{})
@@ -379,21 +352,21 @@ func (r *agentRouter) codexParams(params json.RawMessage) json.RawMessage {
 		return params
 	}
 	thread := r.threads[id]
-	if thread == nil || thread.current().Agent != agentCodex || thread.current().BackendID == id {
+	if thread == nil || thread.Current().Agent != protocol.AgentCodex || thread.Current().BackendID == id {
 		return params
 	}
-	fields["threadId"], _ = json.Marshal(thread.current().BackendID)
+	fields["threadId"], _ = json.Marshal(thread.Current().BackendID)
 	out, _ := json.Marshal(fields)
 	return out
 }
 
-func (r *agentRouter) claudeThreadFor(params json.RawMessage) *routedThread {
+func (r *agentRouter) claudeThreadFor(params json.RawMessage) *Thread {
 	var request struct {
 		ThreadID string `json:"threadId"`
 	}
 	_ = json.Unmarshal(params, &request)
 	thread := r.threads[request.ThreadID]
-	if thread == nil || thread.current().Agent != agentClaude {
+	if thread == nil || thread.Current().Agent != protocol.AgentClaude {
 		return nil
 	}
 	return thread

@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"sort"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/agentrouter"
 )
 
 func validateChatInterface(value string) error {
@@ -47,8 +49,8 @@ func chatResumeID(q Request, cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, thread := range listRoutedThreads() {
-		threads = append(threads, Conversation{ID: thread.ID, Preview: thread.preview(), CWD: thread.CWD, Updated: thread.Updated, Created: thread.Created})
+	for _, thread := range agentrouter.ListThreads() {
+		threads = append(threads, Conversation{ID: thread.ID, Preview: thread.Preview(), CWD: thread.CWD, Updated: thread.Updated, Created: thread.Created})
 	}
 	sort.Slice(threads, func(i, j int) bool { return threads[i].Updated > threads[j].Updated })
 	var items []menuItem

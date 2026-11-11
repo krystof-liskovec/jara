@@ -112,6 +112,9 @@ func TestChatMobileServerFixture(t *testing.T) {
 			send(map[string]any{"method": "item/agentMessage/delta", "params": map[string]string{"delta": "CANCELLED_OK"}})
 			send(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]string{"id": "turn-cancel", "status": "interrupted"}}})
 		default:
+			if acknowledgeFixtureRequest(send, message) {
+				continue
+			}
 			switch string(message.ID) {
 			case `"question-mobile"`:
 				var result struct {

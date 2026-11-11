@@ -6,15 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 	"github.com/rivo/uniseg"
 )
 
-func (u *chatUI) resetChatSubagentTracking() {
-	u.subagentPaths = nil
-	u.subagentItemDisplays = nil
-}
-
-func (u *chatUI) renderLiveSubagentItem(item chatHistoryItem) {
+func (u *chatUI) renderLiveSubagentItem(item protocol.HistoryItem) {
 	if item.Type == "subAgentActivity" && item.AgentThreadID != "" && item.AgentPath != "" {
 		if u.subagentPaths == nil {
 			u.subagentPaths = make(map[string]string)
@@ -38,7 +34,7 @@ func (u *chatUI) renderLiveSubagentItem(item chatHistoryItem) {
 	u.printRoleAt("subagent", text+"\n", chatHistoryItemTime(item, time.Now()))
 }
 
-func chatSubagentItemText(item chatHistoryItem, paths map[string]string) string {
+func chatSubagentItemText(item protocol.HistoryItem, paths map[string]string) string {
 	switch item.Type {
 	case "subAgentActivity":
 		verb := map[string]string{
@@ -59,7 +55,7 @@ func chatSubagentItemText(item chatHistoryItem, paths map[string]string) string 
 	}
 }
 
-func chatCollabToolSummary(item chatHistoryItem, paths map[string]string) string {
+func chatCollabToolSummary(item protocol.HistoryItem, paths map[string]string) string {
 	action := map[string]string{
 		"spawnAgent":      "Spawned subagent",
 		"spawn_agent":     "Spawned subagent",

@@ -6,6 +6,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 // reconcileLocalPushChanges refreshes only the portions of the saved baseline
@@ -51,7 +53,7 @@ func reconcileLocalPushChangesDetails(r Remote, b Binding, root string, includeI
 	// deleted rather than excluded, so preserve those baseline entries.
 	changed = changed || deletionsChanged
 	if changed {
-		if err = writeJSON(state, baseline); err != nil {
+		if err = fsutil.WriteJSON(state, baseline); err != nil {
 			return localSyncSummary{}, err
 		}
 	}

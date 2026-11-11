@@ -1,4 +1,4 @@
-package jara
+package agentrouter
 
 import (
 	"encoding/json"
@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 const claudeToolOutputLimit = 6000
@@ -28,7 +31,11 @@ type claudeLine struct {
 	ParentToolUseID *string `json:"parent_tool_use_id"`
 	Message         struct {
 		Content json.RawMessage `json:"content"`
+		Usage   *claudeUsage    `json:"usage"`
 	} `json:"message"`
+	ModelUsage map[string]struct {
+		ContextWindow int64 `json:"contextWindow"`
+	} `json:"modelUsage"`
 	ToolUseResult json.RawMessage `json:"tool_use_result"`
 	RateLimitInfo json.RawMessage `json:"rate_limit_info"`
 	Result        string          `json:"result"`
@@ -84,6 +91,10 @@ func (s *claudeSession) handleLine(raw []byte) {
 		if nested {
 			return
 		}
+		if usage := line.Message.Usage; usage != nil && s.turnID != "" {
+			s.contextTokens = usage.Input + usage.CacheRead + usage.CacheCreation + usage.Output
+			s.reportContext()
+		}
 		var blocks []claudeContentBlock
 		_ = json.Unmarshal(line.Message.Content, &blocks)
 		for _, block := range blocks {
@@ -118,6 +129,10 @@ func (s *claudeSession) handleLine(raw []byte) {
 		}
 	case "result":
 		s.tokens += line.Usage.Input + line.Usage.Output + line.Usage.CacheCreation
+		for _, usage := range line.ModelUsage {
+			s.contextWindow = max(s.contextWindow, usage.ContextWindow)
+		}
+		s.reportContext()
 		switch {
 		case s.interrupted:
 			s.finishTurn("interrupted", "")
@@ -262,7 +277,7 @@ func (s *claudeSession) toolFinished(id, content string, failed bool, result jso
 			turn.addAction(commandSummary(stringField(tool.input, "command"), &exit, text))
 		}
 		if text != "" {
-			s.r.notify("item/commandExecution/outputDelta", map[string]any{"threadId": s.thread.ID, "turnId": s.turnID, "itemId": id, "delta": tailText(text, claudeToolOutputLimit) + "\n"})
+			s.r.notify("item/commandExecution/outputDelta", map[string]any{"threadId": s.thread.ID, "turnId": s.turnID, "itemId": id, "delta": textutil.TailText(text, claudeToolOutputLimit) + "\n"})
 		}
 	case claudeFileTool(tool.name) && !failed:
 		changes := claudeFileChanges(tool, result, s.thread.CWD)
@@ -271,7 +286,7 @@ func (s *claudeSession) toolFinished(id, content string, failed bool, result jso
 			turn.Changes = append(turn.Changes, changes...)
 		}
 	case failed:
-		s.r.notify("item/commandExecution/outputDelta", map[string]any{"threadId": s.thread.ID, "turnId": s.turnID, "itemId": id, "delta": tailText(content, 2000) + "\n"})
+		s.r.notify("item/commandExecution/outputDelta", map[string]any{"threadId": s.thread.ID, "turnId": s.turnID, "itemId": id, "delta": textutil.TailText(content, 2000) + "\n"})
 	}
 	s.r.notify("item/completed", map[string]any{"threadId": s.thread.ID, "turnId": s.turnID, "item": item})
 	delete(s.tools, id)
@@ -279,7 +294,7 @@ func (s *claudeSession) toolFinished(id, content string, failed bool, result jso
 
 // claudeFileChanges converts Claude Code's structured patch into the unified
 // diff shape the conversation UI and changes pane render.
-func claudeFileChanges(tool *claudeTool, raw json.RawMessage, cwd string) []chatFileChange {
+func claudeFileChanges(tool *claudeTool, raw json.RawMessage, cwd string) []protocol.FileChange {
 	var result struct {
 		Type     string `json:"type"`
 		FilePath string `json:"filePath"`
@@ -293,7 +308,7 @@ func claudeFileChanges(tool *claudeTool, raw json.RawMessage, cwd string) []chat
 		} `json:"structuredPatch"`
 	}
 	_ = json.Unmarshal(raw, &result)
-	path := relativeToWorkspace(firstNonEmpty(result.FilePath, stringField(tool.input, "file_path", "notebook_path")), cwd)
+	path := relativeToWorkspace(textutil.FirstNonEmpty(result.FilePath, stringField(tool.input, "file_path", "notebook_path")), cwd)
 	var diff strings.Builder
 	kind := "update"
 	if result.Type == "create" {
@@ -322,7 +337,7 @@ func claudeFileChanges(tool *claudeTool, raw json.RawMessage, cwd string) []chat
 		}
 	}
 	kindJSON, _ := json.Marshal(kind)
-	return []chatFileChange{{Path: path, Kind: kindJSON, Diff: diff.String()}}
+	return []protocol.FileChange{{Path: path, Kind: kindJSON, Diff: diff.String()}}
 }
 
 func (s *claudeSession) handleControlRequest(requestID string, raw json.RawMessage) {
@@ -342,7 +357,7 @@ func (s *claudeSession) handleControlRequest(requestID string, raw json.RawMessa
 		s.respondPermission(requestID, nil, false, "Ask the question in your reply instead; the user answers in their next message.")
 		return
 	}
-	toolID := firstNonEmpty(request.ToolUseID, s.nextItemID("tool"))
+	toolID := textutil.FirstNonEmpty(request.ToolUseID, s.nextItemID("tool"))
 	tool := s.toolStarted(toolID, request.ToolName, request.Input)
 	s.r.sequence++
 	uiID := strconv.Quote("claude-approval-" + strconv.Itoa(s.r.sequence))
@@ -392,4 +407,29 @@ func relativeToWorkspace(path, cwd string) string {
 		return rel
 	}
 	return path
+}
+
+type claudeUsage struct {
+	Input         int64 `json:"input_tokens"`
+	Output        int64 `json:"output_tokens"`
+	CacheRead     int64 `json:"cache_read_input_tokens"`
+	CacheCreation int64 `json:"cache_creation_input_tokens"`
+}
+
+// reportContext tells the UI how full Claude Code's context is, in the shape
+// of Codex's token usage notification.
+func (s *claudeSession) reportContext() {
+	if s.contextTokens <= 0 || s.turnID == "" {
+		return
+	}
+	window := s.contextWindow
+	if window == 0 {
+		window = 200000
+		if strings.HasSuffix(textutil.FirstNonEmpty(s.model, s.resolvedModel), "[1m]") {
+			window = 1000000
+		}
+	}
+	last := map[string]any{"totalTokens": s.contextTokens}
+	s.r.notify("thread/tokenUsage/updated", map[string]any{"threadId": s.thread.ID, "turnId": s.turnID,
+		"tokenUsage": map[string]any{"last": last, "total": last, "modelContextWindow": window}})
 }

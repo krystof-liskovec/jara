@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 func TestActivityRowFollowsClaudeCodeSpinner(t *testing.T) {
@@ -33,7 +35,7 @@ func TestActivityRowFollowsClaudeCodeSpinner(t *testing.T) {
 	palette := menuColorsForBackground(terminalRGB{r: 30, g: 30, b: 30})
 	painted := paintChatActivity(chatActivityViewLine(chatViewModel{Activity: "Thinking", ActivityElapsed: "3s", ActivityHint: "ctrl+c to interrupt"}),
 		chatViewModel{Motion: true, Tick: 3}, 60, palette, true)
-	if plain := terminalEscapes.ReplaceAllString(painted, ""); !strings.HasPrefix(plain, "· Thinking… (3s · ctrl+c to interrupt)") || len([]rune(plain)) != 60 {
+	if plain := textutil.TerminalEscapes.ReplaceAllString(painted, ""); !strings.HasPrefix(plain, "· Thinking… (3s · ctrl+c to interrupt)") || len([]rune(plain)) != 60 {
 		t.Fatalf("painted row %q", plain)
 	}
 	if !strings.Contains(painted, menuFG(palette.muted)+" (3s") {

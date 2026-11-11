@@ -5,6 +5,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 func gitIn(dir string, args ...string) (string, error) {
@@ -31,7 +35,7 @@ func prepareTaskWorktree(task *delegatedTask) error {
 	}
 	task.Repository = repository
 	task.Branch = "jara/" + task.ID
-	task.Worktree = filepath.Join(dataRoot(), "worktrees", task.ID)
+	task.Worktree = filepath.Join(fsutil.DataRoot(), "worktrees", task.ID)
 	if _, err = gitIn(repository, "worktree", "add", "-b", task.Branch, task.Worktree, "HEAD"); err != nil {
 		return err
 	}
@@ -70,7 +74,7 @@ func mergeTask(task delegatedTask, cleanup bool) (string, error) {
 		if _, err = gitIn(task.Worktree, "add", "-A"); err != nil {
 			return "", err
 		}
-		message := fmt.Sprintf("%s task %s: %s", agentDisplayName(task.Agent), task.ID, fitMenu(task.Title, 60))
+		message := fmt.Sprintf("%s task %s: %s", protocol.AgentDisplayName(task.Agent), task.ID, textutil.FitText(task.Title, 60))
 		args := append(gitIdentityArgs(task.Worktree), "commit", "--no-verify", "-m", message)
 		if _, err = gitIn(task.Worktree, args...); err != nil {
 			return "", err
@@ -115,5 +119,5 @@ func taskDiff(task delegatedTask, limit int) string {
 	if base != "" {
 		committed, _ = gitIn(task.Worktree, "diff", "--stat", base+"..HEAD")
 	}
-	return tailText(strings.TrimSpace(committed+"\n"+stat), limit)
+	return textutil.TailText(strings.TrimSpace(committed+"\n"+stat), limit)
 }

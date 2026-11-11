@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -23,7 +25,7 @@ const (
 )
 
 type chatDiffState struct {
-	changes []chatFileChange
+	changes []protocol.FileChange
 	arrived time.Time
 	mode    int
 	scroll  int
@@ -33,7 +35,7 @@ type chatDiffState struct {
 // animate in; changes replayed from history appear immediately.
 func (d *chatDiffState) recordFileChanges(raw json.RawMessage, live bool) {
 	var item struct {
-		Changes []chatFileChange `json:"changes"`
+		Changes []protocol.FileChange `json:"changes"`
 	}
 	if json.Unmarshal(raw, &item) != nil || len(item.Changes) == 0 {
 		return
@@ -41,9 +43,9 @@ func (d *chatDiffState) recordFileChanges(raw json.RawMessage, live bool) {
 	d.record(item.Changes, live)
 }
 
-func (d *chatDiffState) record(changes []chatFileChange, live bool) {
+func (d *chatDiffState) record(changes []protocol.FileChange, live bool) {
 	// Newer edits go first; files within one edit keep the agent's order.
-	d.changes = append(append([]chatFileChange{}, changes...), d.changes...)
+	d.changes = append(append([]protocol.FileChange{}, changes...), d.changes...)
 	if len(d.changes) > chatDiffPaneKeepFiles {
 		d.changes = d.changes[:chatDiffPaneKeepFiles]
 	}
@@ -101,7 +103,7 @@ func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
 		return append(lines, chatDiffLine{kind: "pane-blank"}, chatDiffLine{text: "  No file changes yet.", kind: "pane-empty"}, chatDiffLine{text: "  Edits from the agent appear here.", kind: "pane-empty"})
 	}
 	for index, change := range d.changes {
-		path := strings.Join(strings.Fields(chatText(firstNonEmpty(change.Path, change.NewPath, change.OldPath, "Unknown file"))), " ")
+		path := strings.Join(strings.Fields(chatText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath, "Unknown file"))), " ")
 		a, r := chatFileChangeCounts(change.Diff)
 		header := fmt.Sprintf(" ● %s", path)
 		if kind := chatFileChangeKind(change.Kind); kind != "" && kind != "update" {
@@ -134,15 +136,6 @@ func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
 		}
 	}
 	return lines
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 // renderChatDiffPane paints height rows of the pane, applying the reveal

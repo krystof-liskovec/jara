@@ -60,6 +60,7 @@ func (u *chatUI) status() string {
 	if u.nextReasoning != "" {
 		fmt.Fprintf(&b, "Next turns reasoning: %s (selected)\n", chatReasoningEffortLabel(u.nextReasoning))
 	}
+	b.WriteString(u.contextStatusLine())
 	if u.turn != "" {
 		elapsed := "unknown"
 		if !u.turnStartedAt.IsZero() {
@@ -94,6 +95,13 @@ func (u *chatUI) help() string {
 /plan [PROMPT|off|status] Use Plan mode for this and later turns
 /auto [on|off|status] Let an automatic reviewer handle approvals (default on)
 /btw QUESTION    Ask a side question; works during a turn and is not saved
+/compact         Compact the conversation's context now
+/clear           Start a new conversation with an empty transcript
+/rewind [N]      Go back to before prompt N and edit it (files are not reverted)
+/diff            Show the file changes this conversation made
+/export [PATH]   Save the conversation as Markdown
+/image PATH      Attach an image; Ctrl+V pastes one from the clipboard
+/alerts [on|off] Bell and desktop alerts for long turns and pending requests
 /default [ID|N]  Set the default model (and provider) for new conversations
 /fallback [ID|N|off] Continue on another model when a usage limit is reached
 /goalcrunch ...  Run a goal through usage-limit pauses
@@ -110,11 +118,13 @@ func (u *chatUI) help() string {
 /stop            Stop the remote session and release the workspace
 /help            Show available commands
 !COMMAND         Run a shell command in this workspace
+@PATH            Mention a workspace file; typing @ lists matches
 
 Use /crunch PROMPT to work until the task is complete. Normal completion stops it; a usage-limit interruption waits for reset and resumes. /goalcrunch OBJECTIVE stops when Codex marks its goal complete. Both require a persistent Jara session. Use /crunch status or /crunch stop to manage the active crunch task.
 Use /schedule in 30m PROMPT, /schedule at RFC3339 PROMPT, /schedule list, or /schedule cancel ID. Scheduled prompts run when this conversation is idle and continue after you disconnect.
 While a turn is running, type a follow-up and press Tab to queue it. Queued prompts run in order after the current turn; use /queue to inspect them, /queue run to start one when idle, /queue edit N to edit one in the interactive interface, or /queue clear to remove this conversation's queued prompts.
 F2 opens model selection; F3 opens reasoning selection. Choices apply to this and future turns in this conversation; they do not change Codex defaults.
+Prompt files in ~/.codex/prompts, ~/.claude/commands, and the project's .claude/commands work as custom slash commands with either provider; $ARGUMENTS and $1…$9 are filled in.
 Hold Shift while dragging over chat history to select text with your terminal, then use its copy shortcut.
 Type a message to send it to the agent. In /compose, prefix a literal slash line with //.
 `

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 func recoverChatDaemonWorkspaceMetadata(id string, paths chatDaemonPaths) error {
@@ -51,7 +53,7 @@ func recoverChatDaemonWorkspaceMetadata(id string, paths chatDaemonPaths) error 
 	if err != nil {
 		return err
 	}
-	worktrees, err := filepath.Abs(filepath.Join(dataRoot(), "worktrees"))
+	worktrees, err := filepath.Abs(filepath.Join(fsutil.DataRoot(), "worktrees"))
 	if err != nil {
 		return err
 	}
@@ -73,7 +75,7 @@ func recoverChatDaemonWorkspaceMetadata(id string, paths chatDaemonPaths) error 
 	if state.CreatedAt > 0 {
 		created = time.Unix(0, state.CreatedAt).UTC().Format(time.RFC3339)
 	}
-	return writeJSON(metadata, Workspace{ID: id, Name: name, Path: expected, Created: created, Ready: true})
+	return fsutil.WriteJSON(metadata, Workspace{ID: id, Name: name, Path: expected, Created: created, Ready: true})
 }
 
 func chatDaemonPathWithin(root, path string) bool {

@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 const codexArgsFile = "/run/jara/codex-args.json"
@@ -44,7 +47,7 @@ func validateCodexArgs(args []string) error {
 }
 
 func parseCodexArgs(raw []byte) ([]string, error) {
-	return parseAgentArgs(agentCodex, raw)
+	return parseAgentArgs(protocol.AgentCodex, raw)
 }
 
 func parseAgentArgs(runtime string, raw []byte) ([]string, error) {
@@ -56,7 +59,7 @@ func parseAgentArgs(runtime string, raw []byte) ([]string, error) {
 }
 
 func exampleModel(runtime string) string {
-	if runtime == agentClaude {
+	if runtime == protocol.AgentClaude {
 		return "opus"
 	}
 	return "gpt-6.1-sol"
@@ -65,28 +68,28 @@ func exampleModel(runtime string) string {
 // agentArgsEnv names the deployment variable holding default arguments; the
 // entrypoint copies it to agentArgsFile because SSH sessions do not inherit it.
 func agentArgsEnv(runtime string) string {
-	if runtime == agentClaude {
+	if runtime == protocol.AgentClaude {
 		return "JARA_CLAUDE_ARGS"
 	}
 	return "JARA_CODEX_ARGS"
 }
 
 func agentArgsFile(runtime string) string {
-	if runtime == agentClaude {
+	if runtime == protocol.AgentClaude {
 		return "/run/jara/claude-args.json"
 	}
 	return codexArgsFile
 }
 
 func agentArgsOverrideFile(runtime string) string {
-	if runtime == agentClaude {
-		return filepath.Join(dataRoot(), "claude-args.json")
+	if runtime == protocol.AgentClaude {
+		return filepath.Join(fsutil.DataRoot(), "claude-args.json")
 	}
-	return filepath.Join(dataRoot(), codexArgsOverrideFile)
+	return filepath.Join(fsutil.DataRoot(), codexArgsOverrideFile)
 }
 
 func configuredCodexArgs(extra []string) ([]string, error) {
-	return configuredAgentArgs(agentCodex, extra)
+	return configuredAgentArgs(protocol.AgentCodex, extra)
 }
 
 // configuredAgentArgs returns deployment defaults, replaced by a saved host
@@ -112,10 +115,10 @@ func configuredAgentArgs(runtime string, extra []string) ([]string, error) {
 	if err == nil {
 		args, err = parseAgentArgs(runtime, override)
 		if err != nil {
-			return nil, fmt.Errorf("read saved %s arguments: %w", agentDisplayName(runtime), err)
+			return nil, fmt.Errorf("read saved %s arguments: %w", protocol.AgentDisplayName(runtime), err)
 		}
 	} else if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("read saved %s arguments: %w", agentDisplayName(runtime), err)
+		return nil, fmt.Errorf("read saved %s arguments: %w", protocol.AgentDisplayName(runtime), err)
 	}
 	args = append(args, extra...)
 	return args, validateCodexArgs(args)
@@ -125,7 +128,7 @@ func saveAgentArgsOverride(runtime string, args []string) error {
 	if err := validateCodexArgs(args); err != nil {
 		return err
 	}
-	return writeJSON(agentArgsOverrideFile(runtime), args)
+	return fsutil.WriteJSON(agentArgsOverrideFile(runtime), args)
 }
 
 func clearAgentArgsOverride(runtime string) error {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func (u *chatUI) event(m appMessage) error {
@@ -37,11 +39,13 @@ func (u *chatUI) event(m appMessage) error {
 		switch m.Method {
 		case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 			u.approvals = append(u.approvals, m)
+			u.alertUser("Approval needed")
 			u.setActivityLabel("Waiting for approval")
 			u.setAgentState("waiting")
 			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%sType /approve to allow once or /deny to reject.\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID])))
 			return nil
 		case "item/tool/requestUserInput":
+			u.alertUser("Question waiting for an answer")
 			return u.handleQuestionRequest(m)
 		default:
 			u.print("\nUnsupported interaction: " + m.Method + "\n")
@@ -53,6 +57,8 @@ func (u *chatUI) event(m appMessage) error {
 		return u.acceptChatGoalUpdate(m.Params)
 	case "thread/goal/cleared":
 		return u.acceptChatGoalClear(m.Params)
+	case "thread/tokenUsage/updated":
+		u.acceptChatTokenUsage(m.Params)
 	case "thread/compacted":
 		if p.ThreadID == "" || p.ThreadID == u.thread {
 			u.printRole("progress", "Conversation context compacted.\n")
@@ -71,6 +77,7 @@ func (u *chatUI) event(m appMessage) error {
 	case "item/reasoning/summaryTextDelta":
 		u.streamReasoningSummary(p.ItemID, p.SummaryIndex, p.Delta)
 	case "turn/started":
+		u.notePromptTurn(p.Turn.ID)
 		u.attachedTurnActive = true
 		u.busy = true
 		u.turn = p.Turn.ID
@@ -89,7 +96,7 @@ func (u *chatUI) event(m appMessage) error {
 		}
 		u.printRole(role, p.Delta)
 	case "item/started", "item/completed":
-		var item chatHistoryItem
+		var item protocol.HistoryItem
 		_ = json.Unmarshal(p.Item, &item)
 		u.items[item.ID] = p.Item
 		u.handleChatPlanItem(m.Method, item)
@@ -99,6 +106,7 @@ func (u *chatUI) event(m appMessage) error {
 				u.printRoleAt("progress", "Compacting conversation context…\n", chatHistoryItemTime(item, time.Now()))
 			} else {
 				u.setActivityLabel("Thinking")
+				u.contextUsage.used = 0 // unknown until the next model call
 				u.printRoleAt("progress", "Conversation context compaction complete.\n", chatHistoryItemTime(item, time.Now()))
 			}
 		}
@@ -129,6 +137,7 @@ func (u *chatUI) event(m appMessage) error {
 			u.setActivityLabel("Thinking")
 		}
 	case "turn/completed":
+		u.alertTurnEnded(p.Turn.Status)
 		u.finishAllReasoningSummaries()
 		if err := u.cancelQuestionRequests("Turn ended before the question was answered."); err != nil {
 			return err

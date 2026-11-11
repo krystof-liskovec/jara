@@ -45,6 +45,9 @@ func TestChatAppServerFixture(t *testing.T) {
 			reply(map[string]any{})
 			send(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]string{"id": "turn-fixture", "status": "interrupted"}}})
 		default:
+			if acknowledgeFixtureRequest(send, m) {
+				continue
+			}
 			if string(m.ID) == `"approval-fixture"` {
 				var result struct{ Decision string }
 				_ = json.Unmarshal(m.Result, &result)
@@ -167,4 +170,14 @@ func TestChatFullAccessArguments(t *testing.T) {
 			}
 		})
 	}
+}
+
+// acknowledgeFixtureRequest answers requests a fake app-server does not model
+// with an empty result, so new optional requests do not break older fixtures.
+func acknowledgeFixtureRequest(send func(any), m appMessage) bool {
+	if m.Method == "" || len(m.ID) == 0 {
+		return false
+	}
+	send(map[string]any{"id": m.ID, "result": map[string]any{}})
+	return true
 }

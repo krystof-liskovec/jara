@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 // validateAgentFlags checks --agent, --interface and --note before any remote
@@ -21,7 +23,7 @@ func validateAgentFlags(action, agent, userInterface, note string) error {
 	if agent == "" {
 		return nil
 	}
-	runtime, err := normalizeAgentRuntime(agent)
+	runtime, err := protocol.NormalizeAgent(agent)
 	if err != nil {
 		return err
 	}
@@ -34,17 +36,17 @@ func validateAgentFlags(action, agent, userInterface, note string) error {
 // agent that did not run most recently in the workspace.
 func resolveClientAgent(c Config, root, remote, action, explicit string) (string, error) {
 	if explicit != "" {
-		return normalizeAgentRuntime(explicit)
+		return protocol.NormalizeAgent(explicit)
 	}
 	if action == "handoff" {
 		return "", nil
 	}
 	for _, candidate := range []string{c.WorkspaceAgents[root], c.Remotes[remote].Agent, c.Agent} {
 		if candidate != "" {
-			return normalizeAgentRuntime(candidate)
+			return protocol.NormalizeAgent(candidate)
 		}
 	}
-	return agentCodex, nil
+	return protocol.AgentCodex, nil
 }
 
 // agentConfigCommand implements `jara config set agent NAME [--remote NAME |
@@ -58,7 +60,7 @@ func agentConfigCommand(c *Config, args []string) error {
 	runtime := ""
 	if value != "default" {
 		var err error
-		if runtime, err = normalizeAgentRuntime(value); err != nil {
+		if runtime, err = protocol.NormalizeAgent(value); err != nil {
 			return err
 		}
 	}

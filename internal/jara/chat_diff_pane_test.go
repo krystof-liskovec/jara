@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -14,9 +16,9 @@ func TestChatDiffPaneLayoutAndOrder(t *testing.T) {
 	if chatDiffPaneWidth(&d, 160, 40) != 0 {
 		t.Fatal("auto pane stays hidden without changes")
 	}
-	raw, _ := json.Marshal(map[string]any{"changes": []chatFileChange{{Path: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n"}, {Path: "b.go", Diff: "+x\n"}}})
+	raw, _ := json.Marshal(map[string]any{"changes": []protocol.FileChange{{Path: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n"}, {Path: "b.go", Diff: "+x\n"}}})
 	d.recordFileChanges(raw, true)
-	d.record([]chatFileChange{{Path: "c.go", Diff: "+later\n"}}, false)
+	d.record([]protocol.FileChange{{Path: "c.go", Diff: "+later\n"}}, false)
 	if got := []string{d.changes[0].Path, d.changes[1].Path, d.changes[2].Path}; strings.Join(got, ",") != "c.go,a.go,b.go" {
 		t.Fatalf("order %v", got)
 	}
@@ -53,11 +55,11 @@ func TestChatDiffPaneLayoutAndOrder(t *testing.T) {
 func TestChatDiffPaneRendersFixedCellsAndReveals(t *testing.T) {
 	palette := menuColorsForBackground(terminalRGB{r: 30, g: 30, b: 30})
 	var d chatDiffState
-	d.record([]chatFileChange{{Path: "wide_界.go", Diff: strings.Repeat("+line with\ttab and a long tail that must be clipped\n", 50)}}, true)
+	d.record([]protocol.FileChange{{Path: "wide_界.go", Diff: strings.Repeat("+line with\ttab and a long tail that must be clipped\n", 50)}}, true)
 	for _, color := range []bool{false, true} {
 		rows := renderChatDiffPane(&d, 50, 20, d.arrived.Add(time.Hour), true, palette, color)
 		for _, row := range rows {
-			if got := uniseg.StringWidth(terminalEscapes.ReplaceAllString(row, "")); got != 50 {
+			if got := uniseg.StringWidth(textutil.TerminalEscapes.ReplaceAllString(row, "")); got != 50 {
 				t.Fatalf("row width %d: %q", got, row)
 			}
 		}
@@ -100,7 +102,7 @@ func TestChatAnimations(t *testing.T) {
 	if !strings.Contains(shimmer, "250;250;250") || !strings.Contains(shimmer, "100;100;100") {
 		t.Fatalf("shimmer needs a highlight band and base color: %q", shimmer)
 	}
-	if terminalEscapes.ReplaceAllString(shimmer, "") != "Thinking" {
+	if textutil.TerminalEscapes.ReplaceAllString(shimmer, "") != "Thinking" {
 		t.Fatal("shimmer must not change text")
 	}
 	base := time.UnixMilli(0)
@@ -118,7 +120,7 @@ func TestChatAnimations(t *testing.T) {
 		t.Fatal("welcome twinkle and header pulse should render")
 	}
 	for i, line := range frame.Lines {
-		if got := uniseg.StringWidth(terminalEscapes.ReplaceAllString(line, "")); got != 80 {
+		if got := uniseg.StringWidth(textutil.TerminalEscapes.ReplaceAllString(line, "")); got != 80 {
 			t.Fatalf("line %d width %d", i, got)
 		}
 	}

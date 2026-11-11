@@ -1,7 +1,6 @@
 package jara
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteCloser, output io.Reader, paths chatDaemonPaths, schedules *chatScheduleManager, crunch *chatCrunchManager, initial *chatDaemonState) error {
@@ -49,8 +50,8 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		stateMu.Lock()
 		state.AttachedClients = clients.count()
 		state.Attached = state.AttachedClients > 0
-		stateMu.Unlock()
 		snapshot := state
+		stateMu.Unlock()
 		_ = writeChatDaemonState(paths, snapshot)
 		stateWriteMu.Unlock()
 	}
@@ -77,8 +78,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		}
 	}()
 	go func() {
-		scanner := bufio.NewScanner(output)
-		scanner.Buffer(make([]byte, 4096), 8<<20)
+		scanner := protocol.NewLineScanner(output)
 		for scanner.Scan() {
 			line := append([]byte(nil), scanner.Bytes()...)
 			var message appMessage

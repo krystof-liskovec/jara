@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 func runChatDaemon(q Request) error {
@@ -165,7 +167,7 @@ func chatDaemonWorkingDirectory(q Request, workspace Workspace) (string, error) 
 	cwd := workspace.Path
 	if q.Worktree {
 		name := tmuxSessionName(workspace, q.ID)
-		cwd = filepath.Join(dataRoot(), "worktrees", name)
+		cwd = filepath.Join(fsutil.DataRoot(), "worktrees", name)
 		if err := os.MkdirAll(filepath.Dir(cwd), 0700); err != nil {
 			return "", err
 		}

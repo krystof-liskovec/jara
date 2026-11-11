@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 func syncWorkspace(r Remote, b Binding, root, direction string, force bool, options ...bool) error {
@@ -151,7 +153,7 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 			}
 		}
 	}
-	if err = writeJSON(state, next); err != nil {
+	if err = fsutil.WriteJSON(state, next); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Transferred %d file(s), deleted %d previously synchronized file(s).\n", len(u.Files), len(u.Deletes))
@@ -310,7 +312,7 @@ func localPushChangesDetails(b Binding, root string, includeIgnored, isGit bool)
 	sort.Strings(summary.Deleted)
 	if !summary.Pending && head != "" && head != baseline.LocalHead {
 		baseline.LocalHead = head
-		if err = writeJSON(state, baseline); err != nil {
+		if err = fsutil.WriteJSON(state, baseline); err != nil {
 			return localSyncSummary{}, err
 		}
 	}
@@ -339,7 +341,7 @@ func seedCloneBaseline(r Remote, b Binding, root string) error {
 	if err != nil {
 		return err
 	}
-	return writeJSON(state, Baseline{Local: metadata(remote), Remote: metadata(remote), LocalHead: gitHead(root)})
+	return fsutil.WriteJSON(state, Baseline{Local: metadata(remote), Remote: metadata(remote), LocalHead: gitHead(root)})
 }
 
 func existingPaths(root string, paths []string) (map[string]bool, error) {

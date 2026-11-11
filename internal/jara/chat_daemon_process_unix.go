@@ -30,11 +30,10 @@ func startChatDaemonProcess(request Request, logPath string) (int, error) {
 	if err = cmd.Start(); err != nil {
 		return 0, fmt.Errorf("start persistent Jara session: %w", err)
 	}
-	pid := cmd.Process.Pid
-	if err = cmd.Process.Release(); err != nil {
-		return 0, fmt.Errorf("detach persistent Jara session: %w", err)
-	}
-	return pid, nil
+	// Reap the daemon if it exits while this process still runs; an unreaped
+	// child stays a zombie that still looks alive, hiding a startup crash.
+	go func() { _ = cmd.Wait() }()
+	return cmd.Process.Pid, nil
 }
 
 func chatProcessExists(pid int) bool {

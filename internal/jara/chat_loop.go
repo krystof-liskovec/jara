@@ -1,7 +1,6 @@
 package jara
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +8,8 @@ import (
 	"os/signal"
 	"sync"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 type chatDiagnosticBuffer struct {
@@ -79,8 +80,7 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 	stop := make(chan struct{})
 	defer close(stop)
 	go func() {
-		scanner := bufio.NewScanner(input)
-		scanner.Buffer(make([]byte, 4096), maxBackgroundPrompt)
+		scanner := protocol.NewLineScanner(input)
 		for scanner.Scan() {
 			select {
 			case lines <- scanner.Text():
@@ -128,18 +128,9 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 		case now := <-timer.C:
 			for id, pending := range u.pending {
 				if now.After(pending.deadline) {
-					if u.expireChatDefaultRequest(id, pending) {
-						continue
+					if err := u.expireChatRequest(id, pending); err != nil {
+						return err
 					}
-					if pending.method == "thread/list" {
-						u.expireChatSessionRequest(id)
-						continue
-					}
-					if pending.method == "model/list" {
-						u.expireChatModelRequest(id)
-						continue
-					}
-					return fmt.Errorf("Codex app-server timed out during %s", pending.method)
 				}
 			}
 		}

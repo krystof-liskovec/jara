@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 	"github.com/alecthomas/chroma/v2"
 )
 
@@ -35,7 +37,7 @@ func TestSyntaxSpansFollowTheLanguage(t *testing.T) {
 func TestDiffPaneHighlightsCode(t *testing.T) {
 	palette := menuColorsForBackground(terminalRGB{r: 30, g: 30, b: 30})
 	state := &chatDiffState{}
-	state.record([]chatFileChange{{Path: "app.go", Diff: "@@ -1 +1 @@\n-func old() {}\n+func new() { return }\n"}}, false)
+	state.record([]protocol.FileChange{{Path: "app.go", Diff: "@@ -1 +1 @@\n-func old() {}\n+func new() { return }\n"}}, false)
 	lines := chatDiffLines(state, 60)
 	var added chatDiffLine
 	for _, line := range lines {
@@ -52,7 +54,7 @@ func TestDiffPaneHighlightsCode(t *testing.T) {
 	if !strings.Contains(painted, menuFG(keyword)+"func") || !strings.Contains(painted, menuBG(addBG)) || !strings.Contains(painted, menuFG(palette.green)+" +") {
 		t.Fatalf("painted diff line %q", painted)
 	}
-	if plain := terminalEscapes.ReplaceAllString(painted, ""); !strings.HasPrefix(plain, " +func new() { return }") || len([]rune(plain)) != 60 {
+	if plain := textutil.TerminalEscapes.ReplaceAllString(painted, ""); !strings.HasPrefix(plain, " +func new() { return }") || len([]rune(plain)) != 60 {
 		t.Fatalf("plain diff line %q", plain)
 	}
 }
@@ -76,10 +78,10 @@ func TestTranscriptHighlightsFencedCodeAndDiffs(t *testing.T) {
 	palette := menuColorsForBackground(terminalRGB{r: 250, g: 250, b: 250})
 	painted := paintChatTranscriptLine(" ", added, 60, palette, true)
 	keyword, _ := chatSyntaxColor(chroma.Keyword, true)
-	if !strings.Contains(painted, menuFG(keyword)+"def") || !strings.HasPrefix(terminalEscapes.ReplaceAllString(painted, ""), "   │ +def f(): pass") {
+	if !strings.Contains(painted, menuFG(keyword)+"def") || !strings.HasPrefix(textutil.TerminalEscapes.ReplaceAllString(painted, ""), "   │ +def f(): pass") {
 		t.Fatalf("painted transcript diff %q", painted)
 	}
-	if text := formatChatFileChangeList("completed", []chatFileChange{{Path: "src/my app.rs", Diff: "+fn x() {}"}}); !strings.Contains(text, "```diff src/my_app.rs") {
+	if text := formatChatFileChangeList("completed", []protocol.FileChange{{Path: "src/my app.rs", Diff: "+fn x() {}"}}); !strings.Contains(text, "```diff src/my_app.rs") {
 		t.Fatalf("file changes must name the file in the fence: %q", text)
 	}
 }

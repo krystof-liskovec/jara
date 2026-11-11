@@ -79,6 +79,9 @@ func (p *chatTerminalKeyParser) feed(data []byte) []chatTerminalKeyEvent {
 		case 0x03:
 			events = append(events, chatTerminalKeyEvent{interrupt: true})
 			p.buffer = p.buffer[1:]
+		case 0x16: // Ctrl+V attaches an image from the clipboard
+			events = append(events, editorEvent(chatEditorClipboardImage))
+			p.buffer = p.buffer[1:]
 		case 0x08, 0x7f:
 			events = append(events, editorEvent(chatEditorBackspace))
 			p.buffer = p.buffer[1:]
@@ -192,6 +195,9 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		return &event
 	case "\x1b[99;5u", "\x1b[99;5:1u", "\x1b[27;5;99~":
 		return &chatTerminalKeyEvent{interrupt: true}
+	case "\x1b[118;5u", "\x1b[118;5:1u", "\x1b[27;5;118~":
+		event := editorEvent(chatEditorClipboardImage)
+		return &event
 	case "\x1b[9;2u", "\x1b[9;2:1u", "\x1b[27;2;9~":
 		event := editorEvent(chatEditorTab)
 		return &event

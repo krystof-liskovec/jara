@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func remoteCommand(c *Config, args []string) error {
@@ -91,7 +93,7 @@ func configCommand(c *Config, args []string) error {
 		return codexArgsConfigCommand(*c, args[1:])
 	}
 	if len(args) > 0 && args[0] == "claude-args" {
-		return agentArgsConfigCommand(*c, agentClaude, args[1:])
+		return agentArgsConfigCommand(*c, protocol.AgentClaude, args[1:])
 	}
 	if len(args) >= 3 && args[0] == "set" && args[1] == "agent" {
 		return agentConfigCommand(c, args[2:])
@@ -133,11 +135,11 @@ func configCommand(c *Config, args []string) error {
 }
 
 func codexArgsConfigCommand(c Config, args []string) error {
-	return agentArgsConfigCommand(c, agentCodex, args)
+	return agentArgsConfigCommand(c, protocol.AgentCodex, args)
 }
 
 func agentArgsConfigCommand(c Config, runtime string, args []string) error {
-	agent := agentDisplayName(runtime)
+	agent := protocol.AgentDisplayName(runtime)
 	usage := fmt.Errorf("use jara config %s-args show|clear [--remote NAME] or set [--remote NAME] -- ARGS...", runtime)
 	if len(args) == 0 {
 		return usage
@@ -207,12 +209,6 @@ func resolveConfigRemote(c Config, name string) (string, Remote, error) {
 		return "", Remote{}, fmt.Errorf("select a configured host with --remote NAME or set a default with `jara remote use NAME`")
 	}
 	return name, r, nil
-}
-
-func readRemoteCodexArgs(remote Remote) ([]string, error) {
-	var args []string
-	err := rpc(remote, Request{Op: "codex-args-show"}, nil, &args)
-	return args, err
 }
 
 func setRemoteCodexArgs(remote Remote, args []string) error {

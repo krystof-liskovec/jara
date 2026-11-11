@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -19,7 +20,7 @@ func chatCodeFence(trimmed, code string) string {
 	if code != "" {
 		return ""
 	}
-	return firstNonEmpty(strings.TrimSpace(strings.TrimPrefix(trimmed, "```")), "text")
+	return textutil.FirstNonEmpty(strings.TrimSpace(strings.TrimPrefix(trimmed, "```")), "text")
 }
 
 func chatCodeLines(raw string, width int, role, code string) []chatViewLine {

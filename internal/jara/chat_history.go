@@ -3,56 +3,23 @@ package jara
 import (
 	"strings"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 type chatThreadResponse struct {
 	Thread struct {
-		ID              string            `json:"id"`
-		ReasoningEffort *string           `json:"reasoningEffort"`
-		Turns           []chatHistoryTurn `json:"turns"`
+		ID              string                 `json:"id"`
+		ReasoningEffort *string                `json:"reasoningEffort"`
+		Turns           []protocol.HistoryTurn `json:"turns"`
 	} `json:"thread"`
 	Model           string  `json:"model"`
 	ReasoningEffort *string `json:"reasoningEffort"`
 	ResolvedModel   string  `json:"resolvedModel"` // concrete model behind an alias
 }
 
-type chatHistoryTurn struct {
-	StartedAt *int64            `json:"startedAt"`
-	Items     []chatHistoryItem `json:"items"`
-}
-
-type chatHistoryContent struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type chatSubagentAgentState struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
-
-type chatHistoryItem struct {
-	ID                string                            `json:"id"`
-	Type              string                            `json:"type"`
-	Text              string                            `json:"text"`
-	Command           string                            `json:"command"`
-	Status            string                            `json:"status"`
-	Changes           []chatFileChange                  `json:"changes"`
-	Summary           []chatReasoningSummaryPart        `json:"summary"`
-	Content           []chatHistoryContent              `json:"content"`
-	StartedAtMs       *int64                            `json:"startedAtMs"`
-	CompletedAtMs     *int64                            `json:"completedAtMs"`
-	Kind              string                            `json:"kind"`
-	AgentThreadID     string                            `json:"agentThreadId"`
-	AgentPath         string                            `json:"agentPath"`
-	Tool              string                            `json:"tool"`
-	Prompt            string                            `json:"prompt"`
-	ReceiverThreadIDs []string                          `json:"receiverThreadIds"`
-	AgentsStates      map[string]chatSubagentAgentState `json:"agentsStates"`
-	Agent             string                            `json:"jaraAgent"` // set by the agent router
-}
-
-func (u *chatUI) renderChatHistory(turns []chatHistoryTurn) {
+func (u *chatUI) renderChatHistory(turns []protocol.HistoryTurn) {
+	u.promptLog = nil
 	for _, turn := range turns {
 		paths := make(map[string]string)
 		for _, item := range turn.Items {
@@ -90,6 +57,7 @@ func (u *chatUI) renderChatHistory(turns []chatHistoryTurn) {
 				}
 				if text.Len() > 0 {
 					u.printRoleAt("user", text.String()+"\n", at)
+					u.promptLog = append(u.promptLog, chatPromptEntry{turnID: turn.ID, text: text.String()})
 				}
 			case "subAgentActivity", "collabAgentToolCall":
 				if text := chatSubagentItemText(item, paths); text != "" {
@@ -109,12 +77,12 @@ func (u *chatUI) labelHistoryAgent(agent string) {
 		return
 	}
 	if agent == "" {
-		agent = agentForModel(u.effectiveModel)
+		agent = protocol.AgentForModel(u.effectiveModel)
 	}
-	writer.SetChatAgent(agentDisplayName(agent))
+	writer.SetChatAgent(protocol.AgentDisplayName(agent))
 }
 
-func chatHistoryItemTime(item chatHistoryItem, fallback time.Time) time.Time {
+func chatHistoryItemTime(item protocol.HistoryItem, fallback time.Time) time.Time {
 	if item.StartedAtMs != nil {
 		return time.UnixMilli(*item.StartedAtMs)
 	}

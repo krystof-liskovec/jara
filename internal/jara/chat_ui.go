@@ -3,7 +3,6 @@ package jara
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -16,60 +15,6 @@ type chatPending struct {
 	action       string
 	threadID     string
 	queuedPrompt string
-}
-type chatUI struct {
-	c                            *appConnection
-	out                          io.Writer
-	cwd, thread, turn            string
-	busy, cancel, planMode       bool
-	manualApprovals              bool           // auto mode is the default
-	defaults                     *defaultModels // host defaults; nil while loading
-	resolvedModel                string         // concrete model behind a Claude alias
-	lastPrompt                   string         // most recent prompt, for a fallback retry
-	fallbackRetried              bool           // lastPrompt was already retried on the fallback
-	threadReady                  bool
-	connected                    bool
-	composing                    bool
-	draft                        []string
-	draftBytes                   int
-	queuedPrompts                []chatQueuedPrompt
-	queuePromptSequence          uint64
-	queueEditRequest             uint64
-	startedAt                    time.Time
-	turnStartedAt                time.Time
-	workspaceLabel               string
-	trackAgentState              bool
-	persistentSession            bool
-	attachedTurnActive           bool
-	resumeAtStart                bool
-	resumeLatest                 bool
-	lastAgentState               string
-	effectiveModel               string
-	effectiveReasoning           string
-	nextModel                    string
-	nextModelLabel               string
-	nextReasoning                string
-	activityLabel                string
-	activitySummaryItemID        string
-	activitySummaryIndex         int
-	activitySummaryText          string
-	modelSelectionGeneration     uint64
-	reasoningSelectionGeneration uint64
-	pickerRequested              string
-	pending                      map[string]chatPending
-	pendingTurnModels            map[string]chatTurnRequest
-	approvals                    []appMessage
-	questionRequests             []chatQuestionRequest
-	sessions                     *chatSessionBrowser
-	sessionPickerRequested       bool
-	models                       *chatModelBrowser
-	items                        map[string]json.RawMessage
-	goal                         *chatThreadGoal
-	reasoningSummaryStreamed     map[string]bool
-	reasoningSummaryIndexes      map[string]int
-	subagentPaths                map[string]string
-	subagentItemDisplays         map[string]string
-	diff                         chatDiffState
 }
 
 // Text from the model and tools is untrusted terminal content.
@@ -189,6 +134,9 @@ func (u *chatUI) completeChatInitialization(sendNotification bool) error {
 	if err := u.requestDefaultModels(); err != nil {
 		return err
 	}
+	if err := u.requestCustomCommands(); err != nil {
+		return err
+	}
 	if u.resumeAtStart && u.thread == "" {
 		u.busy = false
 		u.setAgentState("idle")
@@ -242,6 +190,9 @@ func (u *chatUI) response(m appMessage) error {
 	}
 	if p.method == "jara/btw" {
 		u.acceptChatBtwResponse(m)
+		return nil
+	}
+	if u.acceptChatExtraResponse(m, p) {
 		return nil
 	}
 	if chatDefaultRequest(p.method) {
@@ -319,10 +270,9 @@ func (u *chatUI) response(m appMessage) error {
 		previousThread := u.thread
 		u.thread = r.Thread.ID
 		if previousThread != "" && previousThread != u.thread {
-			u.nextModel, u.nextModelLabel, u.nextReasoning, u.planMode = "", "", "", false
-			u.goal = nil
-			u.resetChatSubagentTracking()
+			u.chatConversationState = chatConversationState{}
 		}
+		u.contextUsage = chatContextUsage{}
 		u.setEffectiveModel(r.Model)
 		u.resolvedModel = chatText(r.ResolvedModel)
 		u.effectiveReasoning = ""
@@ -347,6 +297,10 @@ func (u *chatUI) response(m appMessage) error {
 			u.print("\nConversation " + u.thread + "\n")
 		}
 		u.renderChatHistory(r.Thread.Turns)
+		if u.afterHistory != "" {
+			u.printRole("system", u.afterHistory)
+			u.afterHistory = ""
+		}
 		started, err := u.dispatchQueuedPrompt()
 		if err != nil {
 			return err
@@ -396,6 +350,7 @@ func (u *chatUI) response(m appMessage) error {
 		}
 		if u.busy {
 			u.turn = r.Turn.ID
+			u.notePromptTurn(r.Turn.ID)
 			u.turnStartedAt = time.Now()
 			u.setAgentState(u.currentState())
 			if u.cancel {

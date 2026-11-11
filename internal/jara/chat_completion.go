@@ -14,6 +14,8 @@ type chatCompletionContext struct {
 	Models    []chatCompletionOption
 	Reasoning []chatCompletionOption
 	Sessions  []chatCompletionOption
+	Files     []chatCompletionOption  // @file matches
+	Commands  []chatCommandCompletion // custom commands
 }
 
 type chatEditorCandidate struct {
@@ -45,6 +47,13 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/plan", description: "Switch this conversation to Plan mode", arguments: true},
 	{name: "/auto", description: "Turn auto-approval mode on or off", arguments: true},
 	{name: "/btw", description: "Ask a side question without adding it to the conversation", arguments: true},
+	{name: "/compact", description: "Compact the conversation's context now"},
+	{name: "/clear", description: "Start a new conversation with an empty transcript"},
+	{name: "/rewind", description: "Go back to before an earlier prompt", arguments: true},
+	{name: "/diff", description: "Show this conversation's file changes"},
+	{name: "/export", description: "Save the conversation as Markdown", arguments: true},
+	{name: "/image", description: "Attach an image file to the next message", arguments: true},
+	{name: "/alerts", description: "Turn bell and desktop alerts on or off", arguments: true},
 	{name: "/schedule", description: "Schedule a prompt in this conversation", arguments: true},
 	{name: "/crunch", description: "Run a prompt through usage-limit pauses", arguments: true},
 	{name: "/goalcrunch", description: "Run a persistent goal through usage-limit pauses", arguments: true},
@@ -65,6 +74,8 @@ func chatCompletionContextFromUI(u *chatUI) chatCompletionContext {
 	if u == nil {
 		return context
 	}
+	context.Files = chatMentionOptions(u.mentions)
+	context.Commands = u.customCommandCompletions()
 	if u.models != nil && u.models.complete {
 		for _, model := range u.models.models {
 			id := model.Model
@@ -82,9 +93,7 @@ func chatCompletionContextFromUI(u *chatUI) chatCompletionContext {
 		}
 		if model := u.reasoningModel(); model != nil {
 			for _, option := range model.SupportedReasoningEfforts {
-				context.Reasoning = append(context.Reasoning, chatCompletionOption{
-					Value: option.Value, Description: option.Description,
-				})
+				context.Reasoning = append(context.Reasoning, chatCompletionOption(option))
 			}
 		}
 	}
@@ -107,6 +116,9 @@ func chatCompletionContextFromUI(u *chatUI) chatCompletionContext {
 }
 
 func chatCompletionCandidates(text string, cursor int, context chatCompletionContext) []chatEditorCandidate {
+	if start, query, ok := chatMentionToken(text, cursor); ok {
+		return chatMentionCandidates(text, start, cursor, query, context)
+	}
 	if cursor != len(text) || text == "" || !strings.HasPrefix(text, "/") || strings.HasPrefix(text, "//") || strings.ContainsAny(text, "\r\n") {
 		return nil
 	}
@@ -115,7 +127,7 @@ func chatCompletionCandidates(text string, cursor int, context chatCompletionCon
 		return argumentCompletions(text, context)
 	}
 	var candidates []chatEditorCandidate
-	for _, command := range chatCommandCompletions {
+	for _, command := range append(chatCommandCompletions, context.Commands...) {
 		if !strings.HasPrefix(strings.ToLower(command.name), lower) {
 			continue
 		}

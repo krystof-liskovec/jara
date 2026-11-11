@@ -11,22 +11,24 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func TestNormalizeAgentRuntime(t *testing.T) {
-	for input, want := range map[string]string{"": agentCodex, "codex": agentCodex, "Claude": agentClaude, "claude-code": agentClaude} {
-		got, err := normalizeAgentRuntime(input)
+	for input, want := range map[string]string{"": protocol.AgentCodex, "codex": protocol.AgentCodex, "Claude": protocol.AgentClaude, "claude-code": protocol.AgentClaude} {
+		got, err := protocol.NormalizeAgent(input)
 		if err != nil || got != want {
 			t.Fatalf("normalizeAgentRuntime(%q) = %q, %v; want %q", input, got, err, want)
 		}
 	}
-	if _, err := normalizeAgentRuntime("gemini"); err == nil {
+	if _, err := protocol.NormalizeAgent("gemini"); err == nil {
 		t.Fatal("unknown runtimes must be rejected")
 	}
-	if err := validateAgentInterface(agentClaude, "jara"); err != nil {
+	if err := validateAgentInterface(protocol.AgentClaude, "jara"); err != nil {
 		t.Fatalf("Claude Code is served to the Jara UI by the agent router: %v", err)
 	}
-	if err := validateAgentInterface(agentClaude, "codex"); err != nil {
+	if err := validateAgentInterface(protocol.AgentClaude, "codex"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -37,10 +39,10 @@ func TestAgentTerminalCommands(t *testing.T) {
 		q    Request
 		want []string
 	}{
-		{Request{}, []string{codexBinary, "--model", "opus"}},
-		{Request{Runtime: agentClaude}, []string{claudeBinary, "--model", "opus"}},
-		{Request{Runtime: agentClaude, Resume: true}, []string{claudeBinary, "--resume", "--model", "opus"}},
-		{Request{Runtime: agentClaude, ResumeLatest: true}, []string{claudeBinary, "--continue", "--model", "opus"}},
+		{Request{}, []string{protocol.CodexBinary, "--model", "opus"}},
+		{Request{Runtime: protocol.AgentClaude}, []string{protocol.ClaudeBinary, "--model", "opus"}},
+		{Request{Runtime: protocol.AgentClaude, Resume: true}, []string{protocol.ClaudeBinary, "--resume", "--model", "opus"}},
+		{Request{Runtime: protocol.AgentClaude, ResumeLatest: true}, []string{protocol.ClaudeBinary, "--continue", "--model", "opus"}},
 	}
 	for _, c := range cases {
 		got, err := agentTerminalCommand(c.q, args)
@@ -49,28 +51,28 @@ func TestAgentTerminalCommands(t *testing.T) {
 		}
 	}
 	t.Setenv("JARA_DATA", t.TempDir())
-	if got, err := agentTerminalCommand(Request{Runtime: agentClaude, Agent: "Codex", Conversation: "thread"}, nil); err != nil || got[0] != codexBinary || got[1] != "resume" {
+	if got, err := agentTerminalCommand(Request{Runtime: protocol.AgentClaude, Agent: "Codex", Conversation: "thread"}, nil); err != nil || got[0] != protocol.CodexBinary || got[1] != "resume" {
 		t.Fatalf("a saved Codex conversation resumes in Codex: %q %v", got, err)
 	}
-	if !terminalBinaryAllowed(claudeBinary) || terminalBinaryAllowed("/bin/sh") {
+	if !terminalBinaryAllowed(protocol.ClaudeBinary) || terminalBinaryAllowed("/bin/sh") {
 		t.Fatal("terminal relay allow-list is wrong")
 	}
 }
 
 func TestBackgroundClaudeKeepsPromptOutOfArguments(t *testing.T) {
-	q := Request{Runtime: agentClaude, ResumeLatest: true, Prompt: "--dangerous prompt", CodexArgs: []string{"--permission-mode", "acceptEdits"}}
+	q := Request{Runtime: protocol.AgentClaude, ResumeLatest: true, Prompt: "--dangerous prompt", CodexArgs: []string{"--permission-mode", "acceptEdits"}}
 	got := backgroundClaudeCommand(q)
-	want := []string{claudeBinary, "--print", "--continue", "--permission-mode", "acceptEdits"}
+	want := []string{protocol.ClaudeBinary, "--print", "--continue", "--permission-mode", "acceptEdits"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 
 func TestClaudeSessionLabels(t *testing.T) {
-	if got := sessionMenuLabel(Request{Runtime: agentClaude}); got != "Claude Code" {
+	if got := sessionMenuLabel(Request{Runtime: protocol.AgentClaude}); got != "Claude Code" {
 		t.Fatalf("label %q", got)
 	}
-	if got := sessionMenuLabel(Request{Runtime: agentClaude, ResumeLatest: true}); got != "Resume latest Claude Code" {
+	if got := sessionMenuLabel(Request{Runtime: protocol.AgentClaude, ResumeLatest: true}); got != "Resume latest Claude Code" {
 		t.Fatalf("label %q", got)
 	}
 	if got := sessionMenuLabel(Request{}); got != "" {
@@ -136,7 +138,7 @@ func TestStoreClaudeTokenAndOnboarding(t *testing.T) {
 func TestRemoteAuthStoresClaudeToken(t *testing.T) {
 	t.Setenv("JARA_DATA", t.TempDir())
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	if err := remoteAuth(agentClaude, "elsewhere"); err == nil {
+	if err := remoteAuth(protocol.AgentClaude, "elsewhere"); err == nil {
 		t.Fatal("unexpected destinations must be rejected")
 	}
 	stdin := os.Stdin
@@ -147,7 +149,7 @@ func TestRemoteAuthStoresClaudeToken(t *testing.T) {
 	}
 	os.Stdin = reader
 	go func() { _, _ = io.WriteString(writer, "  sk-ant-oat01-piped\n"); writer.Close() }()
-	if err = remoteAuth(agentClaude, claudeTokenDestination); err != nil {
+	if err = remoteAuth(protocol.AgentClaude, claudeTokenDestination); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(claudeTokenPath()); string(b) != "sk-ant-oat01-piped\n" {

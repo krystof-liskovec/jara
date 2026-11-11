@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"text/tabwriter"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 func workspaceCommand(c *Config, args []string) error {
@@ -53,7 +55,7 @@ func listWorkspacesCommand(c Config, args []string) error {
 		if origin == "" {
 			origin = "(copied)"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", workspace.ID, menuText(name), state, menuText(origin))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", workspace.ID, textutil.SanitizeText(name), state, textutil.SanitizeText(origin))
 	}
 	return w.Flush()
 }
@@ -76,9 +78,9 @@ func deleteWorkspaceCommand(c *Config, args []string) error {
 		return fmt.Errorf("find workspace %s on %s: %w", id, remoteName, err)
 	}
 	name := workspaceTitle(workspace)
-	fmt.Printf("This will permanently delete workspace %s (%s) on %s, including its Jara-managed Git worktrees.\n", menuText(name), id, remoteName)
+	fmt.Printf("This will permanently delete workspace %s (%s) on %s, including its Jara-managed Git worktrees.\n", textutil.SanitizeText(name), id, remoteName)
 	if workspace.URL != "" {
-		fmt.Printf("Origin: %s\n", menuText(workspace.URL))
+		fmt.Printf("Origin: %s\n", textutil.SanitizeText(workspace.URL))
 	}
 	confirmed, err := confirm("Delete this workspace?")
 	if err != nil {

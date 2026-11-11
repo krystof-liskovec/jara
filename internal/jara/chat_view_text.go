@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -13,7 +14,7 @@ func sanitizeChatViewText(s string) string {
 	s = strings.ReplaceAll(s, "\t", "    ")
 	parts := strings.Split(s, "\n")
 	for i := range parts {
-		parts[i] = menuText(parts[i])
+		parts[i] = textutil.SanitizeText(parts[i])
 	}
 	return strings.Join(parts, "\n")
 }
@@ -46,7 +47,7 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 		if chatViewNeedsMessageGap(previousRole, role) {
 			lines = append(lines, chatViewLine{kind: "message-gap"})
 		}
-		title := strings.TrimSpace(menuText(message.Title))
+		title := strings.TrimSpace(textutil.SanitizeText(message.Title))
 		if title != "" {
 			label += " · " + title
 		}
@@ -106,7 +107,7 @@ func expandChatMessage(text string, width int, role string) []chatViewLine {
 // ("" outside code blocks) and the result is the state for the next line.
 func expandChatTranscriptLine(raw string, width int, role string, code string) ([]chatViewLine, string) {
 	inCode := code
-	raw = menuText(strings.ReplaceAll(raw, "\t", "    "))
+	raw = textutil.SanitizeText(strings.ReplaceAll(raw, "\t", "    "))
 	trimmed := strings.TrimSpace(raw)
 	if strings.HasPrefix(trimmed, "```") {
 		return nil, chatCodeFence(trimmed, code)

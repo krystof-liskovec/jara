@@ -1,54 +1,28 @@
 package jara
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
-
-// Agent runtimes that Jara can launch in a managed tmux terminal. Codex is the
-// default and the only runtime behind the built-in Jara conversation UI.
-const (
-	agentCodex   = "codex"
-	agentClaude  = "claude"
-	codexBinary  = "/usr/local/bin/codex"
-	claudeBinary = "/usr/local/bin/claude"
-)
-
-func normalizeAgentRuntime(value string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "", agentCodex:
-		return agentCodex, nil
-	case agentClaude, "claude-code":
-		return agentClaude, nil
-	default:
-		return "", fmt.Errorf("--agent must be codex or claude")
-	}
-}
-
-func agentDisplayName(runtime string) string {
-	if runtime == agentClaude {
-		return "Claude Code"
-	}
-	return "Codex"
-}
 
 // validateAgentInterface checks the runtime name. Both agents work in both
 // interfaces: the Jara UI reaches Claude Code through the agent router.
 func validateAgentInterface(runtime, userInterface string) error {
-	_, err := normalizeAgentRuntime(runtime)
+	_, err := protocol.NormalizeAgent(runtime)
 	return err
 }
 
 func terminalBinaryAllowed(binary string) bool {
-	return binary == codexBinary || binary == claudeBinary
+	return binary == protocol.CodexBinary || binary == protocol.ClaudeBinary
 }
 
 // claudeCommand builds an interactive Claude Code invocation. Picker resume
 // maps to --resume and latest-session resume to --continue.
 func claudeCommand(resume, latest bool, args []string) []string {
-	command := []string{claudeBinary}
+	command := []string{protocol.ClaudeBinary}
 	if latest {
 		command = append(command, "--continue")
 	} else if resume {
@@ -60,7 +34,7 @@ func claudeCommand(resume, latest bool, args []string) []string {
 // backgroundClaudeCommand runs Claude Code non-interactively. The prompt is
 // supplied on standard input so it can never be parsed as an option.
 func backgroundClaudeCommand(q Request) []string {
-	command := []string{claudeBinary, "--print"}
+	command := []string{protocol.ClaudeBinary, "--print"}
 	if q.ResumeLatest {
 		command = append(command, "--continue")
 	}
@@ -80,7 +54,7 @@ func runBackgroundClaude(q Request) error {
 func agentTerminalCommand(q Request, args []string) ([]string, error) {
 	if q.Handoff {
 		// The handoff prompt is the final positional argument for both CLIs.
-		if q.Runtime == agentClaude {
+		if q.Runtime == protocol.AgentClaude {
 			return appendPrompt(claudeCommand(false, false, args), q.Prompt), nil
 		}
 		return appendPrompt(codexCommand(false, args), q.Prompt), nil
@@ -88,7 +62,7 @@ func agentTerminalCommand(q Request, args []string) ([]string, error) {
 	if q.Conversation != "" {
 		return resumeConversationCommand(q.Agent, q.Conversation, q.ConversationCWD, args)
 	}
-	if q.Runtime != agentClaude {
+	if q.Runtime != protocol.AgentClaude {
 		command := codexCommand(q.Resume, args)
 		if q.ResumeLatest {
 			command = codexResumeLatestCommand(args)
@@ -130,9 +104,9 @@ func claudeInstalled(d Diagnosis) bool {
 
 // installedAgentRuntimes lists runtimes whose CLI exists on this host.
 func installedAgentRuntimes() []string {
-	runtimes := []string{agentCodex}
+	runtimes := []string{protocol.AgentCodex}
 	if _, err := exec.LookPath("claude"); err == nil {
-		runtimes = append(runtimes, agentClaude)
+		runtimes = append(runtimes, protocol.AgentClaude)
 	}
 	return runtimes
 }

@@ -1,10 +1,12 @@
-package jara
+package agentrouter
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 // Goals for Claude Code conversations mirror Codex's thread goals: while a
@@ -13,12 +15,12 @@ import (
 // A user message always takes priority over the next automatic continuation.
 const (
 	maxGoalContinuations = 50
-	goalContinueDelay    = 400 * time.Millisecond
+	GoalContinueDelay    = 400 * time.Millisecond
 	goalCompleteMarker   = "GOAL COMPLETE"
 	goalBlockedMarker    = "GOAL BLOCKED"
 )
 
-func goalPreamble(goal *chatThreadGoal) string {
+func goalPreamble(goal *protocol.ThreadGoal) string {
 	if goal == nil || goal.Status != "active" {
 		return ""
 	}
@@ -26,14 +28,14 @@ func goalPreamble(goal *chatThreadGoal) string {
 		"If you cannot continue without the user, end with %q.]\n\n", goal.Objective, goalCompleteMarker+": <one-sentence summary>", goalBlockedMarker+": <reason>")
 }
 
-func (r *agentRouter) handleClaudeGoal(id json.RawMessage, method string, params json.RawMessage, thread *routedThread) {
+func (r *agentRouter) handleClaudeGoal(id json.RawMessage, method string, params json.RawMessage, thread *Thread) {
 	switch method {
 	case "thread/goal/get":
 		r.reply(id, map[string]any{"goal": thread.Goal})
 	case "thread/goal/clear":
 		cleared := thread.Goal != nil
 		thread.Goal = nil
-		thread.save()
+		thread.Save()
 		r.reply(id, map[string]any{"cleared": cleared})
 		if cleared {
 			r.notify("thread/goal/cleared", map[string]any{"threadId": thread.ID})
@@ -50,7 +52,7 @@ func (r *agentRouter) handleClaudeGoal(id json.RawMessage, method string, params
 				r.fail(id, "No goal is set")
 				return
 			}
-			thread.Goal = &chatThreadGoal{ThreadID: thread.ID, Status: "active"}
+			thread.Goal = &protocol.ThreadGoal{ThreadID: thread.ID, Status: "active"}
 		}
 		if request.Objective != "" {
 			thread.Goal.Objective = request.Objective
@@ -64,7 +66,7 @@ func (r *agentRouter) handleClaudeGoal(id json.RawMessage, method string, params
 			thread.Goal.TokenBudget = budget
 		}
 		thread.goalContinuations = 0
-		thread.save()
+		thread.Save()
 		r.reply(id, map[string]any{"goal": thread.Goal})
 		r.notify("thread/goal/updated", map[string]any{"threadId": thread.ID, "goal": thread.Goal})
 		if !thread.crunchGoal {
@@ -75,21 +77,21 @@ func (r *agentRouter) handleClaudeGoal(id json.RawMessage, method string, params
 
 // scheduleGoalContinuation waits briefly so a queued user prompt, sent by the
 // UI when the previous turn completed, can start first.
-func (r *agentRouter) scheduleGoalContinuation(thread *routedThread) {
+func (r *agentRouter) scheduleGoalContinuation(thread *Thread) {
 	if thread.Goal == nil || thread.Goal.Status != "active" {
 		return
 	}
 	events, id := r.events, thread.ID
-	time.AfterFunc(goalContinueDelay, func() { events <- routerEvent{source: "goal", thread: id} })
+	time.AfterFunc(GoalContinueDelay, func() { events <- routerEvent{source: "goal", thread: id} })
 }
 
 func (r *agentRouter) continueGoal(threadID string) {
 	thread := r.threads[threadID]
-	if thread == nil || thread.Goal == nil || thread.Goal.Status != "active" || thread.current().Agent != agentClaude {
+	if thread == nil || thread.Goal == nil || thread.Goal.Status != "active" || thread.Current().Agent != protocol.AgentClaude {
 		return
 	}
 	if thread.claude == nil {
-		thread.claude = newClaudeSession(r, thread, thread.current().BackendID, thread.current().Started)
+		thread.claude = newClaudeSession(r, thread, thread.Current().BackendID, thread.Current().Started)
 	}
 	if thread.claude.turnID != "" {
 		return
@@ -99,17 +101,17 @@ func (r *agentRouter) continueGoal(threadID string) {
 		return
 	}
 	thread.goalContinuations++
-	thread.beginTurn("(continuing toward the goal)", agentClaude)
+	thread.beginTurn("(continuing toward the goal)", protocol.AgentClaude)
 	thread.claude.goalTurn = true
 	_ = thread.claude.startTurn(nil, goalPreamble(thread.Goal)+"Continue working toward the goal.")
 }
 
-func (r *agentRouter) updateGoalStatus(thread *routedThread, status string) {
+func (r *agentRouter) updateGoalStatus(thread *Thread, status string) {
 	if thread.Goal == nil {
 		return
 	}
 	thread.Goal.Status = status
-	thread.save()
+	thread.Save()
 	r.notify("thread/goal/updated", map[string]any{"threadId": thread.ID, "goal": thread.Goal})
 }
 

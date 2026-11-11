@@ -65,6 +65,13 @@ func (p *chatTerminalPicker) request(u *chatUI, kind string) error {
 }
 
 func (p *chatTerminalPicker) sync(u *chatUI) {
+	if u.pickerRequested == "rewind" { // lists this conversation's prompts, no model list needed
+		p.kind, p.selected, u.pickerRequested = "rewind", max(0, len(u.promptLog)-1), ""
+		return
+	}
+	if p.kind == "rewind" {
+		return
+	}
 	if u.pickerRequested != "" {
 		p.kind = u.pickerRequested
 	}
@@ -136,6 +143,8 @@ func (p *chatTerminalPicker) choices(u *chatUI) []chatCompletionChoice {
 		return chatDefaultPickerChoices(u, p.selected, p.kind)
 	case "reasoning":
 		return chatReasoningPickerChoices(u, p.selected)
+	case "rewind":
+		return chatRewindPickerChoices(u, p.selected)
 	default:
 		return nil
 	}
@@ -158,6 +167,10 @@ func (p *chatTerminalPicker) move(u *chatUI, delta int) {
 
 func (p *chatTerminalPicker) choose(u *chatUI) error {
 	switch p.kind {
+	case "rewind":
+		index := p.selected
+		p.close()
+		return u.rewindTo(index)
 	case "model":
 		if u.models == nil || p.selected >= len(u.models.models) {
 			return nil

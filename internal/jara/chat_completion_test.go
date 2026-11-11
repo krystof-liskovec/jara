@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 func TestChatCompletionCatalogMatchesHelpCommands(t *testing.T) {
@@ -107,7 +109,7 @@ func TestChatCompletionFiltersModelAndSessionArgumentsFromFrozenCaches(t *testin
 
 func TestChatCompletionContextOnlyExposesCompletedServerCaches(t *testing.T) {
 	u := &chatUI{
-		models:   &chatModelBrowser{models: []codexModel{{ID: "gpt-5"}}, complete: false},
+		models:   &chatModelBrowser{models: []protocol.CodexModel{{ID: "gpt-5"}}, complete: false},
 		sessions: &chatSessionBrowser{matches: []Conversation{{ID: "thread-1", Name: "One"}}, complete: false},
 	}
 	context := chatCompletionContextFromUI(u)

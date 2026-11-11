@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
@@ -195,7 +196,7 @@ func paintChatSyntax(prefix string, spans []chatSyntaxSpan, width int, bg, prefi
 	if write(prefix) {
 		for _, span := range spans {
 			color, bold := chatSyntaxColor(span.token, light)
-			b.WriteString(menuFG(firstNonEmpty(color, defaultFG)))
+			b.WriteString(menuFG(textutil.FirstNonEmpty(color, defaultFG)))
 			if bold {
 				b.WriteString("\x1b[1m")
 			}

@@ -1,9 +1,12 @@
-package jara
+package agentrouter
 
 import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 // modelPrefs are host-wide model choices that span providers. The default
@@ -14,21 +17,21 @@ type modelPrefs struct {
 	Fallback string `json:"fallback,omitempty"`
 }
 
-func modelPrefsPath() string { return filepath.Join(dataRoot(), "models.json") }
+func modelPrefsPath() string { return filepath.Join(fsutil.DataRoot(), "models.json") }
 
-func loadModelPrefs() modelPrefs {
+func LoadModelPrefs() modelPrefs {
 	var prefs modelPrefs
 	data, err := os.ReadFile(modelPrefsPath())
 	if err != nil || json.Unmarshal(data, &prefs) != nil {
 		return modelPrefs{}
 	}
-	if !validChatModelID(prefs.Default) {
+	if !protocol.ValidModelID(prefs.Default) {
 		prefs.Default = ""
 	}
-	if !validChatModelID(prefs.Fallback) {
+	if !protocol.ValidModelID(prefs.Fallback) {
 		prefs.Fallback = ""
 	}
 	return prefs
 }
 
-func saveModelPrefs(prefs modelPrefs) error { return writeJSON(modelPrefsPath(), prefs) }
+func saveModelPrefs(prefs modelPrefs) error { return fsutil.WriteJSON(modelPrefsPath(), prefs) }

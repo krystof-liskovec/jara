@@ -1,0 +1,120 @@
+//go:build linux || darwin
+
+package jara
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"time"
+
+	"golang.org/x/term"
+)
+
+// chatScreenState remembers the last frame so a redraw only rewrites the
+// lines that changed.
+type chatScreenState struct {
+	lines         []string
+	width, height int
+	cursorShown   bool
+}
+
+func (t *chatTerminal) redraw(now time.Time) error {
+	err := t.draw()
+	t.lastDraw, t.dirty = now, false
+	return err
+}
+
+func (t *chatTerminal) draw() error {
+	width, height, err := term.GetSize(int(t.output.Fd()))
+	if err != nil {
+		width, height = 80, 24
+	}
+	frame := t.frame(max(1, width), max(1, height), time.Now())
+	_, err = io.WriteString(t.output, t.screen.update(frame, max(1, width), max(1, height)))
+	return err
+}
+
+// frame renders the whole screen: the conversation and, on wide terminals,
+// the changes pane.
+func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
+	u, editor := t.u, t.editor
+	color := os.Getenv("NO_COLOR") == ""
+	composerText, composerCursor := editor.previewText()
+	cursorLine, cursorColumn := chatEditorCursorPosition(composerText, composerCursor)
+	paneWidth := chatDiffPaneWidth(&u.diff, width, height)
+	width -= paneWidth
+	transcriptWidth := width - 4
+	if height < 7 || width < 18 {
+		transcriptWidth = width
+	}
+	suggestions := t.suggestions()
+	hints, queueLines, queueEditNumber := chatTerminalHints(u, editor, t.queueEditor, t.picker, t.sessionPicker, suggestions, paneWidth > 0)
+	activity, elapsed := chatTerminalActivity(u, now)
+	frame := renderChatView(chatViewModel{
+		Workspace: t.workspace, Model: u.effectiveModelLabel(), State: u.currentState(),
+		TranscriptLines: t.transcript.transcriptLines(transcriptWidth),
+		Composer:        composerText, CursorByte: composerCursor,
+		CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
+		ScrollOffset: t.scrollOffset, Activity: activity, ActivityElapsed: elapsed,
+		ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),
+		QueuedPrompts: queueLines, QueueEditing: t.queueEditor.active(), QueueEditNumber: queueEditNumber,
+		ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(), ControlContext: u.contextControlLabel(),
+		Hints: hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
+		Pulse: chatBusyPulse(u.busy, t.motion, now), Mark: chatWelcomeMark(t.motion, now),
+	}, width, height, t.palette, color)
+	if paneWidth > 0 {
+		pane := renderChatDiffPane(&u.diff, paneWidth-1, height, now, t.motion, t.palette, color)
+		frame = composeChatScreen(frame, pane, t.palette, color)
+	}
+	return frame
+}
+
+// suggestions lists what the menu above the input box shows: an open picker,
+// or completions for the text being typed.
+func (t *chatTerminal) suggestions() []chatCompletionChoice {
+	switch {
+	case t.sessionPicker && t.u.sessions != nil:
+		return chatSessionPickerChoices(t.u.sessions, t.sessionSelection)
+	case t.picker.active():
+		return t.picker.choices(t.u)
+	case t.queueEditor.active():
+		return nil
+	default:
+		return t.editor.Completions()
+	}
+}
+
+// update returns the escape sequences that turn the previous frame into
+// this one.
+func (s *chatScreenState) update(frame chatFrame, width, height int) string {
+	var screen strings.Builder
+	// Synchronized updates keep capable terminals from showing half a frame.
+	screen.WriteString("\x1b[?2026h")
+	fullRedraw := s.width != width || s.height != height || len(s.lines) != len(frame.Lines)
+	if fullRedraw {
+		screen.WriteString("\x1b[2J")
+	}
+	for index, line := range frame.Lines {
+		if !fullRedraw && s.lines[index] == line {
+			continue
+		}
+		fmt.Fprintf(&screen, "\x1b[%d;1H", index+1)
+		screen.WriteString(line)
+	}
+	if frame.CursorRow >= 0 {
+		fmt.Fprintf(&screen, "\x1b[%d;%dH", frame.CursorRow+1, frame.CursorCol+1)
+		if !s.cursorShown {
+			screen.WriteString("\x1b[?25h")
+			s.cursorShown = true
+		}
+	} else {
+		screen.WriteString("\x1b[?25l")
+		s.cursorShown = false
+	}
+	screen.WriteString("\x1b[?2026l")
+	s.lines = append(s.lines[:0], frame.Lines...)
+	s.width, s.height = width, height
+	return screen.String()
+}

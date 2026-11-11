@@ -8,8 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -32,6 +30,53 @@ func chatInteractiveFiles(input io.Reader, output io.Writer) (*os.File, *os.File
 	return in, out, true
 }
 
+// chatTerminal is the full-screen interface: it owns the input box, the
+// pickers, and the screen, and feeds the user's actions to the chatUI.
+type chatTerminal struct {
+	u          *chatUI
+	output     *os.File
+	transcript *chatTerminalOutput
+	palette    menuPalette
+	motion     bool
+	workspace  string
+
+	editor      *chatEditor
+	parser      *chatTerminalKeyParser
+	picker      *chatTerminalPicker
+	queueEditor *chatQueueEditor
+
+	scrollOffset        int
+	resumePickerPending bool // open the session picker once sessions load
+	sessionPicker       bool
+	sessionSelection    int
+
+	dirty             bool
+	lastDraw          time.Time
+	lastActivityFrame int
+	screen            chatScreenState
+}
+
+func newChatTerminal(u *chatUI, output *os.File) *chatTerminal {
+	t := &chatTerminal{
+		u: u, output: output, transcript: &chatTerminalOutput{},
+		palette: menuColorsForTerminal(), motion: chatMotionEnabled(),
+		editor: newChatEditor(maxBackgroundPrompt), parser: newChatTerminalKeyParser(maxBackgroundPrompt),
+		picker: &chatTerminalPicker{}, queueEditor: &chatQueueEditor{},
+		resumePickerPending: u.resumeAtStart && !u.resumeLatest,
+		lastActivityFrame:   -1, dirty: true,
+	}
+	u.out = t.transcript
+	u.alert = func(sequence string) { _, _ = io.WriteString(output, sequence) }
+	t.workspace = u.workspaceLabel
+	if t.workspace == "" {
+		t.workspace = filepath.Base(filepath.Clean(u.cwd))
+		if t.workspace == "." || t.workspace == string(filepath.Separator) {
+			t.workspace = u.cwd
+		}
+	}
+	return t
+}
+
 func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	state, err := term.MakeRaw(int(input.Fd()))
 	if err != nil {
@@ -46,22 +91,10 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	if _, err := output.Write([]byte("\x1b[?1049h\x1b[?25l\x1b[2 q\x1b[?2004h\x1b[?1000h\x1b[?1006h\x1b[>1u\x1b[>4;2m")); err != nil {
 		return err
 	}
-	palette := menuColorsForTerminal()
-	motion := chatMotionEnabled()
-	terminalOutput := &chatTerminalOutput{}
-	u.out = terminalOutput
+	t := newChatTerminal(u, output)
 	if err := u.initializeChatServer(); err != nil {
 		return err
 	}
-	workspace := u.workspaceLabel
-	if workspace == "" {
-		workspace = filepath.Base(filepath.Clean(u.cwd))
-		if workspace == "." || workspace == string(filepath.Separator) {
-			workspace = u.cwd
-		}
-	}
-	editor := newChatEditor(maxBackgroundPrompt)
-	parser := newChatTerminalKeyParser(maxBackgroundPrompt)
 	inputChunks := make(chan []byte, 16)
 	inputErrors := make(chan error, 1)
 	readerDone := make(chan struct{})
@@ -73,381 +106,142 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	defer signal.Stop(signals)
 	ticker := time.NewTicker(chatTerminalRefresh)
 	defer ticker.Stop()
-	var scrollOffset int
-	resumePickerPending := u.resumeAtStart && !u.resumeLatest
-	var sessionPicker bool
-	var sessionSelection int
-	picker := &chatTerminalPicker{}
-	queueEditor := &chatQueueEditor{}
-	lastActivityFrame := -1
-	dirty := true
-	lastDraw := time.Time{}
-	var previousLines []string
-	previousWidth, previousHeight := 0, 0
-	cursorShown := false
-	openPicker := func(kind string) {
-		sessionPicker, resumePickerPending = false, false
-		if err := picker.request(u, kind); err != nil {
-			u.pickerRequested = ""
-			terminalOutput.append("system", chatPickerErrorText("Could not open picker", err)+"\n")
-		}
-		dirty = true
-	}
-	draw := func() error {
-		width, height, err := term.GetSize(int(output.Fd()))
-		if err != nil {
-			width, height = 80, 24
-		}
-		composerText, composerCursor := editor.previewText()
-		cursorLine, cursorColumn := chatEditorCursorPosition(composerText, composerCursor)
-		width, height = max(1, width), max(1, height)
-		fullWidth := width
-		paneWidth := chatDiffPaneWidth(&u.diff, width, height)
-		width -= paneWidth
-		transcriptWidth := width - 4
-		if height < 7 || width < 18 {
-			transcriptWidth = width
-		}
-		suggestions := editor.Completions()
-		if queueEditor.active() {
-			suggestions = nil
-		}
-		if sessionPicker && u.sessions != nil {
-			suggestions = chatSessionPickerChoices(u.sessions, sessionSelection)
-		} else if picker.active() {
-			suggestions = picker.choices(u)
-		}
-		hints, queueLines, queueEditNumber := chatTerminalHints(u, editor, queueEditor, picker, sessionPicker, suggestions, paneWidth > 0)
-		now := time.Now()
-		activity, elapsed := chatTerminalActivity(u, now)
-		frame := renderChatView(chatViewModel{
-			Workspace: workspace, Model: u.effectiveModelLabel(), State: u.currentState(),
-			TranscriptLines: terminalOutput.transcriptLines(transcriptWidth),
-			Composer:        composerText, CursorByte: composerCursor,
-			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
-			ScrollOffset: scrollOffset, Activity: activity, ActivityElapsed: elapsed,
-			ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),
-			QueuedPrompts: queueLines, QueueEditing: queueEditor.active(), QueueEditNumber: queueEditNumber,
-			ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(),
-			Hints: hints, Motion: motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
-			Pulse: chatBusyPulse(u.busy, motion, now), Mark: chatWelcomeMark(motion, now),
-		}, width, height, palette, os.Getenv("NO_COLOR") == "")
-		if paneWidth > 0 {
-			pane := renderChatDiffPane(&u.diff, paneWidth-1, height, now, motion, palette, os.Getenv("NO_COLOR") == "")
-			frame = composeChatScreen(frame, pane, palette, os.Getenv("NO_COLOR") == "")
-		}
-		width = fullWidth
-		var screen strings.Builder
-		// Synchronized updates keep capable terminals from showing half a frame.
-		screen.WriteString("\x1b[?2026h")
-		fullRedraw := previousWidth != width || previousHeight != height || len(previousLines) != len(frame.Lines)
-		if fullRedraw {
-			screen.WriteString("\x1b[2J")
-		}
-		for index, line := range frame.Lines {
-			if !fullRedraw && previousLines[index] == line {
-				continue
-			}
-			fmt.Fprintf(&screen, "\x1b[%d;1H", index+1)
-			screen.WriteString(line)
-		}
-		if frame.CursorRow >= 0 {
-			fmt.Fprintf(&screen, "\x1b[%d;%dH", frame.CursorRow+1, frame.CursorCol+1)
-			if !cursorShown {
-				screen.WriteString("\x1b[?25h")
-				cursorShown = true
-			}
-		} else {
-			screen.WriteString("\x1b[?25l")
-		}
-		screen.WriteString("\x1b[?2026l")
-		_, writeErr := io.WriteString(output, screen.String())
-		previousLines = append(previousLines[:0], frame.Lines...)
-		previousWidth, previousHeight = width, height
-		return writeErr
-	}
-	if err := draw(); err != nil {
+	if err := t.redraw(time.Now()); err != nil {
 		return err
 	}
-	lastDraw, dirty = time.Now(), false
-
 	for {
+		var done bool
+		var err error
 		select {
 		case message := <-u.c.messages:
-			if err := u.event(message); err != nil {
-				return err
-			}
-			picker.sync(u)
-			if queueEditor.active() {
-				editor.SetCompletionContext(chatCompletionContext{})
-			} else {
-				editor.SetCompletionContext(chatCompletionContextFromUI(u))
-			}
-			if resumePickerPending && u.sessions != nil && u.sessions.complete {
-				sessionPicker = u.sessions.failure == ""
-				resumePickerPending = false
-			}
-			dirty = true
-		case err := <-u.c.errors:
-			terminalOutput.append("system", "Codex app-server disconnected: "+err.Error()+"\n")
-			if drawErr := draw(); drawErr != nil {
+			err = t.handleMessage(message)
+		case connectionErr := <-u.c.errors:
+			t.transcript.append("system", "Codex app-server disconnected: "+connectionErr.Error()+"\n")
+			if drawErr := t.draw(); drawErr != nil {
 				return drawErr
 			}
-			return fmt.Errorf("Codex app-server disconnected: %w", err)
+			return fmt.Errorf("Codex app-server disconnected: %w", connectionErr)
 		case data := <-inputChunks:
-			for _, event := range parser.feed(data) {
-				if event.scrollRows != 0 {
-					scrollOffset = max(0, scrollOffset+event.scrollRows)
-					dirty = true
-					continue
+			for _, event := range t.parser.feed(data) {
+				if done, err = t.handleKey(event); done || err != nil {
+					break
 				}
-				if event.scroll != 0 {
-					scrollOffset = max(0, scrollOffset+event.scroll*max(1, heightForChatTerminal(output)/2))
-					dirty = true
-					continue
-				}
-				if event.diffPane || event.paneScroll != 0 {
-					handleChatPaneKey(&u.diff, event, output)
-					dirty = true
-					continue
-				}
-				if event.returnToLive {
-					scrollOffset = 0
-					dirty = true
-					continue
-				}
-				if event.interrupt {
-					if u.agentTurnActive() || (u.busy && !u.persistentSession) {
-						if err := u.interrupt(); err != nil {
-							return err
-						}
-					} else {
-						if err := u.stopIdleSession(); err != nil {
-							return err
-						}
-						return nil
-					}
-					dirty = true
-					continue
-				}
-				if event.input == nil {
-					continue
-				}
-				if event.input.Key == chatEditorModelPicker {
-					openPicker("model")
-					continue
-				}
-				if event.input.Key == chatEditorReasoningPicker {
-					openPicker("reasoning")
-					continue
-				}
-				if picker.active() {
-					switch event.input.Key {
-					case chatEditorUp:
-						picker.move(u, -1)
-						dirty = true
-						continue
-					case chatEditorDown:
-						picker.move(u, 1)
-						dirty = true
-						continue
-					case chatEditorEscape:
-						picker.close()
-						dirty = true
-						continue
-					case chatEditorEnter:
-						if err := picker.choose(u); err != nil {
-							terminalOutput.append("system", err.Error()+"\n")
-						}
-						dirty = true
-						continue
-					default:
-						picker.close()
-					}
-				}
-				if sessionPicker {
-					switch event.input.Key {
-					case chatEditorUp:
-						sessionSelection = max(0, sessionSelection-1)
-						dirty = true
-						continue
-					case chatEditorDown:
-						if u.sessions != nil && len(u.sessions.matches) > 0 {
-							sessionSelection = min(len(u.sessions.matches)-1, sessionSelection+1)
-						}
-						dirty = true
-						continue
-					case chatEditorEscape:
-						sessionPicker = false
-						resumePickerPending = false
-						dirty = true
-						continue
-					case chatEditorEnter:
-						if u.busy {
-							terminalOutput.append("system", "A turn is running. Cancel or wait before opening a saved session.\n")
-						} else if u.sessions != nil && u.sessions.complete && len(u.sessions.matches) > 0 {
-							sessionPicker = false
-							if err := u.resumeChatSessionChoice(strconv.Itoa(sessionSelection + 1)); err != nil {
-								terminalOutput.append("system", err.Error()+"\n")
-							}
-						}
-						dirty = true
-						continue
-					default:
-						sessionPicker = false
-						resumePickerPending = false
-					}
-				}
-				if queueEditor.active() && event.input.Key == chatEditorEscape {
-					queueEditor.cancel(u, editor)
-					scrollOffset = 0
-					dirty = true
-					continue
-				}
-				editorText := strings.TrimSpace(editor.Text())
-				if !queueEditor.active() && event.input.Key == chatEditorTab && u.agentTurnActive() && u.threadReady && editorText != "" && !strings.HasPrefix(editorText, "!") && len(editor.Completions()) == 0 {
-					if err := u.queuePrompt(u.thread, editor.Text()); err != nil {
-						terminalOutput.append("system", err.Error()+"\n")
-					} else {
-						terminalOutput.append("system", fmt.Sprintf("Queued prompt %d. It will run after the current turn.\n", len(u.queuedPrompts)))
-						editor.SetText("")
-					}
-					dirty = true
-					continue
-				}
-				result := editor.Apply(*event.input)
-				if result.LimitReached || event.limitReached {
-					terminalOutput.append("system", "Input reached the size limit; the remaining text was omitted.\n")
-				}
-				if result.Submitted {
-					if queueEditor.active() {
-						queueEditor.save(u, editor, result.Value)
-						scrollOffset = 0
-						dirty = true
-						continue
-					}
-					line := strings.TrimSpace(result.Value)
-					if line != "" {
-						isCommand := strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "//")
-						wasBusy, wasReady := u.busy, u.threadReady
-						busyControl := wasBusy && (line == "/new" || strings.HasPrefix(line, "/resume ") || line == "/compose")
-						if line == "/resume" {
-							picker.close()
-							resumePickerPending = true
-							sessionPicker = true
-							sessionSelection = 0
-						} else if strings.HasPrefix(line, "/sessions") {
-							resumePickerPending, sessionPicker = false, false
-						}
-						previousSessions := u.sessions
-						quit, err := u.line(result.Value)
-						if err != nil {
-							return err
-						}
-						if quit {
-							return nil
-						}
-						picker.sync(u)
-						if line == "/resume" && u.sessions == previousSessions {
-							resumePickerPending = false
-							sessionPicker = false
-						}
-						if (!isCommand || busyControl) && (wasBusy || !wasReady) {
-							editor.SetText(result.Value)
-						}
-					}
-					if u.queueEditRequest != 0 {
-						id := u.queueEditRequest
-						u.queueEditRequest = 0
-						if !queueEditor.begin(u, editor, id) {
-							terminalOutput.append("system", "That queued prompt is no longer available to edit.\n")
-						}
-					}
-					scrollOffset = 0
-				}
-				dirty = dirty || result.Changed || result.LimitReached || event.limitReached
 			}
-		case err := <-inputErrors:
-			if err != nil && err != io.EOF {
-				return fmt.Errorf("read interactive terminal: %w", err)
+		case readErr := <-inputErrors:
+			if readErr != nil && readErr != io.EOF {
+				return fmt.Errorf("read interactive terminal: %w", readErr)
 			}
 			return nil
 		case received := <-signals:
-			switch received {
-			case syscall.SIGWINCH:
-				dirty = true
-			case os.Interrupt:
-				if u.agentTurnActive() || (u.busy && !u.persistentSession) {
-					if err := u.interrupt(); err != nil {
-						return err
-					}
-					dirty = true
-				} else {
-					if err := u.stopIdleSession(); err != nil {
-						return err
-					}
-					return nil
-				}
-			default:
-				return nil
-			}
+			done, err = t.handleSignal(received)
 		case now := <-ticker.C:
-			if event := parser.flushEscape(now); event != nil && event.input != nil {
-				if queueEditor.active() {
-					queueEditor.cancel(u, editor)
-					scrollOffset = 0
-					dirty = true
-				} else {
-					result := editor.Apply(*event.input)
-					dirty = dirty || result.Changed
-				}
-			}
-			for id, pending := range u.pending {
-				if now.After(pending.deadline) {
-					if u.expireChatDefaultRequest(id, pending) {
-						continue
-					}
-					if pending.method == "thread/list" {
-						u.expireChatSessionRequest(id)
-						if resumePickerPending && u.sessions != nil && u.sessions.complete {
-							sessionPicker = u.sessions.failure == ""
-							resumePickerPending = false
-						}
-						dirty = true
-						continue
-					}
-					if pending.method == "model/list" {
-						u.expireChatModelRequest(id)
-						dirty = true
-						continue
-					}
-					return fmt.Errorf("Codex app-server timed out during %s", pending.method)
-				}
-			}
-			picker.sync(u)
-			if u.busy && u.turnStartedAt.IsZero() && u.activityLabel != "" {
-				// Preserve a useful timer while the start request is pending.
-				u.turnStartedAt = now
-			}
-			activityFrame := chatAnimationFrame(u, motion, now)
-			if activityFrame >= 0 && activityFrame != lastActivityFrame {
-				lastActivityFrame = activityFrame
-				dirty = true
-			}
-			if dirty && (lastDraw.IsZero() || now.Sub(lastDraw) >= chatTerminalRefresh) {
-				if err := draw(); err != nil {
-					return err
-				}
-				lastDraw, dirty = now, false
-			}
+			err = t.tick(now)
 		}
-		if dirty && time.Since(lastDraw) >= chatTerminalRefresh {
-			if err := draw(); err != nil {
+		if done || err != nil {
+			return err
+		}
+		if t.dirty && time.Since(t.lastDraw) >= chatTerminalRefresh {
+			if err := t.redraw(time.Now()); err != nil {
 				return err
 			}
-			lastDraw, dirty = time.Now(), false
 		}
 	}
+}
+
+func (t *chatTerminal) handleMessage(message appMessage) error {
+	u := t.u
+	if err := u.event(message); err != nil {
+		return err
+	}
+	t.picker.sync(u)
+	if !t.queueEditor.active() {
+		t.applyPrefill()
+	}
+	if t.queueEditor.active() {
+		t.editor.SetCompletionContext(chatCompletionContext{})
+	} else {
+		t.editor.SetCompletionContext(chatCompletionContextFromUI(u))
+	}
+	t.openLoadedSessionPicker()
+	t.dirty = true
+	return nil
+}
+
+// applyPrefill puts text the chatUI handed back, such as a rewound prompt,
+// into the input box.
+func (t *chatTerminal) applyPrefill() {
+	if t.u.prefill != "" {
+		t.editor.SetText(t.u.prefill)
+		t.u.prefill = ""
+	}
+}
+
+func (t *chatTerminal) openLoadedSessionPicker() {
+	if t.resumePickerPending && t.u.sessions != nil && t.u.sessions.complete {
+		t.sessionPicker = t.u.sessions.failure == ""
+		t.resumePickerPending = false
+	}
+}
+
+func (t *chatTerminal) handleSignal(received os.Signal) (done bool, err error) {
+	switch received {
+	case syscall.SIGWINCH:
+		t.dirty = true
+		return false, nil
+	case os.Interrupt:
+		return t.interrupt()
+	default:
+		return true, nil
+	}
+}
+
+// interrupt cancels a running turn, or stops an idle session.
+func (t *chatTerminal) interrupt() (done bool, err error) {
+	u := t.u
+	if u.agentTurnActive() || (u.busy && !u.persistentSession) {
+		t.dirty = true
+		return false, u.interrupt()
+	}
+	return true, u.stopIdleSession()
+}
+
+func (t *chatTerminal) tick(now time.Time) error {
+	u := t.u
+	if event := t.parser.flushEscape(now); event != nil && event.input != nil {
+		if t.queueEditor.active() {
+			t.queueEditor.cancel(u, t.editor)
+			t.scrollOffset = 0
+			t.dirty = true
+		} else {
+			result := t.editor.Apply(*event.input)
+			t.dirty = t.dirty || result.Changed
+		}
+	}
+	for id, pending := range u.pending {
+		if !now.After(pending.deadline) {
+			continue
+		}
+		if pending.method == "thread/list" {
+			u.expireChatSessionRequest(id)
+			t.openLoadedSessionPicker()
+		} else if err := u.expireChatRequest(id, pending); err != nil {
+			return err
+		}
+		t.dirty = true
+	}
+	t.picker.sync(u)
+	if u.busy && u.turnStartedAt.IsZero() && u.activityLabel != "" {
+		// Preserve a useful timer while the start request is pending.
+		u.turnStartedAt = now
+	}
+	if frame := chatAnimationFrame(u, t.motion, now); frame >= 0 && frame != t.lastActivityFrame {
+		t.lastActivityFrame = frame
+		t.dirty = true
+	}
+	if t.dirty && (t.lastDraw.IsZero() || now.Sub(t.lastDraw) >= chatTerminalRefresh) {
+		return t.redraw(now)
+	}
+	return nil
 }
 
 func readChatTerminal(input *os.File, chunks chan<- []byte, errors chan<- error, done <-chan struct{}) {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 const (
@@ -11,18 +13,10 @@ const (
 	chatFileChangeTotalDiffLimit = 240
 )
 
-type chatFileChange struct {
-	Path    string          `json:"path"`
-	OldPath string          `json:"oldPath"`
-	NewPath string          `json:"newPath"`
-	Kind    json.RawMessage `json:"kind"`
-	Diff    string          `json:"diff"`
-}
-
 func formatChatFileChanges(raw json.RawMessage) string {
 	var item struct {
-		Status  string           `json:"status"`
-		Changes []chatFileChange `json:"changes"`
+		Status  string                `json:"status"`
+		Changes []protocol.FileChange `json:"changes"`
 	}
 	if err := json.Unmarshal(raw, &item); err != nil {
 		return "File change details could not be read.\n"
@@ -30,7 +24,7 @@ func formatChatFileChanges(raw json.RawMessage) string {
 	return formatChatFileChangeList(item.Status, item.Changes)
 }
 
-func formatChatFileChangeList(status string, changes []chatFileChange) string {
+func formatChatFileChangeList(status string, changes []protocol.FileChange) string {
 	if len(changes) == 0 {
 		return "File changes contained no file paths.\n"
 	}

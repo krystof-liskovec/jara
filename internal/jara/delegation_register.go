@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
 )
 
 const jaraBinary = "/usr/local/bin/jara"
@@ -57,7 +60,9 @@ func parentPID(pid int) int {
 	return ppid
 }
 
-func delegationDisabledMarker() string { return filepath.Join(dataRoot(), "delegation-disabled") }
+func delegationDisabledMarker() string {
+	return filepath.Join(fsutil.DataRoot(), "delegation-disabled")
+}
 
 func codexConfigPath() string {
 	home := os.Getenv("CODEX_HOME")
@@ -92,7 +97,7 @@ func ensureDelegationRegistered() {
 	if err := registerCodexMCP(); err != nil {
 		fmt.Fprintln(os.Stderr, "Warning: could not register Jara delegation with Codex:", err)
 	}
-	if _, err := os.Stat(claudeBinary); err == nil {
+	if _, err := os.Stat(protocol.ClaudeBinary); err == nil {
 		if err = registerClaudeMCP(); err != nil {
 			fmt.Fprintln(os.Stderr, "Warning: could not register Jara delegation with Claude Code:", err)
 		}
@@ -205,7 +210,7 @@ func delegationCommand(args []string) error {
 		ensureDelegationRegistered()
 		fmt.Println("Agent delegation enabled; new Codex and Claude Code sessions can use the jara MCP tools.")
 	case "disable":
-		if err := os.MkdirAll(dataRoot(), 0700); err != nil {
+		if err := os.MkdirAll(fsutil.DataRoot(), 0700); err != nil {
 			return err
 		}
 		if err := os.WriteFile(delegationDisabledMarker(), nil, 0600); err != nil {

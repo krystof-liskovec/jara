@@ -1,4 +1,4 @@
-package jara
+package agentrouter
 
 import (
 	"encoding/json"
@@ -9,11 +9,15 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 // A routed thread is one UI conversation. Each segment is a stretch run by one
 // agent; a model switch to another agent starts a new segment.
-type threadSegment struct {
+type ThreadSegment struct {
 	Agent     string `json:"agent"`
 	BackendID string `json:"backend_id"`
 	Started   bool   `json:"started,omitempty"` // a Claude session exists to resume
@@ -22,28 +26,33 @@ type threadSegment struct {
 	StartTurn int `json:"start_turn,omitempty"`
 }
 
-type transcriptTurn struct {
-	User    string           `json:"user"`
-	Agent   string           `json:"agent,omitempty"`
-	Reply   string           `json:"reply,omitempty"`
-	Changes []chatFileChange `json:"changes,omitempty"`
-	Actions []string         `json:"actions,omitempty"` // commands and plans, summarized
-	At      int64            `json:"at"`
+type TranscriptTurn struct {
+	ID      string                `json:"id,omitempty"` // Codex turn ID, for /rewind
+	User    string                `json:"user"`
+	Agent   string                `json:"agent,omitempty"`
+	Reply   string                `json:"reply,omitempty"`
+	Changes []protocol.FileChange `json:"changes,omitempty"`
+	Actions []string              `json:"actions,omitempty"` // commands and plans, summarized
+	At      int64                 `json:"at"`
 }
 
-type routedThread struct {
-	ID      string          `json:"id"`
-	CWD     string          `json:"cwd"`
-	Created int64           `json:"created"`
-	Updated int64           `json:"updated"`
-	Model   string          `json:"model,omitempty"` // Claude model ID
-	Effort  string          `json:"effort,omitempty"`
-	Goal    *chatThreadGoal `json:"goal,omitempty"`
+type Thread struct {
+	ID      string               `json:"id"`
+	CWD     string               `json:"cwd"`
+	Created int64                `json:"created"`
+	Updated int64                `json:"updated"`
+	Model   string               `json:"model,omitempty"` // Claude model ID
+	Effort  string               `json:"effort,omitempty"`
+	Goal    *protocol.ThreadGoal `json:"goal,omitempty"`
 	// Reviewer is the app-server approvalsReviewer the UI last selected.
 	Reviewer string           `json:"approvalsReviewer,omitempty"`
-	Segments []threadSegment  `json:"segments"`
-	Turns    []transcriptTurn `json:"turns"`
+	Segments []ThreadSegment  `json:"segments"`
+	Turns    []TranscriptTurn `json:"turns"`
 	claude   *claudeSession
+
+	// Rebrief starts the next turn in a fresh agent session briefed on the
+	// transcript, after /rewind dropped turns that session still remembers.
+	Rebrief bool `json:"rebrief,omitempty"`
 
 	goalContinuations int
 	crunchGoal        bool // /goalcrunch drives the goal's turns
@@ -53,20 +62,23 @@ const maxTranscriptTurns = 200
 
 var routedThreadIDRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 
-func (t *routedThread) current() threadSegment { return t.Segments[len(t.Segments)-1] }
+func (t *Thread) Current() ThreadSegment { return t.Segments[len(t.Segments)-1] }
 
-func (t *routedThread) persistent() bool {
+func (t *Thread) persistent() bool {
+	if len(t.Segments) > 1 || t.Rebrief {
+		return true
+	}
 	for _, segment := range t.Segments {
-		if segment.Agent == agentClaude {
+		if segment.Agent == protocol.AgentClaude {
 			return true
 		}
 	}
 	return false
 }
 
-func agentThreadsDir() string { return filepath.Join(dataRoot(), "agent-threads") }
+func agentThreadsDir() string { return filepath.Join(fsutil.DataRoot(), "agent-threads") }
 
-func (t *routedThread) save() {
+func (t *Thread) Save() {
 	t.Updated = time.Now().Unix()
 	if !t.persistent() || !routedThreadIDRE.MatchString(t.ID) {
 		return
@@ -79,12 +91,12 @@ func (t *routedThread) save() {
 			}
 		}
 	}
-	if err := writeJSON(filepath.Join(agentThreadsDir(), t.ID+".json"), t); err != nil {
+	if err := fsutil.WriteJSON(filepath.Join(agentThreadsDir(), t.ID+".json"), t); err != nil {
 		fmt.Fprintln(os.Stderr, "save conversation record:", err)
 	}
 }
 
-func loadRoutedThread(id string) *routedThread {
+func LoadThread(id string) *Thread {
 	if !routedThreadIDRE.MatchString(id) {
 		return nil
 	}
@@ -92,19 +104,19 @@ func loadRoutedThread(id string) *routedThread {
 	if err != nil {
 		return nil
 	}
-	var thread routedThread
+	var thread Thread
 	if json.Unmarshal(data, &thread) != nil || thread.ID != id || len(thread.Segments) == 0 {
 		return nil
 	}
 	return &thread
 }
 
-func listRoutedThreads() []routedThread {
+func ListThreads() []Thread {
 	entries, _ := os.ReadDir(agentThreadsDir())
-	var threads []routedThread
+	var threads []Thread
 	for _, entry := range entries {
 		if id, ok := strings.CutSuffix(entry.Name(), ".json"); ok {
-			if thread := loadRoutedThread(id); thread != nil {
+			if thread := LoadThread(id); thread != nil {
 				threads = append(threads, *thread)
 			}
 		}
@@ -113,20 +125,20 @@ func listRoutedThreads() []routedThread {
 	return threads
 }
 
-func (t *routedThread) preview() string {
+func (t *Thread) Preview() string {
 	for _, turn := range t.Turns {
 		if strings.TrimSpace(turn.User) != "" {
-			return fitMenu(strings.Join(strings.Fields(turn.User), " "), 120)
+			return textutil.FitText(strings.Join(strings.Fields(turn.User), " "), 120)
 		}
 	}
 	return "Claude Code conversation"
 }
 
-func (t *routedThread) beginTurn(user, agent string) {
-	t.Turns = append(t.Turns, transcriptTurn{User: user, Agent: agent, At: time.Now().Unix()})
+func (t *Thread) beginTurn(user, agent string) {
+	t.Turns = append(t.Turns, TranscriptTurn{User: user, Agent: agent, At: time.Now().Unix()})
 }
 
-func (t *routedThread) lastTurn() *transcriptTurn {
+func (t *Thread) lastTurn() *TranscriptTurn {
 	if len(t.Turns) == 0 {
 		return nil
 	}
@@ -135,7 +147,7 @@ func (t *routedThread) lastTurn() *transcriptTurn {
 
 func (r *agentRouter) startThread(id json.RawMessage, params json.RawMessage) error {
 	agent, model := r.startAgent()
-	if agent != agentClaude {
+	if agent != protocol.AgentClaude {
 		if model != "" {
 			params = withJSONField(params, "model", model)
 		}
@@ -145,12 +157,12 @@ func (r *agentRouter) startThread(id json.RawMessage, params json.RawMessage) er
 		CWD string `json:"cwd"`
 	}
 	_ = json.Unmarshal(params, &request)
-	threadID, err := newUUID()
+	threadID, err := protocol.NewUUID()
 	if err != nil {
 		return err
 	}
-	thread := &routedThread{ID: threadID, CWD: request.CWD, Created: time.Now().Unix(), Model: firstNonEmpty(model, claudeDefaultModel),
-		Reviewer: requestedReviewer(params), Segments: []threadSegment{{Agent: agentClaude, BackendID: threadID, StartTurn: 1}}}
+	thread := &Thread{ID: threadID, CWD: request.CWD, Created: time.Now().Unix(), Model: textutil.FirstNonEmpty(model, protocol.ClaudeDefaultModel),
+		Reviewer: requestedReviewer(params), Segments: []ThreadSegment{{Agent: protocol.AgentClaude, BackendID: threadID, StartTurn: 1}}}
 	r.threads[threadID] = thread
 	thread.claude = newClaudeSession(r, thread, threadID, false)
 	r.reply(id, map[string]any{"thread": map[string]any{"id": threadID, "turns": []any{}}, "model": thread.Model})
@@ -164,7 +176,7 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 	_ = json.Unmarshal(params, &request)
 	thread := r.threads[request.ThreadID]
 	if thread == nil {
-		thread = loadRoutedThread(request.ThreadID)
+		thread = LoadThread(request.ThreadID)
 		if thread != nil {
 			r.threads[thread.ID] = thread
 		}
@@ -173,8 +185,8 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 		return r.callCodex(codexCall{uiID: id, method: "thread/resume"}, params)
 	}
 	thread.selectReviewer(params)
-	segment := thread.current()
-	if segment.Agent == agentClaude {
+	segment := thread.Current()
+	if segment.Agent == protocol.AgentClaude {
 		if thread.claude == nil {
 			thread.claude = newClaudeSession(r, thread, segment.BackendID, segment.Started)
 		}
@@ -183,7 +195,7 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 		if thread.Effort != "" {
 			effort = thread.Effort
 		}
-		r.reply(id, map[string]any{"thread": map[string]any{"id": thread.ID, "turns": thread.historyTurns()}, "model": thread.Model, "reasoningEffort": effort,
+		r.reply(id, map[string]any{"thread": map[string]any{"id": thread.ID, "turns": thread.HistoryTurns()}, "model": thread.Model, "reasoningEffort": effort,
 			"resolvedModel": thread.claude.resolvedModel})
 		return nil
 	}
@@ -199,7 +211,7 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 		if response == nil {
 			response = map[string]any{}
 		}
-		response["thread"] = map[string]any{"id": thread.ID, "turns": thread.historyTurns()}
+		response["thread"] = map[string]any{"id": thread.ID, "turns": thread.HistoryTurns()}
 		r.reply(id, response)
 	}}, codexRequest)
 }
@@ -216,27 +228,32 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 	thread := r.threads[request.ThreadID]
 	if thread == nil {
 		// A Codex-only conversation not seen before: start tracking it.
-		thread = &routedThread{ID: request.ThreadID, Created: time.Now().Unix(), Segments: []threadSegment{{Agent: agentCodex, BackendID: request.ThreadID, StartTurn: 1}}}
+		thread = &Thread{ID: request.ThreadID, Created: time.Now().Unix(), Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: request.ThreadID, StartTurn: 1}}}
 		r.threads[request.ThreadID] = thread
 	}
 	thread.selectReviewer(params)
 	text := turnText(params)
-	target := thread.current().Agent
+	target := thread.Current().Agent
 	if request.Model != "" {
-		target = agentForModel(request.Model)
+		target = protocol.AgentForModel(request.Model)
 	}
-	from := thread.current().Agent
+	from := thread.Current().Agent
 	switching := target != from
 	message := text
 	var plan agentSwitch
 	if switching {
 		plan = thread.planSwitch(from, target, text)
-		message = firstNonEmpty(plan.returning, plan.fresh)
+		message = textutil.FirstNonEmpty(plan.returning, plan.fresh)
+	}
+	if thread.Rebrief {
+		thread.Rebrief, switching = false, true
+		plan = agentSwitch{from: from, to: target, previous: -1, fresh: thread.briefing(rewindBriefing, thread.Turns, text)}
+		message = plan.fresh
 	}
 	startTurn := len(thread.Turns) + 1
 	thread.beginTurn(text, target)
 	thread.goalContinuations = 0
-	if target == agentClaude {
+	if target == protocol.AgentClaude {
 		message = goalPreamble(thread.Goal) + message
 		if switching {
 			if thread.claude != nil {
@@ -249,7 +266,7 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 			thread.Segments = append(thread.Segments, segment)
 			thread.claude = newClaudeSession(r, thread, segment.BackendID, segment.Started)
 		} else if thread.claude == nil {
-			thread.claude = newClaudeSession(r, thread, thread.current().BackendID, thread.current().Started)
+			thread.claude = newClaudeSession(r, thread, thread.Current().BackendID, thread.Current().Started)
 		}
 		if request.Model != "" {
 			thread.Model = request.Model
@@ -257,8 +274,9 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 		if request.Effort != "" {
 			thread.Effort = request.Effort
 		}
-		thread.save()
+		thread.Save()
 		thread.claude.syncPermissionMode()
+		thread.claude.images = turnImages(params)
 		return thread.claude.startTurn(id, message)
 	}
 	if !switching {
@@ -279,20 +297,20 @@ func (r *agentRouter) postProcessCodexResult(call codexCall, result, failure jso
 	}
 	switch call.method {
 	case "model/list":
-		return mergeClaudeModels(result)
+		return protocol.MergeClaudeModels(result)
 	case "thread/list":
 		return r.mergeThreadList(result)
 	case "thread/start", "thread/resume":
 		var response struct {
 			Thread struct {
-				ID    string            `json:"id"`
-				CWD   string            `json:"cwd"`
-				Turns []chatHistoryTurn `json:"turns"`
+				ID    string                 `json:"id"`
+				CWD   string                 `json:"cwd"`
+				Turns []protocol.HistoryTurn `json:"turns"`
 			} `json:"thread"`
 		}
 		if json.Unmarshal(result, &response) == nil && response.Thread.ID != "" && r.threads[response.Thread.ID] == nil {
-			thread := &routedThread{ID: response.Thread.ID, CWD: response.Thread.CWD, Created: time.Now().Unix(),
-				Segments: []threadSegment{{Agent: agentCodex, BackendID: response.Thread.ID, StartTurn: 1}}}
+			thread := &Thread{ID: response.Thread.ID, CWD: response.Thread.CWD, Created: time.Now().Unix(),
+				Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: response.Thread.ID, StartTurn: 1}}}
 			thread.seedFromHistory(response.Thread.Turns)
 			r.threads[thread.ID] = thread
 		}
@@ -311,11 +329,11 @@ func (r *agentRouter) mergeThreadList(result json.RawMessage) json.RawMessage {
 	}
 	hidden := map[string]bool{}
 	var extra []map[string]any
-	for _, thread := range listRoutedThreads() {
+	for _, thread := range ListThreads() {
 		for _, segment := range thread.Segments {
 			hidden[segment.BackendID] = true // listed once, as the routed conversation
 		}
-		extra = append(extra, map[string]any{"id": thread.ID, "name": "", "preview": thread.preview(), "cwd": thread.CWD,
+		extra = append(extra, map[string]any{"id": thread.ID, "name": "", "preview": thread.Preview(), "cwd": thread.CWD,
 			"updatedAt": thread.Updated, "createdAt": thread.Created, "status": map[string]string{"type": "notLoaded"}})
 	}
 	merged := extra
@@ -343,24 +361,39 @@ func requestedReviewer(params json.RawMessage) string {
 
 // selectReviewer records a newly requested approvals reviewer; requests that
 // name none keep the thread's current choice.
-func (t *routedThread) selectReviewer(params json.RawMessage) {
+func (t *Thread) selectReviewer(params json.RawMessage) {
 	if reviewer := requestedReviewer(params); reviewer != "" && reviewer != t.Reviewer {
 		t.Reviewer = reviewer
-		t.save()
+		t.Save()
 	}
 }
 
 // autoApprovals reports whether approvals go to an automatic reviewer.
-func (t *routedThread) autoApprovals() bool {
-	return t.Reviewer == chatAutoReviewer || t.Reviewer == "guardian_subagent"
+func (t *Thread) autoApprovals() bool {
+	return t.Reviewer == protocol.AutoReviewer || t.Reviewer == "guardian_subagent"
 }
 
 // codexOpenParams completes thread/start or thread/resume parameters for a
 // Codex segment so it keeps the conversation's approvals reviewer.
-func (t *routedThread) codexOpenParams(params map[string]any) map[string]any {
+func (t *Thread) codexOpenParams(params map[string]any) map[string]any {
 	params["cwd"] = t.CWD
 	if t.Reviewer != "" {
 		params["approvalsReviewer"] = t.Reviewer
 	}
 	return params
+}
+
+// ResumeCommand reopens the latest segment in its agent's own terminal UI.
+// Claude Code finds sessions by working directory, so callers start it in
+// the conversation's directory.
+func (t *Thread) ResumeCommand() []string {
+	segment := t.Current()
+	if segment.Agent == protocol.AgentClaude {
+		return []string{protocol.ClaudeBinary, "--resume", segment.BackendID}
+	}
+	command := []string{protocol.CodexBinary, "resume", segment.BackendID, "--include-non-interactive"}
+	if t.CWD != "" {
+		command = append(command, "-C", t.CWD)
+	}
+	return command
 }

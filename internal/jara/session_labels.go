@@ -3,6 +3,9 @@ package jara
 import (
 	"encoding/base64"
 	"strings"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 func sessionRecency(session Session) int64 {
@@ -13,21 +16,21 @@ func sessionRecency(session Session) int64 {
 }
 
 func sessionMenuLabel(request Request) string {
-	agent := agentDisplayName(request.Runtime)
+	agent := protocol.AgentDisplayName(request.Runtime)
 	prefix := ""
-	if request.Runtime == agentClaude {
+	if request.Runtime == protocol.AgentClaude {
 		prefix = agent + " "
 	}
 	switch {
 	case request.Handoff:
 		return "Handoff to " + agent
 	case request.Background:
-		prompt := strings.ReplaceAll(menuText(request.Prompt), "|", "/")
+		prompt := strings.ReplaceAll(textutil.SanitizeText(request.Prompt), "|", "/")
 		prompt = strings.Join(strings.Fields(prompt), " ")
 		if prompt == "" {
 			return "Background " + agent + " run"
 		}
-		return prefix + "Run: " + fitMenu(prompt, 70)
+		return prefix + "Run: " + textutil.FitText(prompt, 70)
 	case request.ResumeLatest:
 		return "Resume latest " + agent
 	case request.Worktree:

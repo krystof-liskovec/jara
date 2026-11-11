@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 const Version = "0.1.0-dev"
@@ -125,32 +127,9 @@ func saveConfig(c Config) error {
 	if hash != c.original {
 		return fmt.Errorf("configuration changed concurrently; retry the command")
 	}
-	return writeJSON(p, c)
+	return fsutil.WriteJSON(p, c)
 }
-func writeJSON(p string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
-		return err
-	}
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(filepath.Dir(p), ".jara-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if err = f.Chmod(0600); err == nil {
-		_, err = f.Write(append(b, '\n'))
-	}
-	if e := f.Close(); err == nil {
-		err = e
-	}
-	if err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), p)
-}
+
 func validateRemote(r Remote) error {
 	if r.Host == "" || r.Host[0] == '-' {
 		return fmt.Errorf("host or SSH alias is required")
