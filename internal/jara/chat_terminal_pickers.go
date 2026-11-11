@@ -89,13 +89,16 @@ func (p *chatTerminalPicker) active() bool { return p.kind != "" }
 func (p *chatTerminalPicker) selectCurrent(u *chatUI) {
 	p.selected = 0
 	switch p.kind {
-	case "model":
+	case "model", "default":
 		if u.models == nil {
 			return
 		}
 		current := u.nextModel
 		if current == "" {
 			current = u.effectiveModel
+		}
+		if p.kind == "default" {
+			current = u.defaults.forAgent(agentForModel(current))
 		}
 		for index, model := range u.models.models {
 			id, _, _ := modelOverride(model)
@@ -129,6 +132,8 @@ func (p *chatTerminalPicker) choices(u *chatUI) []chatCompletionChoice {
 	switch p.kind {
 	case "model":
 		return chatModelPickerChoices(u.models, u.nextModel, u.effectiveModel, p.selected)
+	case "default":
+		return chatDefaultPickerChoices(u, p.selected)
 	case "reasoning":
 		return chatReasoningPickerChoices(u, p.selected)
 	default:
@@ -162,6 +167,16 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 		}
 		u.print("Model set to " + u.nextModelLabel + " for the next and subsequent turns.\n")
 		p.close()
+	case "default":
+		if u.models == nil || p.selected >= len(u.models.models) {
+			return nil
+		}
+		id, _, err := modelOverride(u.models.models[p.selected])
+		if err != nil {
+			return err
+		}
+		p.close()
+		return u.setChatDefaultModel(id)
 	case "reasoning":
 		model := u.reasoningModel()
 		if model == nil || p.selected >= len(model.SupportedReasoningEfforts) {

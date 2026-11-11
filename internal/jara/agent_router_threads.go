@@ -29,13 +29,15 @@ type transcriptTurn struct {
 }
 
 type routedThread struct {
-	ID       string           `json:"id"`
-	CWD      string           `json:"cwd"`
-	Created  int64            `json:"created"`
-	Updated  int64            `json:"updated"`
-	Model    string           `json:"model,omitempty"` // Claude model ID
-	Effort   string           `json:"effort,omitempty"`
-	Goal     *chatThreadGoal  `json:"goal,omitempty"`
+	ID      string          `json:"id"`
+	CWD     string          `json:"cwd"`
+	Created int64           `json:"created"`
+	Updated int64           `json:"updated"`
+	Model   string          `json:"model,omitempty"` // Claude model ID
+	Effort  string          `json:"effort,omitempty"`
+	Goal    *chatThreadGoal `json:"goal,omitempty"`
+	// Reviewer is the app-server approvalsReviewer the UI last selected.
+	Reviewer string           `json:"approvalsReviewer,omitempty"`
 	Segments []threadSegment  `json:"segments"`
 	Turns    []transcriptTurn `json:"turns"`
 	claude   *claudeSession
@@ -136,7 +138,7 @@ func (r *agentRouter) startThread(id json.RawMessage, params json.RawMessage) er
 		return err
 	}
 	thread := &routedThread{ID: threadID, CWD: request.CWD, Created: time.Now().Unix(), Model: claudeDefaultModel,
-		Segments: []threadSegment{{Agent: agentClaude, BackendID: threadID}}}
+		Reviewer: requestedReviewer(params), Segments: []threadSegment{{Agent: agentClaude, BackendID: threadID}}}
 	r.threads[threadID] = thread
 	thread.claude = newClaudeSession(r, thread, threadID, false)
 	r.reply(id, map[string]any{"thread": map[string]any{"id": threadID, "turns": []any{}}, "model": thread.Model})
@@ -158,20 +160,23 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 	if thread == nil {
 		return r.callCodex(codexCall{uiID: id, method: "thread/resume"}, params)
 	}
+	thread.selectReviewer(params)
 	segment := thread.current()
 	if segment.Agent == agentClaude {
 		if thread.claude == nil {
 			thread.claude = newClaudeSession(r, thread, segment.BackendID, segment.Started)
 		}
+		thread.claude.syncPermissionMode()
 		var effort any
 		if thread.Effort != "" {
 			effort = thread.Effort
 		}
-		r.reply(id, map[string]any{"thread": map[string]any{"id": thread.ID, "turns": thread.historyTurns()}, "model": thread.Model, "reasoningEffort": effort})
+		r.reply(id, map[string]any{"thread": map[string]any{"id": thread.ID, "turns": thread.historyTurns()}, "model": thread.Model, "reasoningEffort": effort,
+			"resolvedModel": thread.claude.resolvedModel})
 		return nil
 	}
 	r.codexToVirtual[segment.BackendID] = thread.ID
-	codexRequest, _ := json.Marshal(map[string]any{"threadId": segment.BackendID, "cwd": thread.CWD})
+	codexRequest, _ := json.Marshal(thread.codexOpenParams(map[string]any{"threadId": segment.BackendID}))
 	return r.callCodex(codexCall{method: "thread/resume", callback: func(result, failure json.RawMessage) {
 		if failure != nil {
 			r.send(rpcMessage{ID: id, Error: failure})
@@ -202,6 +207,7 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 		thread = &routedThread{ID: request.ThreadID, Created: time.Now().Unix(), Segments: []threadSegment{{Agent: agentCodex, BackendID: request.ThreadID}}}
 		r.threads[request.ThreadID] = thread
 	}
+	thread.selectReviewer(params)
 	text := turnText(params)
 	target := thread.current().Agent
 	if request.Model != "" {
@@ -239,6 +245,7 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 			thread.Effort = request.Effort
 		}
 		thread.save()
+		thread.claude.syncPermissionMode()
 		return thread.claude.startTurn(id, message)
 	}
 	if !switching {
@@ -250,7 +257,7 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 	}
 	// Open a Codex thread for the rest of the conversation, then send the
 	// briefing as its first turn.
-	startParams, _ := json.Marshal(map[string]any{"cwd": thread.CWD})
+	startParams, _ := json.Marshal(thread.codexOpenParams(map[string]any{}))
 	return r.callCodex(codexCall{method: "thread/start", callback: func(result, failure json.RawMessage) {
 		var started struct {
 			Thread struct {
@@ -337,4 +344,37 @@ func (r *agentRouter) mergeThreadList(result json.RawMessage) json.RawMessage {
 		return result
 	}
 	return out
+}
+
+// requestedReviewer reads the approvalsReviewer a UI request selects, if any.
+func requestedReviewer(params json.RawMessage) string {
+	var request struct {
+		Reviewer string `json:"approvalsReviewer"`
+	}
+	_ = json.Unmarshal(params, &request)
+	return request.Reviewer
+}
+
+// selectReviewer records a newly requested approvals reviewer; requests that
+// name none keep the thread's current choice.
+func (t *routedThread) selectReviewer(params json.RawMessage) {
+	if reviewer := requestedReviewer(params); reviewer != "" && reviewer != t.Reviewer {
+		t.Reviewer = reviewer
+		t.save()
+	}
+}
+
+// autoApprovals reports whether approvals go to an automatic reviewer.
+func (t *routedThread) autoApprovals() bool {
+	return t.Reviewer == chatAutoReviewer || t.Reviewer == "guardian_subagent"
+}
+
+// codexOpenParams completes thread/start or thread/resume parameters for a
+// Codex segment so it keeps the conversation's approvals reviewer.
+func (t *routedThread) codexOpenParams(params map[string]any) map[string]any {
+	params["cwd"] = t.CWD
+	if t.Reviewer != "" {
+		params["approvalsReviewer"] = t.Reviewer
+	}
+	return params
 }

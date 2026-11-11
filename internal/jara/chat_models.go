@@ -364,6 +364,7 @@ func (u *chatUI) requestTurn(params map[string]any) error {
 }
 
 func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt string) error {
+	params["approvalsReviewer"] = u.approvalsReviewer()
 	id, err := u.c.request("turn/start", params)
 	if err != nil {
 		return err
@@ -389,7 +390,11 @@ func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt
 }
 
 func (u *chatUI) setEffectiveModel(model string) {
-	u.effectiveModel = strings.TrimSpace(chatText(model))
+	model = strings.TrimSpace(chatText(model))
+	if model != u.effectiveModel {
+		u.resolvedModel = ""
+	}
+	u.effectiveModel = model
 	if writer, ok := u.out.(interface{ SetChatAgent(string) }); ok {
 		writer.SetChatAgent(agentDisplayName(agentForModel(u.effectiveModel)))
 	}
@@ -399,14 +404,8 @@ func (u *chatUI) effectiveModelLabel() string {
 	if u.effectiveModel == "" {
 		return "not reported by Codex"
 	}
-	if u.models != nil {
-		for _, model := range u.models.models {
-			if u.effectiveModel == model.Model || u.effectiveModel == model.ID {
-				if model.DisplayName != "" {
-					return model.DisplayName
-				}
-			}
-		}
+	if u.resolvedModel != "" && agentForModel(u.effectiveModel) == agentClaude {
+		return claudeModelPrettyName(u.resolvedModel)
 	}
-	return claudeModelDisplayName(u.effectiveModel)
+	return u.modelName(u.effectiveModel)
 }

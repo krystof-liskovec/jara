@@ -25,6 +25,7 @@ func runCodexTerminal(args []string) error {
 	if err != nil {
 		return err
 	}
+	args = codexWithoutSharedDaemon(args)
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = os.Environ()
 	size, err := pty.GetsizeFull(os.Stdin)

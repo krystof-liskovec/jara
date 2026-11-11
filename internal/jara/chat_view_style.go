@@ -63,7 +63,7 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 			bg, fg = palette.canvas, palette.muted
 		case "progress":
 			bg, fg, bold = palette.canvas, menuSelectionText(palette.canvas), "\x1b[3m"
-		case "subagent":
+		case "subagent", "btw":
 			bg, fg = palette.canvas, palette.text
 		}
 	case "code":

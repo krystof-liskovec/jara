@@ -11,6 +11,10 @@ func (u *chatUI) line(line string) (bool, error) {
 		if isChatPlanCommand(trimmed) {
 			return false, u.runChatPlanCommand(trimmed)
 		}
+		if isChatAutoCommand(trimmed) {
+			u.runChatAutoCommand(trimmed)
+			return false, nil
+		}
 		if isChatGoalCommand(trimmed) {
 			return false, u.runChatGoalCommand(trimmed)
 		}
@@ -116,6 +120,13 @@ func (u *chatUI) line(line string) (bool, error) {
 		return false, u.runChatGoalCommand(line)
 	case isChatPlanCommand(line):
 		return false, u.runChatPlanCommand(line)
+	case isChatAutoCommand(line):
+		u.runChatAutoCommand(line)
+		return false, nil
+	case isChatBtwCommand(line):
+		return false, u.runChatBtwCommand(line)
+	case isChatDefaultCommand(line):
+		return false, u.runChatDefaultCommand(line)
 	case isChatScheduleCommand(line):
 		return false, u.runChatScheduleCommand(line)
 	case isChatCrunchCommand(line):

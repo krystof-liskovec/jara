@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -15,7 +16,11 @@ import (
 // as `claude` (stream-json) or `codex app-server`, logging what it received.
 func TestMain(m *testing.M) {
 	if os.Getenv("JARA_FAKE_AGENT") == "1" {
-		if slices.Contains(os.Args, "--input-format") {
+		if slices.Contains(os.Args, "--no-session-persistence") {
+			question, _ := io.ReadAll(os.Stdin)
+			fakeLog("claude-btw", strings.Join(os.Args[1:], " ")+"|"+string(question))
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"type": "result", "result": "claude btw: " + string(question)})
+		} else if slices.Contains(os.Args, "--input-format") {
 			fakeClaude()
 		} else {
 			fakeCodex()
@@ -148,6 +153,19 @@ func fakeCodex() {
 			reply(map[string]any{"thread": map[string]any{"id": fmt.Sprintf("codex-thread-%d", threads), "cwd": params["cwd"], "turns": []any{}}, "model": "gpt-x"})
 		case "thread/resume":
 			reply(map[string]any{"thread": map[string]any{"id": params["threadId"], "turns": []any{}}, "model": "gpt-x"})
+		case "thread/fork":
+			fakeLog("codex-fork", fmt.Sprint(params["threadId"], "|", params["ephemeral"], "|", params["sandbox"]))
+			fork := map[string]any{"id": "codex-fork", "ephemeral": true, "turns": []any{}}
+			_ = out.Encode(map[string]any{"method": "thread/started", "params": map[string]any{"thread": fork}})
+			reply(map[string]any{"thread": fork, "model": "gpt-x"})
+		case "config/read":
+			reply(map[string]any{"config": map[string]any{"model": os.Getenv("JARA_FAKE_CODEX_MODEL")}})
+		case "config/value/write":
+			fakeLog("codex-config", fmt.Sprint(params["keyPath"], "=", params["value"]))
+			reply(map[string]any{})
+		case "thread/unsubscribe":
+			fakeLog("codex-unsubscribe", fmt.Sprint(params["threadId"]))
+			reply(map[string]any{})
 		case "account/rateLimits/read":
 			fakeLog("codex-ratelimits", string(m.Params))
 			reply(map[string]any{"rateLimits": map[string]any{"primary": map[string]any{"usedPercent": 5, "windowDurationMins": 300, "resetsAt": 1}}})

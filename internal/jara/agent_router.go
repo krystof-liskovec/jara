@@ -27,14 +27,15 @@ type rpcMessage struct {
 }
 
 type routerEvent struct {
-	source  string // ui, codex, claude
-	message rpcMessage
-	session *claudeSession
-	process *exec.Cmd // Claude process that produced the event
-	thread  string    // goal continuation target
-	line    []byte
-	exited  error
-	closed  bool
+	source    string // ui, codex, claude
+	message   rpcMessage
+	session   *claudeSession
+	process   *exec.Cmd // Claude process that produced the event
+	thread    string    // goal continuation target
+	btwThread string    // side-question fork that timed out
+	line      []byte
+	exited    error
+	closed    bool
 }
 
 type codexCall struct {
@@ -58,6 +59,8 @@ type agentRouter struct {
 	threads        map[string]*routedThread
 	codexToVirtual map[string]string
 	approvals      map[string]*claudeSession // UI request ID -> session awaiting a decision
+	btw            map[string]*btwFork       // Codex fork thread -> pending side question
+	btwForking     int                       // side-question forks awaiting their thread ID
 	initialized    bool
 }
 
@@ -213,6 +216,9 @@ func (r *agentRouter) handle(event routerEvent) error {
 	case "goal":
 		r.continueGoal(event.thread)
 		return nil
+	case "btw":
+		r.finishBtw(event.btwThread, "", "the side question timed out")
+		return nil
 	case "claude":
 		if event.process != event.session.cmd {
 			return nil // output from a process that was replaced
@@ -240,6 +246,9 @@ func (r *agentRouter) fromCodex(m rpcMessage) error {
 		}
 		m.Result = r.postProcessCodexResult(call, m.Result, m.Error)
 		r.send(m)
+		return nil
+	}
+	if r.captureBtw(m) {
 		return nil
 	}
 	m.Params = r.rewriteCodexThread(m.Params)
@@ -306,6 +315,12 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		return r.resumeThread(m.ID, params)
 	case "turn/start":
 		return r.startTurn(m.ID, params)
+	case "jara/btw":
+		return r.askBtw(m.ID, params)
+	case "jara/defaultModel/get":
+		return r.getDefaultModels(m.ID, params)
+	case "jara/defaultModel/set":
+		return r.setDefaultModel(m.ID, params)
 	case "account/rateLimits/read":
 		return r.readRateLimits(m.ID, params)
 	case "thread/goal/set":

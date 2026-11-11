@@ -27,6 +27,9 @@ type claudeSession struct {
 	model     string
 	effort    string
 	plan      bool
+	mode      string // permission mode the running process uses
+
+	resolvedModel string // concrete model Claude Code reported at startup
 
 	turnID       string
 	turnCount    int
@@ -118,8 +121,9 @@ func (s *claudeSession) startProcess() error {
 	if s.effort != "" {
 		args = append(args, "--effort", s.effort)
 	}
-	if s.plan {
-		args = append(args, "--permission-mode", "plan")
+	s.mode = s.permissionMode()
+	if s.mode != "default" {
+		args = append(args, "--permission-mode", s.mode)
 	}
 	cmd := exec.Command(claudeExecutable(), args...)
 	cmd.Dir = s.thread.CWD
@@ -183,7 +187,7 @@ func (s *claudeSession) ensureProcess() error {
 	}
 	if model != s.model {
 		s.control("set_model", map[string]any{"model": model})
-		s.model = model
+		s.model, s.resolvedModel = model, ""
 	}
 	return nil
 }
@@ -240,15 +244,32 @@ func (s *claudeSession) interrupt() {
 	s.control("interrupt", nil)
 }
 
+// permissionMode maps Plan mode and the thread's approvals reviewer to Claude
+// Code's permission modes. Plan mode takes precedence; auto mode lets Claude
+// Code's classifier decide approvals instead of asking the user.
+func (s *claudeSession) permissionMode() string {
+	switch {
+	case s.plan:
+		return "plan"
+	case s.thread.autoApprovals():
+		return "auto"
+	default:
+		return "default"
+	}
+}
+
+// syncPermissionMode applies a changed permission mode to the running process.
+func (s *claudeSession) syncPermissionMode() {
+	mode := s.permissionMode()
+	if s.cmd != nil && mode != s.mode {
+		s.control("set_permission_mode", map[string]any{"mode": mode})
+		s.mode = mode
+	}
+}
+
 func (s *claudeSession) setPlanMode(plan bool) {
 	s.plan = plan
-	if s.cmd != nil {
-		mode := "default"
-		if plan {
-			mode = "plan"
-		}
-		s.control("set_permission_mode", map[string]any{"mode": mode})
-	}
+	s.syncPermissionMode()
 	s.r.notify("thread/settings/updated", map[string]any{"threadId": s.thread.ID, "threadSettings": map[string]any{"collaborationMode": map[string]any{"mode": map[bool]string{true: "plan", false: "default"}[plan]}}})
 }
 

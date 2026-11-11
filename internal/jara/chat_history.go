@@ -13,6 +13,7 @@ type chatThreadResponse struct {
 	} `json:"thread"`
 	Model           string  `json:"model"`
 	ReasoningEffort *string `json:"reasoningEffort"`
+	ResolvedModel   string  `json:"resolvedModel"` // concrete model behind an alias
 }
 
 type chatHistoryTurn struct {

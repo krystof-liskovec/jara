@@ -1,28 +1,34 @@
 # Jara conversation interface preview
 
-Start a new conversation with Jara's text interface:
+`jara`, `jara new`, `jara resume`, `jara sessions`, and `jara connect` open
+conversations in Jara's text interface by default:
 
 ```sh
-jara new --interface jara
-jara resume --interface jara
-jara resume --latest --interface jara
+jara new
+jara resume
+jara resume --latest
 ```
 
-For plain SSH, use `jara connect --new --interface jara WORKSPACE_ID`.
+For plain SSH, use `jara connect --new WORKSPACE_ID`.
 The client and remote host must both include this feature. Upgrade the host
 with `jara deployment upgrade --remote NAME` after installing a newer client.
 
 Jara runs Codex app-server over stdio inside its existing managed tmux session.
 Disconnecting SSH leaves that process running. Reattach through `jara` or the
 project browser. An existing terminal retains the interface it started with;
-use `jara new --interface jara` to try this alongside a Codex terminal.
-`--interface codex` selects the existing Codex terminal interface.
+use `jara new` to open a Jara conversation alongside a Codex terminal.
+`--interface codex` selects the native Codex terminal interface.
 To switch an idle persistent Jara conversation to Codex, connect with
 `jara connect --interface codex WORKSPACE_ID`; Jara hands off the saved thread
 to a Codex terminal. A running turn, another attached client, or scheduled work
 keeps the persistent session in place so its work can finish safely.
+Jara starts Codex terminals with `--no-daemon` when Codex supports it. Without
+it, Codex 0.167 and later keep a terminal's conversation in a shared background
+server after the terminal exits, so Jara cannot resume it. If Jara reports that
+a conversation "already has an active writer", close its Codex terminal, or run
+`codex app-server daemon stop` on the host when no terminal is open.
 
-When the local CLI opens an associated workspace with `--interface jara`, the
+When the local CLI opens an associated workspace in the Jara interface, the
 Jara conversation UI runs on the client and connects over SSH to Codex
 app-server in the remote workspace. Its session persists if the local CLI
 disconnects, so an active turn keeps running in the background and can be
@@ -77,6 +83,14 @@ prompt to open it directly. `/reasoning` and F3 open the selected model's
 supported reasoning choices. Use the arrow keys and Enter to choose, or Escape
 to return to the chat. The model and reasoning controls remain visible below
 the composer, and the choices apply to this and later turns in the conversation.
+The model control names the concrete model: the conversation's model, or before
+a conversation opens, the model a new one would use. For Claude Code's default
+entry it shows the model Claude Code reports once it starts.
+
+`/default` opens the same picker to set the default model for new conversations
+on this host; `/default ID` or `/default N` sets it directly. Jara saves it in the
+agent's own configuration (`model` in Codex's `config.toml`, or in Claude Code's
+`settings.json`), so that agent's terminals on the host use it too.
 When Codex is working, an animated activity row shows the latest concise
 progress summary when available; otherwise it reports whether Codex is thinking,
 running a command, applying changes, or waiting for input. Message headers show
@@ -131,6 +145,15 @@ is cleared when that interface exits.
 - `/plan` switches this conversation to Codex Plan mode for current and future
   turns. `/plan PROMPT` enables the mode and starts planning that prompt;
   `/plan off` returns to Default mode, and `/plan status` reports the mode.
+- `/auto` (on by default) lets an automatic reviewer approve or deny agent
+  actions instead of asking you: Codex routes approval requests to its
+  `auto_review` reviewer, and Claude Code runs in its `auto` permission mode.
+  `/auto off` returns to asking you, and `/auto status` reports the mode. The
+  choice applies from the next turn and resets to on when Jara reopens.
+- `/btw QUESTION` asks a quick side question about the conversation, even
+  while a turn is running. The answer appears in a "By the way" message and is
+  not added to the conversation. Codex answers in an ephemeral, read-only fork
+  of the thread; Claude Code answers in a forked, unsaved session without tools.
   A completed Plan item is shown in chat.
 - `/crunch PROMPT` works on the task until it is complete, then stops. If the
   agent stops because usage is exhausted, Jara waits for the reported
@@ -192,7 +215,8 @@ remain subject to the configured expiration policy; use
 `JARA_SESSION_IDLE_TIMEOUT=0` to disable expiration entirely.
 
 Approval requests show the request details and available file-change data.
-Only an explicit `/approve` grants approval. Structured non-secret questions
+Only an explicit `/approve` grants approval for requests that reach you; in
+auto mode the agent's own reviewer decides them first. Structured non-secret questions
 show numbered options and queue additional question sets. `/cancel` rejects
 pending questions and interrupts the turn. Secret questions and unsupported
 interactions such as MCP elicitation receive a protocol error instead of being
@@ -310,7 +334,8 @@ For Claude Code turns:
 - Replies stream as usual. Shell commands, file edits, and other tools appear
   as tool items. Edits show real diffs from Claude's structured patches,
   including in the changes pane.
-- Tool permissions arrive as ordinary approvals: `/approve` or `/deny`.
+- Claude Code runs in its `auto` permission mode unless `/auto off` is set;
+  any remaining tool permissions arrive as ordinary approvals: `/approve` or `/deny`.
 - Ctrl+C interrupts the turn, and `/plan` switches Claude Code to plan mode.
 - Claude Code does not expose thinking text in stream-json mode, even with
   `showThinkingSummaries`. The activity line instead shows live progress such

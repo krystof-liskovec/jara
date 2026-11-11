@@ -13,6 +13,18 @@ func validateChatInterface(value string) error {
 	}
 	return nil
 }
+
+// defaultChatInterface selects Jara's conversation UI for interactive
+// conversations; other actions keep the Codex terminal they require.
+func defaultChatInterface(action string) string {
+	switch action {
+	case "open", "new", "resume", "sessions":
+		return "jara"
+	default:
+		return "codex"
+	}
+}
+
 func chatServerArgs(args []string) ([]string, error) {
 	provider, err := resolveChatRuntime(defaultChatRuntime)
 	if err != nil {
