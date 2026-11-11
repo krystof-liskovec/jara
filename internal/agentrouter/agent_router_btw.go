@@ -1,4 +1,4 @@
-package jara
+package agentrouter
 
 import (
 	"bytes"
@@ -8,13 +8,16 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // A /btw side question sees the conversation so far but never becomes part of
 // it: Codex answers in an ephemeral read-only fork, Claude Code in a forked
 // session that is not saved. Either way the main turn keeps running.
 const (
-	btwTimeout      = 3 * time.Minute
+	BtwTimeout      = 3 * time.Minute
 	btwInstructions = "The user is asking a quick side question (/btw) while the main conversation continues. " +
 		"Answer it briefly and directly from the conversation so far. Do not run commands, use tools, or change files; " +
 		"if answering would need that, say what you would check instead."
@@ -41,8 +44,8 @@ func (r *agentRouter) askBtw(id json.RawMessage, params json.RawMessage) error {
 	}
 	codexThread := request.ThreadID
 	if thread := r.threads[request.ThreadID]; thread != nil {
-		segment := thread.current()
-		if segment.Agent == agentClaude {
+		segment := thread.Current()
+		if segment.Agent == protocol.AgentClaude {
 			r.askClaudeBtw(id, thread, segment, request.Question)
 			return nil
 		}
@@ -70,7 +73,7 @@ func (r *agentRouter) askBtw(id json.RawMessage, params json.RawMessage) error {
 		}
 		r.btw[forked.Thread.ID] = fork
 		forkID := forked.Thread.ID
-		fork.timer = time.AfterFunc(btwTimeout, func() { r.events <- routerEvent{source: "btw", btwThread: forkID} })
+		fork.timer = time.AfterFunc(BtwTimeout, func() { r.events <- routerEvent{source: "btw", btwThread: forkID} })
 		turnParams, _ := json.Marshal(map[string]any{"threadId": forkID, "input": []any{map[string]any{"type": "text", "text": request.Question}}})
 		_ = r.callCodex(codexCall{method: "turn/start", callback: func(_, failure json.RawMessage) {
 			if failure != nil {
@@ -106,11 +109,11 @@ func (r *agentRouter) captureBtw(m rpcMessage) bool {
 	if m.Method == "thread/started" && params.Thread.Ephemeral && r.btwForking > 0 {
 		return true // the fork announces itself before its ID is known
 	}
-	fork := r.btw[firstNonEmpty(params.ThreadID, params.Thread.ID)]
+	fork := r.btw[textutil.FirstNonEmpty(params.ThreadID, params.Thread.ID)]
 	if fork == nil {
 		return false
 	}
-	threadID := firstNonEmpty(params.ThreadID, params.Thread.ID)
+	threadID := textutil.FirstNonEmpty(params.ThreadID, params.Thread.ID)
 	switch {
 	case len(m.ID) > 0:
 		// The fork is read-only and never asks; decline anything it requests.
@@ -152,15 +155,13 @@ func (r *agentRouter) finishBtw(forkID, answer, failure string) {
 }
 
 // askClaudeBtw asks a forked, unsaved Claude Code session without tools.
-func (r *agentRouter) askClaudeBtw(id json.RawMessage, thread *routedThread, segment threadSegment, question string) {
+func (r *agentRouter) askClaudeBtw(id json.RawMessage, thread *Thread, segment ThreadSegment, question string) {
 	args := []string{"-p", "--output-format", "json", "--no-session-persistence", "--tools", "", "--append-system-prompt", btwInstructions}
-	if defaults, err := configuredAgentArgs(agentClaude, r.claudeArgs); err == nil {
-		args = append(args, defaults...)
-	}
+	args = append(args, r.claudeArgs...)
 	if segment.Started {
 		args = append(args, "--resume", segment.BackendID, "--fork-session")
 	}
-	if model := claudeCLIModel(thread.Model); model != "" {
+	if model := protocol.ClaudeCLIModel(thread.Model); model != "" {
 		args = append(args, "--model", model)
 	}
 	cwd := thread.CWD
@@ -175,9 +176,9 @@ func (r *agentRouter) askClaudeBtw(id json.RawMessage, thread *routedThread, seg
 }
 
 func runClaudeBtw(cwd string, args []string, question string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), btwTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), BtwTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, claudeExecutable(), args...)
+	cmd := exec.CommandContext(ctx, protocol.ClaudeExecutable(), args...)
 	cmd.Dir = cwd
 	cmd.Stdin = strings.NewReader(question)
 	stderr := &tailBuffer{}
@@ -188,7 +189,7 @@ func runClaudeBtw(cwd string, args []string, question string) (string, error) {
 		IsError bool   `json:"is_error"`
 	}
 	if parseErr := json.Unmarshal(bytes.TrimSpace(output), &result); parseErr != nil {
-		detail := firstNonEmpty(stderr.String(), fmt.Sprint(err), parseErr.Error())
+		detail := textutil.FirstNonEmpty(stderr.String(), fmt.Sprint(err), parseErr.Error())
 		return "", fmt.Errorf("Claude Code could not answer the side question: %s", detail)
 	}
 	if result.IsError {

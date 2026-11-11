@@ -41,7 +41,7 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 	case "activity-progress":
 		fg = menuSelectionText(palette.canvas)
 	case "controls":
-		bg, fg = palette.surface, palette.muted
+		fg = palette.muted
 	case "role-user":
 		bg, fg, bold = palette.canvas, palette.green, "\x1b[1m"
 	case "role-assistant", "heading", "bullet":
@@ -71,7 +71,6 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 	case "code-add", "code-delete", "code-hunk", "code-meta":
 		bg, fg = chatCodeLineColors(kind, palette)
 	case "completion":
-		bg = palette.surface
 		if selected {
 			bg, fg, bold = palette.selection, menuSelectionText(palette.selection), "\x1b[1m"
 		}
@@ -82,7 +81,7 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 	case "queued-prompt-more":
 		fg = palette.muted
 	case "composer", "composer-border":
-		bg = palette.surface
+		// The composer sits on the canvas; its accent border sets it apart.
 		if kind == "composer-border" {
 			fg, bold = palette.accent, "\x1b[1m"
 		}

@@ -1,9 +1,11 @@
 package jara
 
 import (
-	"github.com/rivo/uniseg"
 	"strings"
 	"testing"
+
+	"krystof.liskovec/jara/internal/textutil"
+	"github.com/rivo/uniseg"
 )
 
 func TestMenuThemeKeepsGeometryAndColorsWholeSelection(t *testing.T) {
@@ -21,10 +23,10 @@ func TestMenuThemeKeepsGeometryAndColorsWholeSelection(t *testing.T) {
 				if strings.TrimSpace(lines[i]) == "" && strings.Contains(line, menuBG(menuColors().surface)) {
 					t.Fatal("numeric metadata merged cards across their spacer")
 				}
-				if uniseg.StringWidth(menuText(line)) > width-1 {
+				if uniseg.StringWidth(textutil.SanitizeText(line)) > width-1 {
 					t.Fatalf("%s %d: overflow", theme, width)
 				}
-				if strings.Contains(line, selection) && strings.Contains(menuText(line), "▸ ") {
+				if strings.Contains(line, selection) && strings.Contains(textutil.SanitizeText(line), "▸ ") {
 					found = true
 					if i+1 >= len(styled) || !strings.Contains(styled[i+1], selection) {
 						t.Fatal("selection metadata has a different surface")

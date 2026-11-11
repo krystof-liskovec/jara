@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 const (
@@ -147,7 +149,7 @@ func writeGitIdentityConfig(path string, identity gitIdentity) error {
 }
 
 func gitIdentityConfigPath() (string, error) {
-	return filepath.Abs(filepath.Join(dataRoot(), "git-identity.gitconfig"))
+	return filepath.Abs(filepath.Join(fsutil.DataRoot(), "git-identity.gitconfig"))
 }
 
 func removeGitIdentityInclude(path string) error {

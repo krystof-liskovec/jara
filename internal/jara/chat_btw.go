@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/agentrouter"
 )
 
 // /btw asks a side question about the conversation without adding it to the
@@ -35,7 +37,7 @@ func (u *chatUI) runChatBtwCommand(line string) error {
 	if u.pending == nil {
 		u.pending = map[string]chatPending{}
 	}
-	u.pending[id] = chatPending{method: "jara/btw", deadline: time.Now().Add(btwTimeout + time.Minute), threadID: u.thread}
+	u.pending[id] = chatPending{method: "jara/btw", deadline: time.Now().Add(agentrouter.BtwTimeout + time.Minute), threadID: u.thread}
 	return nil
 }
 

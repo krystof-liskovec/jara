@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
-func (u *chatUI) modelByID(id string) *codexModel {
+func (u *chatUI) modelByID(id string) *protocol.CodexModel {
 	if u.models == nil {
 		return nil
 	}
@@ -19,7 +21,7 @@ func (u *chatUI) modelByID(id string) *codexModel {
 	return nil
 }
 
-func chatSupportsReasoning(model *codexModel, effort string) bool {
+func chatSupportsReasoning(model *protocol.CodexModel, effort string) bool {
 	if model == nil || effort == "" {
 		return false
 	}
@@ -38,7 +40,7 @@ var chatReasoningOrder = []string{"none", "minimal", "low", "medium", "high", "x
 // chatNearestReasoning keeps the effort when the model supports it and
 // otherwise picks the closest supported level, preferring the lower one on a
 // tie. Unknown efforts fall back to the model's default.
-func chatNearestReasoning(model *codexModel, effort string) string {
+func chatNearestReasoning(model *protocol.CodexModel, effort string) string {
 	if model == nil || chatSupportsReasoning(model, effort) {
 		return effort
 	}
@@ -73,7 +75,7 @@ func chatNearestReasoning(model *codexModel, effort string) string {
 	return best
 }
 
-func (u *chatUI) reasoningModel() *codexModel {
+func (u *chatUI) reasoningModel() *protocol.CodexModel {
 	modelID := u.nextModel
 	if modelID == "" {
 		modelID = u.effectiveModel
@@ -160,7 +162,7 @@ func (u *chatUI) reasoningControlLabel() string {
 	return label
 }
 
-func chatModelDisplayName(model *codexModel) string {
+func chatModelDisplayName(model *protocol.CodexModel) string {
 	if model == nil {
 		return "the selected model"
 	}

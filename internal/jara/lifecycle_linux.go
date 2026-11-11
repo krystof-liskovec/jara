@@ -7,14 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 // Kernel-managed locking releases the gate even if a process is killed.
 func lockLifecycle() (func(), error) {
-	if err := os.MkdirAll(dataRoot(), 0700); err != nil {
+	if err := os.MkdirAll(fsutil.DataRoot(), 0700); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(filepath.Join(dataRoot(), ".lifecycle.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	f, err := os.OpenFile(filepath.Join(fsutil.DataRoot(), ".lifecycle.lock"), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}

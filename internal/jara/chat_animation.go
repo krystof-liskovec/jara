@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -113,7 +114,7 @@ func chatSpinnerGlyph(frame int) string {
 }
 
 func chatActivityViewLine(model chatViewModel) chatViewLine {
-	label, detail, _ := strings.Cut(strings.TrimSpace(menuText(model.Activity)), " · ") // "Thinking · ~N tokens"
+	label, detail, _ := strings.Cut(strings.TrimSpace(textutil.SanitizeText(model.Activity)), " · ") // "Thinking · ~N tokens"
 	kind := "activity-progress"
 	switch label {
 	case "Running command", "Applying changes", "Compacting context":
@@ -125,7 +126,7 @@ func chatActivityViewLine(model chatViewModel) chatViewLine {
 		label = verb
 	}
 	var details []string
-	for _, part := range []string{menuText(model.ActivityElapsed), detail, model.ActivityHint} {
+	for _, part := range []string{textutil.SanitizeText(model.ActivityElapsed), detail, model.ActivityHint} {
 		if part = strings.TrimSpace(part); part != "" {
 			details = append(details, part)
 		}

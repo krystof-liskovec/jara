@@ -140,6 +140,8 @@ func (u *chatUI) line(line string) (bool, error) {
 	case line == "/help":
 		u.print("\n" + u.help() + "You> ")
 		return false, nil
+	case isChatExtraCommand(line):
+		return false, u.runChatExtraCommand(line)
 	case line == "/resume":
 		u.sessionPickerRequested = true
 		if err := u.startChatSessionSearch(""); err != nil {
@@ -248,6 +250,13 @@ func (u *chatUI) line(line string) (bool, error) {
 		u.print("No draft is being composed. Use /compose first.\n")
 		return false, nil
 	case strings.HasPrefix(line, "/") && line != "/new" && line != "/resume" && !strings.HasPrefix(line, "/resume "):
+		if expanded, ok := u.expandCustomCommand(line); ok {
+			if u.busy {
+				u.print("A turn is running. Use /cancel or wait for it to finish.\n")
+				return false, nil
+			}
+			return false, u.sendPrompt(expanded)
+		}
 		u.print("Unknown command: " + line + ". Use /help to see commands.\n")
 		return false, nil
 	case strings.HasPrefix(line, "!"):
@@ -355,6 +364,7 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 		return nil
 	}
 	u.recordRole("user", message)
+	u.promptLog = append(u.promptLog, chatPromptEntry{text: message})
 	if message != u.lastPrompt {
 		u.lastPrompt, u.fallbackRetried = message, false
 	}
@@ -365,7 +375,7 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 	u.setAgentState("running")
 	params := map[string]any{
 		"threadId": u.thread,
-		"input":    []any{map[string]any{"type": "text", "text": message}},
+		"input":    append([]any{map[string]any{"type": "text", "text": message}}, u.takeChatImages(message)...),
 		"summary":  "concise",
 	}
 	if u.nextModel != "" {

@@ -2,9 +2,11 @@ package jara
 
 import (
 	"fmt"
-	"github.com/rivo/uniseg"
 	"strings"
 	"testing"
+
+	"krystof.liskovec/jara/internal/textutil"
+	"github.com/rivo/uniseg"
 )
 
 func TestMenuFitsTerminal(t *testing.T) {
@@ -36,13 +38,13 @@ func TestMenuFitsTerminal(t *testing.T) {
 	}
 }
 func TestMenuUnicodeAndControlText(t *testing.T) {
-	if got := fitMenu("👩‍💻ab", 3); got != "👩‍💻…" {
+	if got := textutil.FitText("👩‍💻ab", 3); got != "👩‍💻…" {
 		t.Fatalf("split grapheme: %q", got)
 	}
-	if got := fitMenu("éabc", 3); got != "éa…" {
+	if got := textutil.FitText("éabc", 3); got != "éa…" {
 		t.Fatalf("split combining character: %q", got)
 	}
-	text := menuText("repo\x1b[2J\x1b]0;unsafe\x07\n\u202ename")
+	text := textutil.SanitizeText("repo\x1b[2J\x1b]0;unsafe\x07\n\u202ename")
 	if text != "repo name" {
 		t.Fatalf("unsafe terminal text: %q", text)
 	}

@@ -6,16 +6,9 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-)
 
-type chatThreadGoal struct {
-	ThreadID        string `json:"threadId"`
-	Objective       string `json:"objective"`
-	Status          string `json:"status"`
-	TokenBudget     *int64 `json:"tokenBudget"`
-	TokensUsed      int64  `json:"tokensUsed"`
-	TimeUsedSeconds int64  `json:"timeUsedSeconds"`
-}
+	"krystof.liskovec/jara/internal/protocol"
+)
 
 const chatGoalUsage = "Usage: /goal <objective> | /goal pause | /goal resume | /goal clear | /goal edit <objective>\n"
 
@@ -92,7 +85,7 @@ func (u *chatUI) acceptChatGoalResponse(m appMessage, method, action string) err
 	switch method {
 	case "thread/goal/get":
 		var response struct {
-			Goal *chatThreadGoal `json:"goal"`
+			Goal *protocol.ThreadGoal `json:"goal"`
 		}
 		if err := json.Unmarshal(m.Result, &response); err != nil {
 			return err
@@ -106,7 +99,7 @@ func (u *chatUI) acceptChatGoalResponse(m appMessage, method, action string) err
 	case "thread/goal/set":
 		if strings.HasPrefix(action, "goalcrunch:") {
 			var response struct {
-				Goal *chatThreadGoal `json:"goal"`
+				Goal *protocol.ThreadGoal `json:"goal"`
 			}
 			if len(m.Result) > 0 && json.Unmarshal(m.Result, &response) == nil && response.Goal != nil {
 				u.goal = response.Goal
@@ -119,7 +112,7 @@ func (u *chatUI) acceptChatGoalResponse(m appMessage, method, action string) err
 			}, "create")
 		}
 		var response struct {
-			Goal *chatThreadGoal `json:"goal"`
+			Goal *protocol.ThreadGoal `json:"goal"`
 		}
 		if len(m.Result) > 0 {
 			if err := json.Unmarshal(m.Result, &response); err != nil {
@@ -164,8 +157,8 @@ func (u *chatUI) acceptChatGoalResponse(m appMessage, method, action string) err
 
 func (u *chatUI) acceptChatGoalUpdate(raw json.RawMessage) error {
 	var notification struct {
-		ThreadID string         `json:"threadId"`
-		Goal     chatThreadGoal `json:"goal"`
+		ThreadID string              `json:"threadId"`
+		Goal     protocol.ThreadGoal `json:"goal"`
 	}
 	if err := json.Unmarshal(raw, &notification); err != nil {
 		return err
@@ -236,7 +229,7 @@ func chatGoalRequestError(message string) string {
 	}
 }
 
-func formatChatGoal(goal chatThreadGoal) string {
+func formatChatGoal(goal protocol.ThreadGoal) string {
 	var result strings.Builder
 	fmt.Fprintf(&result, "Goal (%s)\nObjective: %s\nTime used: %s\n", chatGoalStatusLabel(goal.Status), goal.Objective, formatChatGoalTime(goal.TimeUsedSeconds))
 	if goal.TokenBudget == nil {

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 type providerCredential struct {
@@ -33,14 +35,14 @@ type RemoteRepository struct {
 }
 
 func providerCredentialPath(provider string) string {
-	return filepath.Join(dataRoot(), "auth", provider+"-repository-browser.json")
+	return filepath.Join(fsutil.DataRoot(), "auth", provider+"-repository-browser.json")
 }
 
 func saveProviderCredential(provider, host, secret string) error {
 	if provider != "gitlab" && provider != "gitea" {
 		return nil
 	}
-	return writeJSON(providerCredentialPath(provider), providerCredential{Host: host, Token: secret})
+	return fsutil.WriteJSON(providerCredentialPath(provider), providerCredential{Host: host, Token: secret})
 }
 
 func readProviderCredential(provider string) (providerCredential, error) {
@@ -252,7 +254,7 @@ func remoteCloneRepository(q Request) error {
 	}
 	branch, _ := gitOutput(destination, "symbolic-ref", "--short", "-q", "HEAD")
 	workspace := Workspace{ID: q.ID, Name: q.Name, Path: destination, URL: origin, Branch: branch, Created: time.Now().UTC().Format(time.RFC3339), Ready: true}
-	if err = writeJSON(destination+".json", workspace); err != nil {
+	if err = fsutil.WriteJSON(destination+".json", workspace); err != nil {
 		_ = os.RemoveAll(destination)
 		return err
 	}

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 type gitCredentialTarget struct {
@@ -108,7 +110,7 @@ func storeGitCredential(destination, username, password string) error {
 	if !strings.HasPrefix(destination, "https://") {
 		return fmt.Errorf("stored Git credentials must use HTTPS")
 	}
-	root, err := filepath.Abs(dataRoot())
+	root, err := filepath.Abs(fsutil.DataRoot())
 	if err != nil {
 		return err
 	}

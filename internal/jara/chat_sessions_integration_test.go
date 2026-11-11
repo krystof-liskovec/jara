@@ -117,9 +117,9 @@ func TestNewChatSessionQueryInvalidatesOlderRequestAndChoices(t *testing.T) {
 	u.connected = true
 	u.cwd = "/workspace/current"
 	_, _ = u.line("/sessions first")
-	requests := decodeChatRequests(t, &wire)
+	decodeChatRequests(t, &wire)
 	_, _ = u.line("/sessions second")
-	requests = decodeChatRequests(t, &wire)
+	requests := decodeChatRequests(t, &wire)
 	if len(requests) != 2 || len(u.pending) != 1 {
 		t.Fatalf("new query should replace prior in-flight request: requests=%+v pending=%v", requests, u.pending)
 	}

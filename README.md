@@ -484,9 +484,8 @@ Native conversation migration is **unavailable**, with an explicit error and no
 source changes. See [migration findings](docs/migration.md). No summary fallback
 is substituted automatically.
 
-Run `go test ./...` and `go vet ./...` for local checks; use `go test -race ./...`
-when a C compiler is available. Container build and transport test commands are
-in the [verification guide](docs/verification.md#repeat-the-tests).
+Run `go test ./...`, `go vet ./...`, and `staticcheck ./...` for local checks, and the tests again after a Codex upgrade
+(they check its app-server protocol). Use `go test -race ./...` when a C compiler is available. Container build and transport test commands are in the [verification guide](docs/verification.md#repeat-the-tests).
 
 The transport smoke test uses temporary keys and a fake Codex process. For the
 actual Compose deployment, real Codex UI, disconnect/reconnect, sandbox execution

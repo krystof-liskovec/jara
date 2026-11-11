@@ -1,13 +1,14 @@
 package jara
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"slices"
 	"sync"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 // Jara's MCP server speaks newline-delimited JSON-RPC 2.0 over stdio. Both
@@ -43,8 +44,7 @@ func mcpCommand(args []string) error {
 // serveMCP handles requests concurrently so a long tool call that waits for a
 // task does not block pings or other calls.
 func serveMCP(input io.Reader, output io.Writer) error {
-	scanner := bufio.NewScanner(input)
-	scanner.Buffer(make([]byte, 64*1024), 8<<20)
+	scanner := protocol.NewLineScanner(input)
 	var writeMu sync.Mutex
 	var pending sync.WaitGroup
 	write := func(response mcpResponse) {
@@ -149,7 +149,7 @@ func delegationTools() []map[string]any {
 		{"name": "delegate_task", "title": "Delegate to an agent",
 			"description": "Start Claude Code or Codex on a self-contained task in this workspace and return its result, or a task ID if it is still running. Write the prompt as a complete brief: the other agent cannot see your conversation.",
 			"inputSchema": schema(map[string]any{
-				"agent":        str("Agent to run.", agentClaude, agentCodex),
+				"agent":        str("Agent to run.", protocol.AgentClaude, protocol.AgentCodex),
 				"prompt":       str("Complete instructions for the task."),
 				"isolation":    str("worktree (default for Git repositories): own branch and checkout from your HEAD; shared: work directly in your checkout.", "worktree", "shared"),
 				"permission":   str("read-only, edit (default: edit files, commands that need approval are refused), or full (no restrictions inside the container).", permissionReadOnly, permissionEdit, permissionFull),

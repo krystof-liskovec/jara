@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 const workspaceLockOwnerFile = "owner.pid"
@@ -48,19 +50,11 @@ type Session struct {
 	Agent        string
 }
 
-func dataRoot() string {
-	if p := os.Getenv("JARA_DATA"); p != "" {
-		return p
-	}
-	h, _ := os.UserHomeDir()
-	return filepath.Join(h, ".local", "share", "jara")
-}
-
 func workspacePath(id string) (string, error) {
 	if !nameRE.MatchString(id) {
 		return "", fmt.Errorf("invalid workspace ID")
 	}
-	return filepath.Join(dataRoot(), "workspaces", id), nil
+	return filepath.Join(fsutil.DataRoot(), "workspaces", id), nil
 }
 
 func workspaceInfo(id string) (Workspace, error) {

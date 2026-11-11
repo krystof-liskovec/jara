@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 func clientMenu(c Config) error {
@@ -84,9 +86,9 @@ func runClientMenuAction(c Config, action string) error {
 			return err
 		}
 		if action == "new-claude" {
-			return Run([]string{"new", "--remote", name, "--agent", agentClaude})
+			return Run([]string{"new", "--remote", name, "--agent", protocol.AgentClaude})
 		}
-		return Run([]string{"new", "--remote", name, "--agent", agentCodex})
+		return Run([]string{"new", "--remote", name, "--agent", protocol.AgentCodex})
 	case "handoff":
 		name, err := chooseMenuRemote(c, "Hand off on which remote")
 		if err != nil || name == "" {
@@ -148,7 +150,7 @@ func remoteConnectionsMenu(c Config) error {
 func authenticationMenu(c Config) error {
 	items := []menuItem{
 		{Title: "Sign in to Codex", Detail: "Use device authorization on a remote", Kind: "tools", Action: "codex"},
-		{Title: "Sign in to Claude Code", Detail: "Store a token from claude setup-token on a remote", Kind: "tools", Action: agentClaude},
+		{Title: "Sign in to Claude Code", Detail: "Store a token from claude setup-token on a remote", Kind: "tools", Action: protocol.AgentClaude},
 		{Title: "Configure Git credentials", Detail: "Share credentials across repositories on one Git server", Kind: "tools", Action: "git"},
 	}
 	selected, err := selectMenu("Sign-in and Git access", items)

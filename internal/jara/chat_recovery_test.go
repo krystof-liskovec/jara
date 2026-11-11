@@ -146,7 +146,9 @@ func TestChatRecoveryAppServerFixture(t *testing.T) {
 			send(map[string]any{"id": message.ID, "result": map[string]any{"turn": map[string]string{"id": "turn-after-recovery"}}})
 			send(map[string]any{"method": "turn/completed", "params": map[string]any{"turn": map[string]string{"id": "turn-after-recovery", "status": "completed"}}})
 		default:
-			os.Exit(4)
+			if !acknowledgeFixtureRequest(send, message) {
+				os.Exit(4)
+			}
 		}
 	}
 }

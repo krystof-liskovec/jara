@@ -78,6 +78,14 @@ func (h *chatDaemonClientHub) broadcast(line []byte, message appMessage) {
 	if message.Method != "" && len(message.ID) > 0 {
 		h.requests.add(message.ID, line)
 	}
+	if message.Method == "serverRequest/resolved" {
+		var resolved struct {
+			RequestID json.RawMessage `json:"requestId"`
+		}
+		if json.Unmarshal(message.Params, &resolved) == nil && len(resolved.RequestID) > 0 {
+			h.requests.remove(resolved.RequestID)
+		}
+	}
 	for client := range h.clients {
 		if err := client.write(line); err != nil {
 			delete(h.clients, client)

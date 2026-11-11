@@ -12,6 +12,9 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"krystof.liskovec/jara/internal/agentrouter"
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 type chatCrunchJob struct {
@@ -135,7 +138,7 @@ func (m *chatCrunchManager) create(threadID, mode, prompt string) (chatCrunchJob
 	job := &chatCrunchJob{
 		ID: "cr-" + hex.EncodeToString(idBytes[:]), ThreadID: threadID,
 		Mode: mode, Prompt: prompt, Status: "pending", CreatedAt: now, UpdatedAt: now,
-		Fallback: loadModelPrefs().Fallback,
+		Fallback: agentrouter.LoadModelPrefs().Fallback,
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -168,7 +171,7 @@ func (m *chatCrunchManager) tick(input io.Writer, inputMu *sync.Mutex, busy func
 		return nil
 	}
 	kind, method := "", ""
-	params := map[string]any{}
+	var params map[string]any
 	switch m.job.Status {
 	case "pending":
 		kind, method = "turnStart", "turn/start"
@@ -240,10 +243,6 @@ func (m *chatCrunchManager) running() bool {
 	default:
 		return false
 	}
-}
-
-func (m *chatCrunchManager) activeJob() bool {
-	return m.hasPending()
 }
 
 func (m *chatCrunchManager) fail(message string) {
@@ -384,7 +383,7 @@ func crunchJobActive(status string) bool {
 // crunchGoalName keeps Codex's wording, which cues its goal tool; Claude Code
 // conversations complete goals through the router's GOAL COMPLETE marker.
 func crunchGoalName(job chatCrunchJob) string {
-	if thread := loadRoutedThread(job.ThreadID); thread != nil && thread.current().Agent == agentClaude {
+	if thread := agentrouter.LoadThread(job.ThreadID); thread != nil && thread.Current().Agent == protocol.AgentClaude {
 		return "goal"
 	}
 	return "Codex goal"

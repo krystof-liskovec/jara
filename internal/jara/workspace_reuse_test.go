@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 func reuseFixtureRepo(t *testing.T) string {
@@ -172,7 +174,7 @@ func TestOpenLinksExistingCheckoutAndRemembersAssociation(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := Config{Default: "work", Remotes: map[string]Remote{"work": {Host: "test"}}}
-	if err := writeJSON(os.Getenv("JARA_CONFIG"), c); err != nil {
+	if err := fsutil.WriteJSON(os.Getenv("JARA_CONFIG"), c); err != nil {
 		t.Fatal(err)
 	}
 	input, err := os.CreateTemp(dir, "input")

@@ -1,12 +1,13 @@
 package jara
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os/exec"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 // appMessage preserves request IDs verbatim: server requests may use string IDs.
@@ -61,8 +62,7 @@ func startChatConnection(connection io.ReadWriteCloser) *appConnection {
 func newAppConnection(cmd *exec.Cmd, input io.WriteCloser, output io.Reader) *appConnection {
 	c := &appConnection{cmd: cmd, input: input, reader: output, encoder: json.NewEncoder(input), messages: make(chan appMessage, 32), errors: make(chan error, 1), stop: make(chan struct{})}
 	go func() {
-		scanner := bufio.NewScanner(c.reader)
-		scanner.Buffer(make([]byte, 4096), 8<<20)
+		scanner := protocol.NewLineScanner(c.reader)
 		for scanner.Scan() {
 			var m appMessage
 			if err := json.Unmarshal(scanner.Bytes(), &m); err != nil {

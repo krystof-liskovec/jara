@@ -1,14 +1,17 @@
 package jara
 
 import (
-	"bufio"
 	"encoding/json"
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
+
+	"krystof.liskovec/jara/internal/fsutil"
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 type chatDaemonClientClosed struct {
@@ -21,7 +24,7 @@ type chatDaemonClientClosed struct {
 }
 
 func writeChatDaemonState(paths chatDaemonPaths, state chatDaemonState) error {
-	return writeJSON(paths.state, state)
+	return fsutil.WriteJSON(paths.state, state)
 }
 
 func removeChatDaemonPID(paths chatDaemonPaths, pid int) {
@@ -32,8 +35,7 @@ func removeChatDaemonPID(paths chatDaemonPaths, pid int) {
 }
 
 func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputMu *sync.Mutex, state *chatDaemonState, stateMu, stateWriteMu *sync.Mutex, paths chatDaemonPaths, pending map[string]string, pendingMu *sync.Mutex, router *chatDaemonClientRouter, serverRequests *chatDaemonRequestQueue, schedules *chatScheduleManager, crunch *chatCrunchManager, closed chan<- chatDaemonClientClosed) {
-	scanner := bufio.NewScanner(client.conn)
-	scanner.Buffer(make([]byte, 4096), 8<<20)
+	scanner := protocol.NewLineScanner(client.conn)
 	requestedClose := false
 	requestedDetach := false
 	requestedStop := false
@@ -240,10 +242,6 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 	return changed
 }
 
-func writeChatDaemonError(conn net.Conn, message string) error {
-	return json.NewEncoder(conn).Encode(map[string]any{"method": "jara/error", "params": map[string]string{"message": message}})
-}
-
 type chatDaemonRequestQueue struct {
 	mu    sync.Mutex
 	byID  map[string][]byte
@@ -264,22 +262,27 @@ func (q *chatDaemonRequestQueue) add(id json.RawMessage, line []byte) {
 	q.byID[key] = append([]byte(nil), line...)
 }
 
-func (q *chatDaemonRequestQueue) remove(id json.RawMessage) {
-	q.mu.Lock()
-	if _, ok := q.byID[string(id)]; ok {
-		delete(q.byID, string(id))
-	}
-	q.mu.Unlock()
-}
-
+// claim takes a request a client answered; only the first answer counts.
 func (q *chatDaemonRequestQueue) claim(id json.RawMessage) bool {
-	key := string(id)
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	return q.forgetLocked(string(id))
+}
+
+// remove drops a request the app-server settled itself, so it is not
+// replayed to clients that attach later.
+func (q *chatDaemonRequestQueue) remove(id json.RawMessage) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.forgetLocked(string(id))
+}
+
+func (q *chatDaemonRequestQueue) forgetLocked(key string) bool {
 	if _, ok := q.byID[key]; !ok {
 		return false
 	}
 	delete(q.byID, key)
+	q.order = slices.DeleteFunc(q.order, func(queued string) bool { return queued == key })
 	return true
 }
 

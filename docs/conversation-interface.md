@@ -171,6 +171,36 @@ is cleared when that interface exits.
   not added to the conversation. Codex answers in an ephemeral, read-only fork
   of the thread; Claude Code answers in a forked, unsaved session without tools.
   A completed Plan item is shown in chat.
+- The controls bar shows how much of the model's context window is left once
+  the agent reports usage (`◔ Context 72% left`; `/status` shows the token
+  counts). `/compact` compacts the context now: Codex runs its compaction, and
+  Claude Code runs its own `/compact`. `/clear` starts a new conversation with
+  an empty transcript.
+- `/rewind` opens a list of this conversation's prompts (`/rewind N` picks one
+  directly). The agent forgets the chosen prompt and everything after it, the
+  transcript reloads, and the prompt returns to the input box to edit and send.
+  A conversation that only ran on Codex is reverted natively with Codex's
+  `thread/revert`; any other conversation continues in a fresh session briefed
+  on the remaining turns. Files in the working tree are not rolled back.
+- Typing `@` and part of a path lists matching workspace files, found by the
+  app-server's fuzzy file search; Enter or Tab inserts `@path`.
+- Images join a prompt as `[Image #N]` placeholders: paste or drop an image
+  file's path, press Ctrl+V with an image on the clipboard (`wl-paste`,
+  `xclip`, or `pngpaste` on the machine running the interface), or use
+  `/image PATH`. PNG, JPEG, GIF, and WebP images up to 5 MB are read where the
+  interface runs and sent with the prompt to either provider.
+- Prompt files in `~/.codex/prompts`, `~/.claude/commands`, and the project's
+  `.claude/commands` work as custom slash commands with either provider
+  (subfolders become `/folder:name`). Jara fills in `$ARGUMENTS` and `$1`…`$9`
+  and appends arguments a prompt does not reference. Built-in commands win
+  over custom ones with the same name.
+- When a turn that ran for 15 seconds or more ends, or an approval or question
+  waits for you, Jara rings the terminal bell and sends a desktop notification
+  (OSC 9, passed through tmux when its `allow-passthrough` is on). The bell
+  also flags the tmux window. `/alerts off` silences this for the session.
+- `/diff` lists the file changes this conversation made, oldest first, and
+  re-enables the changes pane. `/export [PATH]` saves the conversation as
+  Markdown, by default as `jara-conversation-DATE-TIME.md` in the workspace.
 - `/crunch PROMPT` works on the task until it is complete, then stops. If the
   agent stops because usage is exhausted, Jara waits for the reported
   rate-limit reset and continues from the saved conversation. `/goalcrunch
@@ -289,7 +319,16 @@ JARA_REAL_CODEX_TEST=1 go test ./internal/jara \
   -run '^TestInstalledCodexAppServerMetadataSmoke$' -count=1 -timeout=40s
 ```
 
-It starts no inference turns and prints no account or conversation data. These
+It starts no inference turns and prints no account or conversation data. A
+second, opt-in test drives the installed, logged-in Claude Code through the
+agent router: a reply, model and context reporting, an image, `/btw`,
+`/compact`, and `/rewind`. It sends a few short prompts to Claude Haiku:
+
+```sh
+JARA_REAL_CLAUDE_TEST=1 go test ./internal/jara \
+  -run '^TestInstalledClaudeCodeThroughTheRouter$' -count=1 -timeout=10m
+```
+ These
 checks cover terminal behavior and protocol metadata; physical phone apps and
 live inference remain outside their verified scope.
 

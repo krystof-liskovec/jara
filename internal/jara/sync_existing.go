@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 // A newly joined checkout has no shared sync history. Use the local committed
@@ -34,7 +36,7 @@ func seedExistingBaseline(binding Binding, root string) error {
 	if err != nil {
 		return err
 	}
-	return writeJSON(state, Baseline{Local: base, Remote: base, LocalHead: head})
+	return fsutil.WriteJSON(state, Baseline{Local: base, Remote: base, LocalHead: head})
 }
 
 func committedManifest(root, commit string) (Snapshot, error) {

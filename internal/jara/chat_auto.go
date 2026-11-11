@@ -1,11 +1,10 @@
 package jara
 
-import "strings"
+import (
+	"strings"
 
-// chatAutoReviewer is the app-server approvalsReviewer for auto mode. Codex
-// routes approval requests to its auto-review subagent; Jara's agent router
-// runs Claude Code in its auto permission mode.
-const chatAutoReviewer = "auto_review"
+	"krystof.liskovec/jara/internal/protocol"
+)
 
 // approvalsReviewer is sent with every conversation request so the agent
 // uses the mode the user selected. Auto mode is the default.
@@ -13,7 +12,7 @@ func (u *chatUI) approvalsReviewer() string {
 	if u.manualApprovals {
 		return "user"
 	}
-	return chatAutoReviewer
+	return protocol.AutoReviewer
 }
 
 func isChatAutoCommand(line string) bool {

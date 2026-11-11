@@ -6,35 +6,19 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 const (
-	chatModelPageSize   = 100
-	chatModelMaxPages   = 2
-	chatModelMaxShown   = 12
-	chatModelMaxIDBytes = 128
+	chatModelMaxPages = 2
+	chatModelMaxShown = 12
 )
-
-type codexModel struct {
-	ID                        string                      `json:"id"`
-	Model                     string                      `json:"model"`
-	DisplayName               string                      `json:"displayName"`
-	Hidden                    bool                        `json:"hidden"`
-	IsDefault                 bool                        `json:"isDefault"`
-	DefaultReasoningEffort    string                      `json:"defaultReasoningEffort"`
-	SupportedReasoningEfforts []chatReasoningEffortOption `json:"supportedReasoningEfforts"`
-}
-
-type chatReasoningEffortOption struct {
-	Value       string `json:"reasoningEffort"`
-	Description string `json:"description"`
-}
 
 type chatModelBrowser struct {
 	cursor     string
 	pages      int
-	models     []codexModel
+	models     []protocol.CodexModel
 	seen       map[string]struct{}
 	complete   bool
 	incomplete bool
@@ -55,7 +39,7 @@ func newChatModelBrowser() *chatModelBrowser {
 }
 
 func (b *chatModelBrowser) requestParams() map[string]any {
-	params := map[string]any{"limit": chatModelPageSize, "includeHidden": false}
+	params := map[string]any{"limit": protocol.ModelPageSize, "includeHidden": false}
 	if b.cursor != "" {
 		params["cursor"] = b.cursor
 	}
@@ -67,8 +51,8 @@ func (b *chatModelBrowser) acceptPage(raw json.RawMessage) (bool, error) {
 		return false, fmt.Errorf("model list is already complete")
 	}
 	var page struct {
-		Data       []codexModel `json:"data"`
-		NextCursor *string      `json:"nextCursor"`
+		Data       []protocol.CodexModel `json:"data"`
+		NextCursor *string               `json:"nextCursor"`
 	}
 	if err := json.Unmarshal(raw, &page); err != nil {
 		return false, fmt.Errorf("decode model list: %w", err)
@@ -139,8 +123,8 @@ func (b *chatModelBrowser) model(value string) (id, label string, err error) {
 		}
 		return modelOverride(b.models[number-1])
 	}
-	if !validChatModelID(value) {
-		return "", "", fmt.Errorf("model ID must be 1 to %d ASCII letters, digits, '.', '_', '-', or '/'", chatModelMaxIDBytes)
+	if !protocol.ValidModelID(value) {
+		return "", "", fmt.Errorf("model ID must be 1 to %d ASCII letters, digits, '.', '_', '-', or '/'", protocol.ModelMaxIDBytes)
 	}
 	for _, model := range b.models {
 		if value == model.ID || value == model.Model {
@@ -150,12 +134,12 @@ func (b *chatModelBrowser) model(value string) (id, label string, err error) {
 	return value, value, nil
 }
 
-func modelOverride(model codexModel) (id, label string, err error) {
+func modelOverride(model protocol.CodexModel) (id, label string, err error) {
 	id = model.Model
 	if id == "" {
 		id = model.ID
 	}
-	if !validChatModelID(id) {
+	if !protocol.ValidModelID(id) {
 		return "", "", fmt.Errorf("model catalog returned an invalid model ID")
 	}
 	label = model.DisplayName
@@ -163,18 +147,6 @@ func modelOverride(model codexModel) (id, label string, err error) {
 		label = id
 	}
 	return id, label, nil
-}
-
-func validChatModelID(value string) bool {
-	if value == "" || len(value) > chatModelMaxIDBytes {
-		return false
-	}
-	for _, r := range value {
-		if !unicode.IsGraphic(r) || unicode.IsSpace(r) {
-			return false
-		}
-	}
-	return true
 }
 
 func numericChatModelChoice(value string) bool {
@@ -359,10 +331,6 @@ func (u *chatUI) chooseChatModel(value string) error {
 	return nil
 }
 
-func (u *chatUI) requestTurn(params map[string]any) error {
-	return u.requestTurnWithQueuedPrompt(params, "")
-}
-
 func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt string) error {
 	params["approvalsReviewer"] = u.approvalsReviewer()
 	id, err := u.c.request("turn/start", params)
@@ -396,7 +364,7 @@ func (u *chatUI) setEffectiveModel(model string) {
 	}
 	u.effectiveModel = model
 	if writer, ok := u.out.(interface{ SetChatAgent(string) }); ok {
-		writer.SetChatAgent(agentDisplayName(agentForModel(u.effectiveModel)))
+		writer.SetChatAgent(protocol.AgentDisplayName(protocol.AgentForModel(u.effectiveModel)))
 	}
 }
 
@@ -404,7 +372,7 @@ func (u *chatUI) effectiveModelLabel() string {
 	if u.effectiveModel == "" {
 		return "not reported by Codex"
 	}
-	if u.resolvedModel != "" && agentForModel(u.effectiveModel) == agentClaude {
+	if u.resolvedModel != "" && protocol.AgentForModel(u.effectiveModel) == protocol.AgentClaude {
 		return claudeModelPrettyName(u.resolvedModel)
 	}
 	return u.modelName(u.effectiveModel)

@@ -1,4 +1,4 @@
-package jara
+package agentrouter
 
 import (
 	"encoding/json"
@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 // Claude Code reports subscription usage as rate_limit_event lines. The router
@@ -104,7 +106,7 @@ func (r *agentRouter) readRateLimits(id json.RawMessage, params json.RawMessage)
 	var threadID string
 	_ = json.Unmarshal(fields["threadId"], &threadID)
 	delete(fields, "threadId")
-	if thread := r.threads[threadID]; thread != nil && thread.current().Agent == agentClaude {
+	if thread := r.threads[threadID]; thread != nil && thread.Current().Agent == protocol.AgentClaude {
 		r.reply(id, map[string]any{"rateLimits": r.claudeRateLimitBucket()})
 		return nil
 	}

@@ -18,7 +18,12 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 	if len(message.ID) > 0 && message.Method == "" && string(message.ID) == quoteCrunchID(m.requestID) {
 		kind := m.requestKind
 		m.requestID, m.requestKind = "", ""
-		if message.Error != nil {
+		if m.job.Status == "stopping" && (message.Error != nil || kind != "turnStart") {
+			// /crunch stop arrived while this request was out. Only a turn that
+			// actually started still needs interrupting; anything else (a
+			// usage-limit rejection, a rate-limit read) must not revive the job.
+			m.job.Status, m.job.Error = "stopped", ""
+		} else if message.Error != nil {
 			if kind == "turnStart" && chatCrunchIsUsageLimit(message.Error.Data, message.Error.Message) {
 				followUp = m.usageLimitedLocked(message.Error.Message)
 			} else if kind == "turnInterrupt" {

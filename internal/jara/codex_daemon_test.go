@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 func TestCodexWithoutSharedDaemon(t *testing.T) {
@@ -14,20 +16,20 @@ func TestCodexWithoutSharedDaemon(t *testing.T) {
 	codexSupportsNoDaemon = func(string) bool { return supported }
 	defer func() { codexSupportsNoDaemon = previous }()
 
-	got := codexWithoutSharedDaemon([]string{codexBinary, "resume", "thread-1", "--model", "x"})
-	want := []string{codexBinary, "--no-daemon", "resume", "thread-1", "--model", "x"}
+	got := codexWithoutSharedDaemon([]string{protocol.CodexBinary, "resume", "thread-1", "--model", "x"})
+	want := []string{protocol.CodexBinary, "--no-daemon", "resume", "thread-1", "--model", "x"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	if got = codexWithoutSharedDaemon(want); !reflect.DeepEqual(got, want) {
 		t.Fatalf("flag duplicated: %q", got)
 	}
-	claude := []string{claudeBinary, "--resume"}
+	claude := []string{protocol.ClaudeBinary, "--resume"}
 	if got = codexWithoutSharedDaemon(claude); !reflect.DeepEqual(got, claude) {
 		t.Fatalf("Claude command changed: %q", got)
 	}
 	supported = false
-	old := []string{codexBinary, "resume"}
+	old := []string{protocol.CodexBinary, "resume"}
 	if got = codexWithoutSharedDaemon(old); !reflect.DeepEqual(got, old) {
 		t.Fatalf("unsupported Codex received the flag: %q", got)
 	}

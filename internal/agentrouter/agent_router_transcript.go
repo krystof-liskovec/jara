@@ -1,13 +1,16 @@
-package jara
+package agentrouter
 
 import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"krystof.liskovec/jara/internal/protocol"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // historyTurns rebuilds the UI's history format from the router transcript.
-func (t *routedThread) historyTurns() []map[string]any {
+func (t *Thread) HistoryTurns() []map[string]any {
 	turns := make([]map[string]any, 0, len(t.Turns))
 	for i, turn := range t.Turns {
 		at := turn.At * 1000
@@ -18,7 +21,7 @@ func (t *routedThread) historyTurns() []map[string]any {
 		if turn.Reply != "" {
 			items = append(items, map[string]any{"id": fmt.Sprintf("a%d", i), "type": "agentMessage", "text": turn.Reply, "startedAtMs": at, "jaraAgent": turn.Agent})
 		}
-		turns = append(turns, map[string]any{"startedAt": turn.At, "items": items})
+		turns = append(turns, map[string]any{"id": turn.ID, "startedAt": turn.At, "items": items})
 	}
 	return turns
 }
@@ -40,9 +43,9 @@ func turnText(params json.RawMessage) string {
 	return strings.Join(parts, "\n")
 }
 
-func (t *routedThread) seedFromHistory(turns []chatHistoryTurn) {
+func (t *Thread) seedFromHistory(turns []protocol.HistoryTurn) {
 	for _, turn := range turns {
-		entry := transcriptTurn{Agent: agentCodex}
+		entry := TranscriptTurn{ID: turn.ID, Agent: protocol.AgentCodex}
 		if turn.StartedAt != nil {
 			entry.At = *turn.StartedAt
 		}
@@ -68,11 +71,14 @@ func (r *agentRouter) observeCodexNotification(m rpcMessage) {
 	var p struct {
 		ThreadID string `json:"threadId"`
 		Item     struct {
-			chatHistoryItem
+			protocol.HistoryItem
 			ExitCode *int   `json:"exitCode"`
 			Output   string `json:"aggregatedOutput"`
 		} `json:"item"`
-		Goal *chatThreadGoal `json:"goal"`
+		Goal *protocol.ThreadGoal `json:"goal"`
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
 	}
 	if json.Unmarshal(m.Params, &p) != nil {
 		return
@@ -84,11 +90,17 @@ func (r *agentRouter) observeCodexNotification(m rpcMessage) {
 	switch m.Method {
 	case "thread/goal/updated":
 		thread.Goal = p.Goal // kept so a switch to Claude Code carries the goal
-		thread.save()
+		thread.Save()
 		return
 	case "thread/goal/cleared":
 		thread.Goal = nil
-		thread.save()
+		thread.Save()
+		return
+	case "turn/started":
+		// Codex turn IDs let /rewind revert the Codex thread natively.
+		if turn := thread.lastTurn(); turn != nil && turn.ID == "" {
+			turn.ID = p.Turn.ID
+		}
 		return
 	case "item/completed":
 	default:
@@ -101,31 +113,31 @@ func (r *agentRouter) observeCodexNotification(m rpcMessage) {
 	switch p.Item.Type {
 	case "agentMessage":
 		turn.Reply = p.Item.Text
-		thread.save()
+		thread.Save()
 	case "fileChange":
 		turn.Changes = append(turn.Changes, p.Item.Changes...)
 	case "commandExecution":
 		turn.addAction(commandSummary(p.Item.Command, p.Item.ExitCode, p.Item.Output))
 	case "plan":
-		turn.addAction("planned: " + fitMenu(p.Item.Text, 300))
+		turn.addAction("planned: " + textutil.FitText(p.Item.Text, 300))
 	}
 }
 
 // commandSummary records a command with its exit status and last output line
 // for the switch briefing.
 func commandSummary(command string, exitCode *int, output string) string {
-	summary := "ran `" + fitMenu(command, 200) + "`"
+	summary := "ran `" + textutil.FitText(command, 200) + "`"
 	if exitCode != nil {
 		summary += fmt.Sprintf(" → exit %d", *exitCode)
 	}
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if last := strings.TrimSpace(lines[len(lines)-1]); last != "" {
-		summary += ": " + fitMenu(last, 160)
+		summary += ": " + textutil.FitText(last, 160)
 	}
 	return summary
 }
 
-func (t *transcriptTurn) addAction(action string) {
+func (t *TranscriptTurn) addAction(action string) {
 	if len(t.Actions) < 40 {
 		t.Actions = append(t.Actions, action)
 	}

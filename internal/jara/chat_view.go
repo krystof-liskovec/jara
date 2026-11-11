@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -32,6 +33,7 @@ type chatViewModel struct {
 	QueueEditNumber         int
 	ControlModel            string
 	ControlReasoning        string
+	ControlContext          string // context meter, "" when unknown
 	ScrollOffset            int
 	Hints                   []string
 	Motion                  bool // animations enabled
@@ -47,7 +49,6 @@ type chatFrame struct {
 
 type chatViewLine struct {
 	text, kind, role string
-	selected         bool
 	spans            []chatSyntaxSpan // highlighted code starting at codeStart
 	codeStart        int
 }
@@ -67,17 +68,18 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 
 	headerRows, footerRows := 2, 1
-	controlModel := compactChatModelText(menuText(model.ControlModel), 24)
-	controlReasoning := compactChatModelText(menuText(model.ControlReasoning), 20)
-	controls := "◈ Model " + controlModel + " (F2)  ◉ Reasoning " + controlReasoning + " (F3)"
+	controlModel := compactChatModelText(textutil.SanitizeText(model.ControlModel), 24)
+	controlReasoning := compactChatModelText(textutil.SanitizeText(model.ControlReasoning), 20)
+	contextMeter := ""
+	if model.ControlContext != "" {
+		contextMeter = "  ◔ Context " + textutil.SanitizeText(model.ControlContext)
+	}
+	controls := "◈ Model " + controlModel + " (F2)  ◉ Reasoning " + controlReasoning + " (F3)" + contextMeter
 	controlLines := []string{controls}
 	controlRows := 1
 	if height >= 8 && uniseg.StringWidth(" "+controls) > width {
 		controlRows = 2
-		controlLines = []string{
-			"◈ Model " + controlModel + " (F2)",
-			"◉ Reasoning " + controlReasoning + " (F3)",
-		}
+		controlLines = []string{"◈ Model " + controlModel + " (F2)", "◉ Reasoning " + controlReasoning + " (F3)" + contextMeter}
 	}
 	composerText := sanitizeChatViewText(model.Composer)
 	composerLines, cursorLine, cursorColumn := wrapChatComposer(composerText, model.CursorLine, model.CursorColumn, max(1, width-4))
@@ -135,9 +137,9 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	choiceStart := chatCompletionWindow(model.Suggestions, completionRows)
 	for i := 0; i < completionRows; i++ {
 		choice := model.Suggestions[choiceStart+i]
-		text := "  " + menuText(choice.Value)
+		text := "  " + textutil.SanitizeText(choice.Value)
 		if choice.Description != "" {
-			text += "  ·  " + menuText(choice.Description)
+			text += "  ·  " + textutil.SanitizeText(choice.Description)
 		}
 		marker := "  "
 		if choice.Selected {
@@ -177,14 +179,14 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 
 func chatViewHeader(model chatViewModel, width int, sub bool) string {
 	if !sub {
-		workspace := strings.TrimSpace(menuText(model.Workspace))
+		workspace := strings.TrimSpace(textutil.SanitizeText(model.Workspace))
 		if workspace == "" {
 			workspace = "Workspace"
 		}
 		return "✦ JARA  /  " + workspace
 	}
-	modelName := strings.TrimSpace(menuText(model.Model))
-	state := strings.TrimSpace(menuText(model.State))
+	modelName := strings.TrimSpace(textutil.SanitizeText(model.Model))
+	state := strings.TrimSpace(textutil.SanitizeText(model.State))
 	if modelName == "" || modelName == "not reported by Codex" {
 		modelName = "Codex"
 	}
@@ -315,10 +317,10 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	if height == 0 {
 		return frame
 	}
-	frame.Lines[0] = paintChatViewLine("JARA / "+menuText(model.Workspace), "header", "", false, width, palette, color)
+	frame.Lines[0] = paintChatViewLine("JARA / "+textutil.SanitizeText(model.Workspace), "header", "", false, width, palette, color)
 	composerRows, controlRows := 1, 0
-	controlModel := compactChatModelText(menuText(model.ControlModel), 24)
-	controlReasoning := compactChatModelText(menuText(model.ControlReasoning), 20)
+	controlModel := compactChatModelText(textutil.SanitizeText(model.ControlModel), 24)
+	controlReasoning := compactChatModelText(textutil.SanitizeText(model.ControlReasoning), 20)
 	if height > 1 {
 		controlRows = 1
 		combined := "M:" + controlModel + " · R:" + controlReasoning + " (F2/F3)"
@@ -340,7 +342,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	transcriptRows := max(0, available-queueRows-completionRows-activityRows-separatorRows)
 	content := []chatViewLine{}
 	if model.Model != "" || model.State != "" {
-		content = append(content, chatViewLine{text: menuText(model.Model) + " · " + menuText(model.State), kind: "subheader"})
+		content = append(content, chatViewLine{text: textutil.SanitizeText(model.Model) + " · " + textutil.SanitizeText(model.State), kind: "subheader"})
 	}
 	transcript := model.TranscriptLines
 	if transcript == nil {
@@ -373,9 +375,9 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	choiceStart := chatCompletionWindow(model.Suggestions, completionRows)
 	for index := 0; index < completionRows; index++ {
 		choice := model.Suggestions[choiceStart+index]
-		text := "  " + menuText(choice.Value)
+		text := "  " + textutil.SanitizeText(choice.Value)
 		if choice.Description != "" {
-			text += "  ·  " + menuText(choice.Description)
+			text += "  ·  " + textutil.SanitizeText(choice.Description)
 		}
 		marker := "  "
 		if choice.Selected {

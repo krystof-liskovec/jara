@@ -11,6 +11,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 func remoteRPC(q Request) error {
@@ -56,7 +58,7 @@ func remoteRPC(q Request) error {
 		}
 		return applyUpdate(root, u)
 	case "doctor":
-		d := Diagnosis{Protocol: Protocol, Version: Version, Root: dataRoot(), OK: true}
+		d := Diagnosis{Protocol: Protocol, Version: Version, Root: fsutil.DataRoot(), OK: true}
 		identity, identityErr := readGitIdentity()
 		if identityErr != nil || identity.Name == "" || identity.Email == "" {
 			d.Checks = append(d.Checks, "SETUP Git commit identity: run jara config git-identity set --local --name NAME --email EMAIL in the environment, or configure it from your client with --remote NAME")
@@ -71,11 +73,11 @@ func remoteRPC(q Request) error {
 				d.Checks = append(d.Checks, "OK "+tool)
 			}
 		}
-		if err := os.MkdirAll(dataRoot(), 0700); err != nil {
+		if err := os.MkdirAll(fsutil.DataRoot(), 0700); err != nil {
 			d.OK = false
 			d.Checks = append(d.Checks, "storage: "+err.Error())
 		} else {
-			f, e := os.CreateTemp(dataRoot(), ".doctor-")
+			f, e := os.CreateTemp(fsutil.DataRoot(), ".doctor-")
 			if e != nil {
 				d.OK = false
 				d.Checks = append(d.Checks, "storage not writable: "+e.Error())
@@ -94,7 +96,7 @@ func remoteRPC(q Request) error {
 			d.Checks = append(d.Checks, "OK Codex authentication")
 		}
 		d.Checks = append(d.Checks, claudeDiagnostics()...)
-		probe, err := os.MkdirTemp(dataRoot(), ".sandbox-check-")
+		probe, err := os.MkdirTemp(fsutil.DataRoot(), ".sandbox-check-")
 		if err != nil {
 			return err
 		}
@@ -195,7 +197,7 @@ func remoteRPC(q Request) error {
 		} else if err = os.MkdirAll(p, 0700); err != nil {
 			return err
 		}
-		return writeJSON(p+".json", Workspace{ID: q.ID, Name: q.Name, Path: p, URL: q.URL, Branch: q.Branch,
+		return fsutil.WriteJSON(p+".json", Workspace{ID: q.ID, Name: q.Name, Path: p, URL: q.URL, Branch: q.Branch,
 			SourceHost: q.SourceHost, SourcePath: q.SourcePath, Created: time.Now().UTC().Format(time.RFC3339)})
 	case "checkout":
 		unlock, err := lockWorkspace(q.ID)
@@ -207,7 +209,7 @@ func remoteRPC(q Request) error {
 		if err != nil {
 			return err
 		}
-		temp, err := os.CreateTemp(dataRoot(), "bundle-*")
+		temp, err := os.CreateTemp(fsutil.DataRoot(), "bundle-*")
 		if err != nil {
 			return err
 		}
@@ -237,7 +239,7 @@ func remoteRPC(q Request) error {
 			return err
 		}
 		w.Ready = true
-		return writeJSON(w.Path+".json", w)
+		return fsutil.WriteJSON(w.Path+".json", w)
 	case "snapshot":
 		w, err := workspaceInfo(q.ID)
 		if err != nil {
@@ -339,7 +341,7 @@ func remoteRPC(q Request) error {
 		}
 		if !w.Ready {
 			w.Ready = true
-			return writeJSON(w.Path+".json", w)
+			return fsutil.WriteJSON(w.Path+".json", w)
 		}
 		return nil
 	default:

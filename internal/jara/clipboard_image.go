@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 func clipboardImageFormat(data []byte) (string, error) {
@@ -44,7 +46,7 @@ func receiveClipboardImage(input io.Reader, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	root := filepath.Join(dataRoot(), "attachments")
+	root := filepath.Join(fsutil.DataRoot(), "attachments")
 	if err = os.MkdirAll(root, 0700); err != nil {
 		return err
 	}

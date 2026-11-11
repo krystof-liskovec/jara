@@ -6,12 +6,12 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
+	"krystof.liskovec/jara/internal/protocol"
+	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -25,41 +25,6 @@ type menuItem struct {
 	Indent                   int
 }
 
-var terminalEscapes = regexp.MustCompile("\\x1b(?:\\[[0-?]*[ -/]*[@-~]|\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\))")
-
-// Names originate in repositories and must not control the terminal.
-func menuText(s string) string {
-	s = terminalEscapes.ReplaceAllString(s, "")
-	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return ' '
-		}
-		if r >= 0x202a && r <= 0x202e || r >= 0x2066 && r <= 0x2069 {
-			return -1
-		}
-		return r
-	}, s)
-}
-func fitMenu(s string, cells int) string {
-	if cells <= 0 {
-		return ""
-	}
-	s = menuText(s)
-	if uniseg.StringWidth(s) <= cells {
-		return s
-	}
-	var b strings.Builder
-	used := 0
-	g := uniseg.NewGraphemes(s)
-	for g.Next() {
-		if used+g.Width() > cells-1 {
-			break
-		}
-		b.WriteString(g.Str())
-		used += g.Width()
-	}
-	return b.String() + "…"
-}
 func menuPageSize(width, height int) int {
 	if height < 14 {
 		return max(1, min(9, (height-5)/2))
@@ -75,7 +40,7 @@ func menuLines(title string, items []menuItem, selected, width, height int) []st
 func menuLinesFiltered(title string, items []menuItem, selected, width, height int, filter string, total int) []string {
 	width = max(1, width-1)
 	if height < 7 || width < 15 {
-		return []string{fitMenu("Enlarge terminal · q exits", width)}
+		return []string{textutil.FitText("Enlarge terminal · q exits", width)}
 	}
 	if len(items) == 0 {
 		return emptyMenuLines(title, width, height, filter, total)
@@ -87,7 +52,7 @@ func menuLinesFiltered(title string, items []menuItem, selected, width, height i
 	panel := min(width, 100)
 	gutter := strings.Repeat(" ", max(0, (width-panel)/2))
 	count := menuCount(start, end, len(items), total, filter)
-	lines := []string{fitMenu(" JARA  /  "+title, panel), fitMenu(" "+count+" · n/p page", panel), fitMenu(menuSearchLabel(filter), panel)}
+	lines := []string{textutil.FitText(" JARA  /  "+title, panel), textutil.FitText(" "+count+" · n/p page", panel), textutil.FitText(menuSearchLabel(filter), panel)}
 	spacious := height >= 14
 	if spacious {
 		lines = append(lines, strings.Repeat("─", panel))
@@ -98,7 +63,7 @@ func menuLinesFiltered(title string, items []menuItem, selected, width, height i
 			mark = "▸ "
 		}
 		icon := menuKindIcon(items[i].Kind)
-		lines = append(lines, fitMenu(mark+fmt.Sprint(i-start+1)+" "+icon+"  "+items[i].Title, panel), fitMenu("       "+items[i].Detail, panel))
+		lines = append(lines, textutil.FitText(mark+fmt.Sprint(i-start+1)+" "+icon+"  "+items[i].Title, panel), textutil.FitText("       "+items[i].Detail, panel))
 		if spacious {
 			lines = append(lines, "")
 		}
@@ -110,9 +75,9 @@ func menuLinesFiltered(title string, items []menuItem, selected, width, height i
 		lines = append(lines, strings.Repeat("─", panel))
 	}
 	if filter != "" {
-		lines = append(lines, fitMenu(" Backspace edit · → open", panel), fitMenu(" ← back · Ctrl-C quit", panel))
+		lines = append(lines, textutil.FitText(" Backspace edit · → open", panel), textutil.FitText(" ← back · Ctrl-C quit", panel))
 	} else {
-		lines = append(lines, fitMenu(" ↑↓ move · →/Enter open", panel), fitMenu(" ←/⌫ back · Ctrl-C quit", panel))
+		lines = append(lines, textutil.FitText(" ↑↓ move · →/Enter open", panel), textutil.FitText(" ←/⌫ back · Ctrl-C quit", panel))
 	}
 	for i := range lines {
 		lines[i] = gutter + lines[i]
@@ -162,34 +127,11 @@ func menuKindIcon(kind string) string {
 	}
 }
 
-func menuKindLabel(kind string) string {
-	switch kind {
-	case "running":
-		return "RUNNING SESSION"
-	case "terminal":
-		return "JARA TERMINAL"
-	case "background":
-		return "CODEX BACKGROUND"
-	case "workspace":
-		return "WORKSPACE"
-	case "new":
-		return "NEW SESSION"
-	case "tools":
-		return "DIAGNOSTICS"
-	case "group":
-		return "SESSION GROUP"
-	case "history":
-		return "CODEX SESSIONS"
-	default:
-		return "ITEM"
-	}
-}
-
 func menuMatches(items []menuItem, filter string) []int {
 	indices := make([]int, 0, len(items))
-	needle := strings.ToLower(menuText(filter))
+	needle := strings.ToLower(textutil.SanitizeText(filter))
 	for i, item := range items {
-		searchable := strings.ToLower(menuText(strings.Join([]string{item.Title, item.Detail, item.Workspace, item.Group, item.Kind}, " ")))
+		searchable := strings.ToLower(textutil.SanitizeText(strings.Join([]string{item.Title, item.Detail, item.Workspace, item.Group, item.Kind}, " ")))
 		if needle == "" || strings.Contains(searchable, needle) {
 			indices = append(indices, i)
 		}
@@ -202,7 +144,7 @@ func emptyMenuLines(title string, width, height int, filter string, total int) [
 	gutter := strings.Repeat(" ", max(0, (width-panel)/2))
 	lines := []string{" JARA  /  " + title, fmt.Sprintf(" 0 matches · %d total", total), menuSearchLabel(filter), " No conversations or items found", " Try a shorter search", " Backspace edit · Ctrl-U clear", " ← back · Ctrl-C quit"}
 	for i := range lines {
-		lines[i] = gutter + fitMenu(lines[i], panel)
+		lines[i] = gutter + textutil.FitText(lines[i], panel)
 	}
 	return lines
 }
@@ -214,9 +156,9 @@ func selectMenuAt(title string, items []menuItem, initial int) (int, error) {
 	if n, handled, err := terminalMenuAt(title, items, initial); handled {
 		return n, err
 	}
-	fmt.Println(menuText(title))
+	fmt.Println(textutil.SanitizeText(title))
 	for i, item := range items {
-		fmt.Printf("  %d) %s%s — %s\n", i+1, strings.Repeat("  ", item.Indent), menuText(item.Title), menuText(item.Detail))
+		fmt.Printf("  %d) %s%s — %s\n", i+1, strings.Repeat("  ", item.Indent), textutil.SanitizeText(item.Title), textutil.SanitizeText(item.Detail))
 	}
 	fmt.Print("Choose a number (q to exit): ")
 	reader := bufio.NewReader(os.Stdin)
@@ -241,19 +183,19 @@ func workspaceTitle(w Workspace) string {
 	nameIsID := name == w.ID || isGeneratedWorkspaceID(name)
 	if origin, project, _, _, ok := workspaceOriginParts(w.URL); ok {
 		if name != "" && !nameIsID && !strings.EqualFold(name, project) {
-			return menuText(origin + " · " + name)
+			return textutil.SanitizeText(origin + " · " + name)
 		}
-		return menuText(origin)
+		return textutil.SanitizeText(origin)
 	}
 	if name != "" && !nameIsID {
-		return menuText(name)
+		return textutil.SanitizeText(name)
 	}
 	if w.URL != "" {
 		name := strings.SplitN(strings.SplitN(w.URL, "?", 2)[0], "#", 2)[0]
 		name = name[strings.LastIndexAny(name, "/:")+1:]
 		name = strings.TrimSuffix(name, ".git")
 		if name != "" {
-			return menuText(name)
+			return textutil.SanitizeText(name)
 		}
 	}
 	return "Copied workspace"
@@ -262,12 +204,12 @@ func workspaceTitle(w Workspace) string {
 func workspaceTerminalTitle(w Workspace) string {
 	_, project, host, _, ok := workspaceOriginParts(w.URL)
 	if !ok {
-		return fitMenu(workspaceTitle(w), 24)
+		return textutil.FitText(workspaceTitle(w), 24)
 	}
 	provider := workspaceProviderLabel(host)
 	suffix := " · " + provider
 	projectWidth := 24 - uniseg.StringWidth(suffix)
-	return fitMenu(project, projectWidth) + suffix
+	return textutil.FitText(project, projectWidth) + suffix
 }
 
 func workspaceProviderLabel(host string) string {
@@ -288,7 +230,7 @@ func workspaceProviderLabel(host string) string {
 	if provider == "git" && len(parts) > 1 {
 		provider = parts[1]
 	}
-	return fitMenu(provider, 10)
+	return textutil.FitText(provider, 10)
 }
 
 func workspaceOriginParts(origin string) (display, project, host, namespace string, ok bool) {
@@ -336,16 +278,6 @@ func isGeneratedWorkspaceID(value string) bool {
 	return true
 }
 
-func workspaceBadge(w Workspace) string {
-	id := strings.TrimPrefix(w.ID, "w-")
-	if len(id) > 8 {
-		id = id[:8]
-	}
-	if w.Branch != "" {
-		return id + " · " + w.Branch
-	}
-	return id
-}
 func sessionItem(w Workspace, s Session, number int) menuItem {
 	title := strings.TrimSpace(s.Label)
 	if title == "" {
@@ -376,7 +308,7 @@ func sessionItem(w Workspace, s Session, number int) menuItem {
 	}
 	detail := []string{state, viewers}
 	if s.Agent != "" {
-		detail = append([]string{agentDisplayName(s.Agent)}, detail...)
+		detail = append([]string{protocol.AgentDisplayName(s.Agent)}, detail...)
 	}
 	if validAgentState(s.AgentState) {
 		detail = append(detail, "Agent "+s.AgentState)

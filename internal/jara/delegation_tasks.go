@@ -12,6 +12,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
+	"krystof.liskovec/jara/internal/protocol"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // A delegated task is one agent asking another (or itself) to work in a
@@ -50,7 +54,7 @@ const (
 
 var taskIDRE = regexp.MustCompile(`^t-[0-9a-f]{12}$`)
 
-func tasksRoot() string { return filepath.Join(dataRoot(), "tasks") }
+func tasksRoot() string { return filepath.Join(fsutil.DataRoot(), "tasks") }
 
 func taskDir(id string) (string, error) {
 	if !taskIDRE.MatchString(id) {
@@ -114,7 +118,7 @@ func saveTask(task delegatedTask) error {
 		return err
 	}
 	task.Updated = time.Now().Unix()
-	return writeJSON(filepath.Join(dir, "task.json"), task)
+	return fsutil.WriteJSON(filepath.Join(dir, "task.json"), task)
 }
 
 // updateTask applies a change under the task lock.
@@ -195,18 +199,10 @@ func taskFile(task delegatedTask, kind string, run int) string {
 // log when the agent produced no final message.
 func taskResult(task delegatedTask, limit int) string {
 	if data, err := os.ReadFile(taskFile(task, "result", task.Runs)); err == nil && strings.TrimSpace(string(data)) != "" {
-		return tailText(string(data), limit)
+		return textutil.TailText(string(data), limit)
 	}
 	data, _ := os.ReadFile(taskFile(task, "log", task.Runs))
-	return tailText(string(data), limit)
-}
-
-func tailText(text string, limit int) string {
-	text = strings.TrimSpace(text)
-	if limit > 0 && len(text) > limit {
-		return "… (earlier output omitted)\n" + text[len(text)-limit:]
-	}
-	return text
+	return textutil.TailText(string(data), limit)
 }
 
 // handoffTaskSummary lists recent delegated tasks whose origin is path, so a
@@ -218,7 +214,7 @@ func handoffTaskSummary(path string) string {
 		if task.OriginCWD != path || len(lines) >= 10 {
 			continue
 		}
-		line := fmt.Sprintf("- %s (%s, %s): %s", task.ID, agentDisplayName(task.Agent), task.Status, task.Title)
+		line := fmt.Sprintf("- %s (%s, %s): %s", task.ID, protocol.AgentDisplayName(task.Agent), task.Status, task.Title)
 		if task.Branch != "" && !task.Merged {
 			line += " — unmerged branch " + task.Branch
 		}

@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 func (u hostUpdater) update(target string, check bool) error {
@@ -131,7 +133,7 @@ func (u hostUpdater) update(target string, check bool) error {
 	override.Close()
 	defer os.Remove(overridePath)
 	writeOverride := func(image string) error {
-		return writeJSON(overridePath, map[string]any{"services": map[string]any{"agent": map[string]any{"image": image, "build": map[string]any{"args": map[string]string{"CODEX_VERSION": target}}}}})
+		return fsutil.WriteJSON(overridePath, map[string]any{"services": map[string]any{"agent": map[string]any{"image": image, "build": map[string]any{"args": map[string]string{"CODEX_VERSION": target}}}}})
 	}
 	if err = writeOverride(tag); err != nil {
 		return err

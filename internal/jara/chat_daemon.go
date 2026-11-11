@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 const chatDaemonStartupTimeout = 3 * time.Minute
@@ -36,7 +38,7 @@ func chatDaemonPathSet(id string) (chatDaemonPaths, error) {
 	if !nameRE.MatchString(id) {
 		return chatDaemonPaths{}, fmt.Errorf("invalid workspace ID")
 	}
-	dir := filepath.Join(dataRoot(), "chat")
+	dir := filepath.Join(fsutil.DataRoot(), "chat")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return chatDaemonPaths{}, err
 	}
@@ -123,7 +125,7 @@ func recoverChatDaemonWorkspaceLock(id string) error {
 }
 
 func chatDaemonSessions() []Session {
-	dir := filepath.Join(dataRoot(), "chat")
+	dir := filepath.Join(fsutil.DataRoot(), "chat")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -153,14 +155,6 @@ func chatDaemonSessions() []Session {
 		out = append(out, Session{Name: name, Workspace: id, ChatDaemon: true, CreatedAt: state.CreatedAt, Conversation: state.Conversation, Attached: attached, AgentState: activity})
 	}
 	return out
-}
-
-func dialChatDaemon(id string) (net.Conn, error) {
-	paths, err := chatDaemonPathSet(id)
-	if err != nil {
-		return nil, err
-	}
-	return net.DialTimeout("unix", paths.socket, 2*time.Second)
 }
 
 func ensureChatDaemon(q Request) (net.Conn, bool, error) {

@@ -5,6 +5,9 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+
+	"krystof.liskovec/jara/internal/protocol"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 const maxHandoffSection = 6000
@@ -12,10 +15,10 @@ const maxHandoffSection = 6000
 // handoffTarget chooses the receiving agent when the user did not name one:
 // the agent that did not run most recently in this workspace.
 func handoffTarget(workspace string) string {
-	if handoffSource(workspace) == agentClaude {
-		return agentCodex
+	if handoffSource(workspace) == protocol.AgentClaude {
+		return protocol.AgentCodex
 	}
-	return agentClaude
+	return protocol.AgentClaude
 }
 
 // handoffSource reports the agent of the newest session in a workspace.
@@ -23,7 +26,7 @@ func handoffTarget(workspace string) string {
 func handoffSource(workspace string) string {
 	all, err := sessions()
 	if err != nil {
-		return agentCodex
+		return protocol.AgentCodex
 	}
 	var matches []Session
 	for _, s := range all {
@@ -36,7 +39,7 @@ func handoffSource(workspace string) string {
 	}
 	sort.SliceStable(matches, func(i, j int) bool { return sessionRecency(matches[i]) > sessionRecency(matches[j]) })
 	if matches[0].Agent == "" {
-		return agentCodex
+		return protocol.AgentCodex
 	}
 	return matches[0].Agent
 }
@@ -48,7 +51,7 @@ func handoffPrompt(path, from, to, note string) string {
 	var b strings.Builder
 	source := "another agent"
 	if from != "" {
-		source = agentDisplayName(from)
+		source = protocol.AgentDisplayName(from)
 	}
 	fmt.Fprintf(&b, "You are taking over work in this workspace from %s through a Jara handoff. ", source)
 	b.WriteString("Its conversation history is not available; the working tree below is the current state, including uncommitted changes. ")
@@ -77,7 +80,7 @@ func handoffPrompt(path, from, to, note string) string {
 		}
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		for i, line := range lines {
-			lines[i] = menuText(line)
+			lines[i] = textutil.SanitizeText(line)
 		}
 		text := strings.Join(lines, "\n")
 		if text == "" {
@@ -91,6 +94,6 @@ func handoffPrompt(path, from, to, note string) string {
 	if tasks := handoffTaskSummary(path); tasks != "" {
 		fmt.Fprintf(&b, "\nDelegated agent tasks started from this workspace:\n%s\n", tasks)
 	}
-	fmt.Fprintf(&b, "\nYou are %s.", agentDisplayName(to))
+	fmt.Fprintf(&b, "\nYou are %s.", protocol.AgentDisplayName(to))
 	return b.String()
 }

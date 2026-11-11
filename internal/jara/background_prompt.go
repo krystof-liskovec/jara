@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 const maxBackgroundPrompt = 64 * 1024
@@ -96,7 +98,7 @@ func runBackgroundCodex(q Request) error {
 	if strings.TrimSpace(q.Prompt) == "" {
 		return fmt.Errorf("background Codex run requires a prompt")
 	}
-	if q.Runtime == agentClaude {
+	if q.Runtime == protocol.AgentClaude {
 		return runBackgroundClaude(q)
 	}
 	command := backgroundCodexCommand(q)

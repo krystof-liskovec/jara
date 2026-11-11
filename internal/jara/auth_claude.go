@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"krystof.liskovec/jara/internal/fsutil"
+	"krystof.liskovec/jara/internal/protocol"
 	"golang.org/x/term"
 )
 
@@ -18,7 +20,7 @@ import (
 const claudeTokenDestination = "anthropic"
 
 func claudeTokenPath() string {
-	return filepath.Join(dataRoot(), "auth", "claude-token")
+	return filepath.Join(fsutil.DataRoot(), "auth", "claude-token")
 }
 
 // validateClaudeToken accepts long-lived OAuth tokens from `claude setup-token`
@@ -57,7 +59,7 @@ func claudeAuthCommand(remote Remote, tokenStdin bool) error {
 	if err = validateClaudeToken(string(secret)); err != nil {
 		return err
 	}
-	cmd := sshCommand(remote, false, shellArgs("jara", "_auth", agentClaude, claudeTokenDestination))
+	cmd := sshCommand(remote, false, shellArgs("jara", "_auth", protocol.AgentClaude, claudeTokenDestination))
 	cmd.Stdin = bytes.NewReader(secret)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err = cmd.Run(); err != nil {
@@ -176,5 +178,5 @@ func offerClaudeSignIn(c Config, name string, d Diagnosis, reader *bufio.Reader)
 		fmt.Printf("You can add it later with `jara auth claude --remote %s`.\n", name)
 		return nil
 	}
-	return authCommand(c, []string{agentClaude, "--remote", name})
+	return authCommand(c, []string{protocol.AgentClaude, "--remote", name})
 }

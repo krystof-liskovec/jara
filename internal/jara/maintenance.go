@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
 )
 
 type maintenanceLease struct {
@@ -20,7 +22,7 @@ type maintenanceStatus struct {
 	Reason string
 }
 
-func maintenancePath() string { return filepath.Join(dataRoot(), ".maintenance.json") }
+func maintenancePath() string { return filepath.Join(fsutil.DataRoot(), ".maintenance.json") }
 func activeMaintenance() (maintenanceLease, bool, error) {
 	var lease maintenanceLease
 	b, err := os.ReadFile(maintenancePath())
@@ -64,7 +66,7 @@ func updateBusy() (maintenanceStatus, error) {
 			}
 		}
 	}
-	locks, err := filepath.Glob(filepath.Join(dataRoot(), "workspaces", "*.lock"))
+	locks, err := filepath.Glob(filepath.Join(fsutil.DataRoot(), "workspaces", "*.lock"))
 	if err != nil {
 		return maintenanceStatus{}, err
 	}
@@ -132,7 +134,7 @@ func maintenanceCommand(args []string) error {
 		if s.Busy {
 			return json.NewEncoder(os.Stdout).Encode(s)
 		}
-		if err = writeJSON(maintenancePath(), maintenanceLease{Token: args[1], Expires: time.Now().Add(10 * time.Minute)}); err != nil {
+		if err = fsutil.WriteJSON(maintenancePath(), maintenanceLease{Token: args[1], Expires: time.Now().Add(10 * time.Minute)}); err != nil {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(s)

@@ -7,10 +7,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"krystof.liskovec/jara/internal/fsutil"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 func remoteWorkspaces() ([]Workspace, error) {
-	directory := filepath.Join(dataRoot(), "workspaces")
+	directory := filepath.Join(fsutil.DataRoot(), "workspaces")
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -92,7 +95,7 @@ func remoteDeleteWorkspace(id string) error {
 	}
 	for _, session := range sessions {
 		if session.Workspace == id {
-			return fmt.Errorf("workspace has a running session %s; stop it before deleting", menuText(session.Name))
+			return fmt.Errorf("workspace has a running session %s; stop it before deleting", textutil.SanitizeText(session.Name))
 		}
 	}
 	if err = removeManagedWorkspaceWorktrees(workspace); err != nil {
@@ -135,7 +138,7 @@ func removeManagedWorkspaceWorktrees(workspace Workspace) error {
 	if err != nil {
 		return err
 	}
-	managedRoot, err := filepath.Abs(filepath.Join(dataRoot(), "worktrees"))
+	managedRoot, err := filepath.Abs(filepath.Join(fsutil.DataRoot(), "worktrees"))
 	if err != nil {
 		return err
 	}

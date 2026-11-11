@@ -1,16 +1,16 @@
-package jara
+package agentrouter
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 // claudeSession runs one Claude Code conversation in stream-json mode:
@@ -18,7 +18,7 @@ import (
 // permission checks arrive as can_use_tool control requests.
 type claudeSession struct {
 	r         *agentRouter
-	thread    *routedThread
+	thread    *Thread
 	backendID string
 	resume    bool
 	cmd       *exec.Cmd
@@ -28,6 +28,11 @@ type claudeSession struct {
 	effort    string
 	plan      bool
 	mode      string // permission mode the running process uses
+
+	compacting    bool  // the running turn is Claude Code's /compact
+	contextTokens int64 // tokens in context after the latest model call
+	contextWindow int64 // model context window Claude Code reported
+	images        []map[string]any
 
 	resolvedModel string // concrete model Claude Code reported at startup
 
@@ -65,20 +70,7 @@ type claudeApproval struct {
 	input     map[string]any
 }
 
-// claudeExecutable allows tests to substitute a fake CLI.
-func claudeExecutable() string {
-	if path := os.Getenv("JARA_CLAUDE_BIN"); path != "" {
-		return path
-	}
-	return claudeBinary
-}
-
-func claudeAvailable() bool {
-	_, err := os.Stat(claudeExecutable())
-	return err == nil
-}
-
-func newClaudeSession(r *agentRouter, thread *routedThread, backendID string, resume bool) *claudeSession {
+func newClaudeSession(r *agentRouter, thread *Thread, backendID string, resume bool) *claudeSession {
 	return &claudeSession{r: r, thread: thread, backendID: backendID, resume: resume, tools: map[string]*claudeTool{}, approvals: map[string]claudeApproval{}}
 }
 
@@ -106,15 +98,13 @@ func (b *tailBuffer) String() string {
 func (s *claudeSession) startProcess() error {
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
 		"--include-partial-messages", "--permission-prompt-tool", "stdio"}
-	if defaults, err := configuredAgentArgs(agentClaude, s.r.claudeArgs); err == nil {
-		args = append(args, defaults...)
-	}
+	args = append(args, s.r.claudeArgs...)
 	if s.resume {
 		args = append(args, "--resume", s.backendID)
 	} else {
 		args = append(args, "--session-id", s.backendID)
 	}
-	s.model, s.effort = claudeCLIModel(s.thread.Model), s.thread.Effort
+	s.model, s.effort = protocol.ClaudeCLIModel(s.thread.Model), s.thread.Effort
 	if s.model != "" {
 		args = append(args, "--model", s.model)
 	}
@@ -125,7 +115,7 @@ func (s *claudeSession) startProcess() error {
 	if s.mode != "default" {
 		args = append(args, "--permission-mode", s.mode)
 	}
-	cmd := exec.Command(claudeExecutable(), args...)
+	cmd := exec.Command(protocol.ClaudeExecutable(), args...)
 	cmd.Dir = s.thread.CWD
 	s.stderr = &tailBuffer{}
 	cmd.Stderr = s.stderr
@@ -143,8 +133,7 @@ func (s *claudeSession) startProcess() error {
 	s.cmd, s.stdin, s.resume = cmd, stdin, true
 	events := s.r.events
 	go func() {
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 64*1024), 32<<20)
+		scanner := protocol.NewLineScanner(stdout)
 		for scanner.Scan() {
 			events <- routerEvent{source: "claude", session: s, process: cmd, line: append([]byte(nil), scanner.Bytes()...)}
 		}
@@ -178,7 +167,7 @@ func (s *claudeSession) control(subtype string, fields map[string]any) {
 // thread's model and effort. Effort has no runtime control, so changing it
 // restarts the process on the same session.
 func (s *claudeSession) ensureProcess() error {
-	model, effort := claudeCLIModel(s.thread.Model), s.thread.Effort
+	model, effort := protocol.ClaudeCLIModel(s.thread.Model), s.thread.Effort
 	if s.cmd != nil && (effort != s.effort || model == "" && s.model != "") {
 		s.stop()
 	}
@@ -229,8 +218,10 @@ func (s *claudeSession) startTurn(id json.RawMessage, message string) error {
 			s.thread.Segments[i].Started = true
 		}
 	}
-	s.thread.save()
-	if err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": []map[string]string{{"type": "text", "text": message}}}}); err != nil {
+	s.thread.Save()
+	content := append([]map[string]any{{"type": "text", "text": message}}, s.images...)
+	s.images = nil
+	if err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}}); err != nil {
 		s.finishTurn("failed", "send prompt to Claude Code: "+err.Error())
 	}
 	return nil
@@ -300,10 +291,12 @@ func (s *claudeSession) finishTurn(status, message string) {
 		return
 	}
 	s.closeTextItem()
-	if turn := s.thread.lastTurn(); turn != nil && s.reply.Len() > 0 {
+	compacted := s.compacting
+	s.finishCompaction()
+	if turn := s.thread.lastTurn(); turn != nil && s.reply.Len() > 0 && !compacted {
 		turn.Reply = s.reply.String()
 	}
-	s.thread.save()
+	s.thread.Save()
 	turn := map[string]any{"id": s.turnID, "status": status}
 	if message != "" {
 		failure := map[string]any{"message": message}
@@ -319,6 +312,10 @@ func (s *claudeSession) finishTurn(status, message string) {
 	s.tools = map[string]*claudeTool{}
 	s.turnID = ""
 	s.r.notify("turn/completed", map[string]any{"threadId": s.thread.ID, "turn": turn})
+	if compacted {
+		s.goalTurn, s.usageLimited = false, false
+		return
+	}
 	s.r.afterClaudeTurn(s, status, s.reply.String(), s.tokens, time.Since(s.turnStarted))
 	s.goalTurn, s.usageLimited = false, false
 }

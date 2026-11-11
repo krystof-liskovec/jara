@@ -10,6 +10,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/fsutil"
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 type conversationProject struct {
@@ -23,7 +26,7 @@ type conversationProject struct {
 }
 
 func readBrowserWorkspaces() ([]Workspace, error) {
-	files, err := filepath.Glob(filepath.Join(dataRoot(), "workspaces", "*.json"))
+	files, err := filepath.Glob(filepath.Join(fsutil.DataRoot(), "workspaces", "*.json"))
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +233,7 @@ func browseProject(p conversationProject, terminals []Session) (menuItem, error)
 		}
 		if p.Workspace.Ready {
 			for _, runtime := range installedAgentRuntimes() {
-				rows = append(rows, menuItem{Title: "New " + agentDisplayName(runtime) + " conversation", Detail: "Start an agent terminal", Workspace: p.Workspace.ID, Kind: "new", Agent: runtime})
+				rows = append(rows, menuItem{Title: "New " + protocol.AgentDisplayName(runtime) + " conversation", Detail: "Start an agent terminal", Workspace: p.Workspace.ID, Kind: "new", Agent: runtime})
 			}
 		}
 		if len(p.Terminals) > 0 {

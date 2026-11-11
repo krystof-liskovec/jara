@@ -1,33 +1,13 @@
 package jara
 
 import (
-	"encoding/json"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 const chatActivitySummaryLimit = 2048
-
-type chatReasoningSummaryPart struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-func (p *chatReasoningSummaryPart) UnmarshalJSON(data []byte) error {
-	var text string
-	if err := json.Unmarshal(data, &text); err == nil {
-		p.Type = "summary_text"
-		p.Text = text
-		return nil
-	}
-	type summaryPart chatReasoningSummaryPart
-	var decoded summaryPart
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	*p = chatReasoningSummaryPart(decoded)
-	return nil
-}
 
 func (u *chatUI) streamReasoningSummary(itemID string, index int, delta string) {
 	if itemID == "" || delta == "" {
@@ -48,7 +28,7 @@ func (u *chatUI) streamReasoningSummary(itemID string, index int, delta string) 
 	}
 }
 
-func (u *chatUI) finishReasoningSummary(itemID string, parts []chatReasoningSummaryPart) {
+func (u *chatUI) finishReasoningSummary(itemID string, parts []protocol.ReasoningSummaryPart) {
 	if u.reasoningSummaryStreamed[itemID] {
 		if !chatUIIsInteractive(u) {
 			u.printRole("progress", "\n")
@@ -80,7 +60,7 @@ func (u *chatUI) appendChatActivitySummary(itemID string, index int, delta strin
 	u.activitySummaryText += string(deltaRunes)
 }
 
-func (u *chatUI) setChatActivitySummary(itemID string, parts []chatReasoningSummaryPart) {
+func (u *chatUI) setChatActivitySummary(itemID string, parts []protocol.ReasoningSummaryPart) {
 	u.clearChatActivitySummary()
 	for index, part := range parts {
 		if (part.Type == "" || part.Type == "summary_text") && strings.TrimSpace(part.Text) != "" {
@@ -116,7 +96,7 @@ func (u *chatUI) finishAllReasoningSummaries() {
 	}
 }
 
-func (u *chatUI) renderReasoningSummaryAt(parts []chatReasoningSummaryPart, at time.Time) {
+func (u *chatUI) renderReasoningSummaryAt(parts []protocol.ReasoningSummaryPart, at time.Time) {
 	for _, part := range parts {
 		if part.Type != "" && part.Type != "summary_text" || part.Text == "" {
 			continue

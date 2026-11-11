@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"krystof.liskovec/jara/internal/fsutil"
+	"krystof.liskovec/jara/internal/protocol"
 	"golang.org/x/term"
 )
 
@@ -43,7 +45,7 @@ func authCommand(c Config, args []string) error {
 	if provider == "git" {
 		return gitAuthCommand(r, *username, *stdin)
 	}
-	if provider == agentClaude {
+	if provider == protocol.AgentClaude {
 		return claudeAuthCommand(r, *stdin)
 	}
 	if !*stdin {
@@ -60,7 +62,7 @@ func authCommand(c Config, args []string) error {
 }
 func validateProvider(provider, destination string) error {
 	switch provider {
-	case agentClaude:
+	case protocol.AgentClaude:
 		if destination != claudeTokenDestination {
 			return fmt.Errorf("Claude tokens use destination %q", claudeTokenDestination)
 		}
@@ -94,7 +96,7 @@ func remoteAuth(provider, destination string, usernames ...string) error {
 	if len(secret) == 0 || len(secret) > 65536 || bytes.ContainsAny(secret, "\r\n\x00") {
 		return fmt.Errorf("expected a nonempty single-line token of at most 64 KiB")
 	}
-	if provider == agentClaude {
+	if provider == protocol.AgentClaude {
 		return storeClaudeToken(secret)
 	}
 	if provider == "git" {
@@ -108,7 +110,7 @@ func remoteAuth(provider, destination string, usernames ...string) error {
 		return storeGitCredential(destination, username, string(secret))
 	}
 	fingerprint := sha256.Sum256(append([]byte(provider+"\n"+destination+"\n"), secret...))
-	marker := filepath.Join(dataRoot(), "auth", provider+".sha256")
+	marker := filepath.Join(fsutil.DataRoot(), "auth", provider+".sha256")
 	if old, e := os.ReadFile(marker); e == nil && string(old) == hex.EncodeToString(fingerprint[:]) {
 		if err := saveProviderCredential(provider, destination, string(secret)); err != nil {
 			return err

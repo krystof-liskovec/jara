@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 // The model controls name the concrete model: the conversation's model once
@@ -29,7 +31,7 @@ func (u *chatUI) expireChatDefaultRequest(id string, pending chatPending) bool {
 	}
 	delete(u.pending, id)
 	if pending.method == "jara/defaultModel/get" {
-		u.defaults = &defaultModels{}
+		u.defaults = &protocol.DefaultModels{}
 	} else {
 		u.printRole("system", "Saving the model choice timed out.\n")
 	}
@@ -38,7 +40,7 @@ func (u *chatUI) expireChatDefaultRequest(id string, pending chatPending) bool {
 
 func (u *chatUI) acceptChatDefaultResponse(m appMessage, p chatPending) {
 	if p.method == "jara/defaultModel/get" {
-		u.defaults = &defaultModels{}
+		u.defaults = &protocol.DefaultModels{}
 		if m.Error == nil {
 			_ = json.Unmarshal(m.Result, u.defaults)
 		}
@@ -49,7 +51,7 @@ func (u *chatUI) acceptChatDefaultResponse(m appMessage, p chatPending) {
 		return
 	}
 	if u.defaults == nil {
-		u.defaults = &defaultModels{}
+		u.defaults = &protocol.DefaultModels{}
 	}
 	if p.method == "jara/fallbackModel/set" {
 		u.defaults.Fallback = p.action
@@ -60,15 +62,15 @@ func (u *chatUI) acceptChatDefaultResponse(m appMessage, p chatPending) {
 		}
 		return
 	}
-	agent := agentForModel(p.action)
+	agent := protocol.AgentForModel(p.action)
 	u.defaults.Default, u.defaults.Agent = p.action, agent
-	if agent == agentClaude {
+	if agent == protocol.AgentClaude {
 		u.defaults.Claude = p.action
 	} else {
 		u.defaults.Codex = p.action
 	}
-	u.printRole("system", "Default model for new conversations: "+u.modelName(p.action)+" ("+agentDisplayName(agent)+
-		"). "+agentDisplayName(agent)+" terminals on this host use it too; --agent still picks a provider explicitly.\n")
+	u.printRole("system", "Default model for new conversations: "+u.modelName(p.action)+" ("+protocol.AgentDisplayName(agent)+
+		"). "+protocol.AgentDisplayName(agent)+" terminals on this host use it too; --agent still picks a provider explicitly.\n")
 }
 
 func chatDefaultRequest(method string) bool {
@@ -94,7 +96,7 @@ func (u *chatUI) runChatDefaultCommand(line string) error {
 			}
 			return nil
 		}
-		u.print("Default models: Codex " + u.defaultLabel(agentCodex) + ", Claude Code " + u.defaultLabel(agentClaude) +
+		u.print("Default models: Codex " + u.defaultLabel(protocol.AgentCodex) + ", Claude Code " + u.defaultLabel(protocol.AgentClaude) +
 			".\nUse /default ID or /default N to set the default model for new conversations.\n")
 		return nil
 	}
@@ -122,22 +124,12 @@ func (u *chatUI) setChatDefaultModel(model string) error {
 	return nil
 }
 
-func (d *defaultModels) forAgent(agent string) string {
-	if d == nil {
-		return ""
-	}
-	if agent == agentClaude {
-		return d.Claude
-	}
-	return d.Codex
-}
-
 func (u *chatUI) defaultLabel(agent string) string {
-	if model := u.defaults.forAgent(agent); model != "" {
+	if model := u.defaults.ForAgent(agent); model != "" {
 		return u.modelName(model)
 	}
-	if agent == agentClaude {
-		return u.modelName(claudeDefaultModel) // Claude Code picks its own model
+	if agent == protocol.AgentClaude {
+		return u.modelName(protocol.ClaudeDefaultModel) // Claude Code picks its own model
 	}
 	return "not reported"
 }
@@ -149,9 +141,9 @@ func (u *chatUI) newConversationModelLabel() string {
 	}
 	agent := u.defaults.Agent
 	if agent == "" {
-		agent = agentCodex
+		agent = protocol.AgentCodex
 	}
-	if u.defaults.Default != "" && agentForModel(u.defaults.Default) == agent {
+	if u.defaults.Default != "" && protocol.AgentForModel(u.defaults.Default) == agent {
 		return u.modelName(u.defaults.Default)
 	}
 	return u.defaultLabel(agent)
@@ -160,8 +152,8 @@ func (u *chatUI) newConversationModelLabel() string {
 // modelName names a model ID for display, preferring the catalog's name and
 // otherwise Claude Code's configured or reported concrete model.
 func (u *chatUI) modelName(model string) string {
-	if model == claudeDefaultModel {
-		if configured := u.defaults.forAgent(agentClaude); configured != "" && configured != claudeDefaultModel {
+	if model == protocol.ClaudeDefaultModel {
+		if configured := u.defaults.ForAgent(protocol.AgentClaude); configured != "" && configured != protocol.ClaudeDefaultModel {
 			return u.modelName(configured)
 		}
 		return "Claude Code"
@@ -173,11 +165,11 @@ func (u *chatUI) modelName(model string) string {
 			}
 		}
 	}
-	if agentForModel(model) == agentClaude {
-		if name := claudeModelDisplayName(model); name != model {
+	if protocol.AgentForModel(model) == protocol.AgentClaude {
+		if name := protocol.ClaudeModelDisplayName(model); name != model {
 			return name
 		}
-		return claudeModelPrettyName(strings.TrimPrefix(model, claudeModelPrefix))
+		return claudeModelPrettyName(strings.TrimPrefix(model, protocol.ClaudeModelPrefix))
 	}
 	return model
 }
@@ -242,5 +234,5 @@ func (u *chatUI) pickerCurrentChoice(kind string) string {
 	if u.defaults.Default != "" {
 		return u.defaults.Default
 	}
-	return u.defaults.forAgent(u.defaults.Agent)
+	return u.defaults.ForAgent(u.defaults.Agent)
 }

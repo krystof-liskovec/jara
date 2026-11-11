@@ -1,4 +1,4 @@
-package jara
+package agentrouter
 
 import (
 	"encoding/json"
@@ -6,29 +6,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"krystof.liskovec/jara/internal/protocol"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // Default models live in each agent's own configuration, so Jara, Codex
 // terminals, and Claude Code terminals on the host agree on them: Codex's
 // config.toml `model` and Claude Code's settings.json `model`.
 
-type defaultModels struct {
-	Agent    string `json:"agent"`              // agent new conversations start with
-	Codex    string `json:"codex"`              // Codex model ID, empty when unknown
-	Claude   string `json:"claude"`             // Claude UI model ID, e.g. claude/opus
-	Default  string `json:"default,omitempty"`  // host default across providers
-	Fallback string `json:"fallback,omitempty"` // model used past a usage limit
-}
-
 // startAgent picks the agent and model for a new conversation: the host
 // default model decides unless an agent was chosen explicitly.
 func (r *agentRouter) startAgent() (agent, model string) {
-	prefs := loadModelPrefs()
+	prefs := LoadModelPrefs()
 	if prefs.Default == "" {
 		return r.defaultAgent, ""
 	}
-	preferred := agentForModel(prefs.Default)
-	if r.agentExplicit && preferred != r.defaultAgent || preferred == agentClaude && !claudeAvailable() {
+	preferred := protocol.AgentForModel(prefs.Default)
+	if r.agentExplicit && preferred != r.defaultAgent || preferred == protocol.AgentClaude && !protocol.ClaudeAvailable() {
 		return r.defaultAgent, ""
 	}
 	return preferred, prefs.Default
@@ -50,12 +45,12 @@ func (r *agentRouter) getDefaultModels(id json.RawMessage, params json.RawMessag
 		CWD string `json:"cwd"`
 	}
 	_ = json.Unmarshal(params, &request)
-	prefs := loadModelPrefs()
+	prefs := LoadModelPrefs()
 	agent, _ := r.startAgent()
-	result := defaultModels{Agent: agent, Claude: claudeDefaultModel, Default: prefs.Default, Fallback: prefs.Fallback}
-	if claudeAvailable() {
+	result := protocol.DefaultModels{Agent: agent, Claude: protocol.ClaudeDefaultModel, Default: prefs.Default, Fallback: prefs.Fallback}
+	if protocol.ClaudeAvailable() {
 		if model := readClaudeDefaultModel(); model != "" {
-			result.Claude = claudeModelPrefix + model
+			result.Claude = protocol.ClaudeModelPrefix + model
 		}
 	}
 	readParams, _ := json.Marshal(map[string]any{"cwd": request.CWD})
@@ -71,15 +66,15 @@ func (r *agentRouter) getDefaultModels(id json.RawMessage, params json.RawMessag
 			return
 		}
 		// Without a configured model Codex uses its catalog default.
-		listParams, _ := json.Marshal(map[string]any{"limit": chatModelPageSize, "includeHidden": false})
+		listParams, _ := json.Marshal(map[string]any{"limit": protocol.ModelPageSize, "includeHidden": false})
 		_ = r.callCodex(codexCall{method: "model/list", callback: func(list, _ json.RawMessage) {
 			var page struct {
-				Data []codexModel `json:"data"`
+				Data []protocol.CodexModel `json:"data"`
 			}
 			_ = json.Unmarshal(list, &page)
 			for _, model := range page.Data {
 				if model.IsDefault {
-					result.Codex = firstNonEmpty(model.Model, model.ID)
+					result.Codex = textutil.FirstNonEmpty(model.Model, model.ID)
 					break
 				}
 			}
@@ -93,12 +88,12 @@ func (r *agentRouter) setDefaultModel(id json.RawMessage, params json.RawMessage
 		Model string `json:"model"`
 	}
 	_ = json.Unmarshal(params, &request)
-	if !validChatModelID(request.Model) {
+	if !protocol.ValidModelID(request.Model) {
 		r.fail(id, "choose a listed model or a valid model ID")
 		return nil
 	}
 	saved := func() {
-		prefs := loadModelPrefs()
+		prefs := LoadModelPrefs()
 		prefs.Default = request.Model
 		if err := saveModelPrefs(prefs); err != nil {
 			r.fail(id, "could not save the default model: "+err.Error())
@@ -106,8 +101,8 @@ func (r *agentRouter) setDefaultModel(id json.RawMessage, params json.RawMessage
 		}
 		r.reply(id, map[string]any{"model": request.Model})
 	}
-	if agentForModel(request.Model) == agentClaude {
-		if err := writeClaudeDefaultModel(claudeCLIModel(request.Model)); err != nil {
+	if protocol.AgentForModel(request.Model) == protocol.AgentClaude {
+		if err := writeClaudeDefaultModel(protocol.ClaudeCLIModel(request.Model)); err != nil {
 			r.fail(id, "could not save Claude Code's default model: "+err.Error())
 			return nil
 		}
@@ -131,11 +126,11 @@ func (r *agentRouter) setFallbackModel(id json.RawMessage, params json.RawMessag
 		Model string `json:"model"`
 	}
 	_ = json.Unmarshal(params, &request)
-	if request.Model != "" && !validChatModelID(request.Model) {
+	if request.Model != "" && !protocol.ValidModelID(request.Model) {
 		r.fail(id, "choose a listed model or a valid model ID")
 		return nil
 	}
-	prefs := loadModelPrefs()
+	prefs := LoadModelPrefs()
 	prefs.Fallback = request.Model
 	if err := saveModelPrefs(prefs); err != nil {
 		r.fail(id, "could not save the fallback model: "+err.Error())
@@ -162,7 +157,7 @@ func readClaudeDefaultModel() string {
 	var settings struct {
 		Model string `json:"model"`
 	}
-	if json.Unmarshal(data, &settings) != nil || !validChatModelID(claudeModelPrefix+settings.Model) {
+	if json.Unmarshal(data, &settings) != nil || !protocol.ValidModelID(protocol.ClaudeModelPrefix+settings.Model) {
 		return ""
 	}
 	return settings.Model

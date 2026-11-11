@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 func chatInitializeParams() map[string]any {
@@ -133,7 +135,7 @@ func (u *chatUI) acceptChatPlanUpdate(raw json.RawMessage) error {
 	return nil
 }
 
-func (u *chatUI) handleChatPlanItem(method string, item chatHistoryItem) {
+func (u *chatUI) handleChatPlanItem(method string, item protocol.HistoryItem) {
 	if item.Type != "plan" {
 		return
 	}

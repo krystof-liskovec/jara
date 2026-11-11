@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // Labels are derived from persistent workspace data, so activity sorting never
@@ -13,7 +15,7 @@ func labelDuplicateProjects(projects []conversationProject) {
 	groups := map[string][]int{}
 	for i := range projects {
 		projects[i].Label = ""
-		name := strings.ToLower(menuText(projectBaseName(projects[i])))
+		name := strings.ToLower(textutil.SanitizeText(projectBaseName(projects[i])))
 		groups[name] = append(groups[name], i)
 	}
 	for _, indices := range groups {
@@ -25,11 +27,11 @@ func labelDuplicateProjects(projects []conversationProject) {
 			p := &projects[i]
 			detail := projectCheckoutLabel(*p, projects, indices)
 			p.Label = projectBaseName(*p) + " · " + detail
-			labels[strings.ToLower(menuText(p.Label))]++
+			labels[strings.ToLower(textutil.SanitizeText(p.Label))]++
 		}
 		for _, i := range indices {
 			p := &projects[i]
-			if labels[strings.ToLower(menuText(p.Label))] > 1 {
+			if labels[strings.ToLower(textutil.SanitizeText(p.Label))] > 1 {
 				p.Label += " · " + projectCheckoutReference(*p)
 			}
 		}

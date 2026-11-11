@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 const codexNoDaemonFlag = "--no-daemon"
@@ -14,7 +16,7 @@ const codexNoDaemonFlag = "--no-daemon"
 // app-server that keeps each thread's writer lease after the terminal exits,
 // so Jara's own app-server could no longer resume that conversation.
 func codexWithoutSharedDaemon(command []string) []string {
-	if len(command) == 0 || command[0] != codexBinary || !codexSupportsNoDaemon(command[0]) {
+	if len(command) == 0 || command[0] != protocol.CodexBinary || !codexSupportsNoDaemon(command[0]) {
 		return command
 	}
 	for _, arg := range command[1:] {
