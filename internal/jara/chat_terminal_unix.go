@@ -126,7 +126,7 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			Composer:        composerText, CursorByte: composerCursor,
 			CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
 			ScrollOffset: scrollOffset, Activity: activity, ActivityElapsed: elapsed,
-			ActivityFrame: int(now.UnixMilli() / 120),
+			ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),
 			QueuedPrompts: queueLines, QueueEditing: queueEditor.active(), QueueEditNumber: queueEditNumber,
 			ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(),
 			Hints: hints, Motion: motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),

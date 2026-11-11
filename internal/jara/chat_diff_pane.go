@@ -83,6 +83,7 @@ func chatDiffPaneWidth(d *chatDiffState, width, height int) int {
 type chatDiffLine struct {
 	text, kind string
 	fresh      bool
+	spans      []chatSyntaxSpan // highlighted code after the diff marker
 }
 
 func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
@@ -117,6 +118,7 @@ func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
 				lines = append(lines, chatDiffLine{text: "   … more lines omitted", kind: "pane-more"})
 				break
 			}
+			raw = strings.ReplaceAll(raw, "\t", "    ")
 			kind := "pane-context"
 			switch {
 			case strings.HasPrefix(raw, "@@"):
@@ -126,7 +128,8 @@ func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
 			case strings.HasPrefix(raw, "-"):
 				kind = "pane-delete"
 			}
-			lines = append(lines, chatDiffLine{text: " " + strings.ReplaceAll(raw, "\t", "    "), kind: kind})
+			_, spans := chatDiffSyntax(path, raw)
+			lines = append(lines, chatDiffLine{text: " " + raw, kind: kind, spans: spans})
 			shown++
 		}
 	}
@@ -205,6 +208,15 @@ func paintChatDiffLine(line chatDiffLine, width int, flash float64, palette menu
 		fg = palette.accent
 	case "pane-context", "pane-empty", "pane-more":
 		fg = palette.muted
+	}
+	if len(line.spans) > 0 && line.text != "" {
+		// Keep the marker in the diff color and color the code by syntax.
+		marker := line.text[:2]
+		code := fg
+		if line.kind != "pane-context" {
+			code = palette.text
+		}
+		return paintChatSyntax(marker, line.spans, width, bg, fg, code, style, chatColorIsLight(palette.canvas))
 	}
 	painted := menuBG(bg) + menuFG(fg) + style + plain
 	if line.kind == "pane-file" {

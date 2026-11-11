@@ -17,6 +17,9 @@ type threadSegment struct {
 	Agent     string `json:"agent"`
 	BackendID string `json:"backend_id"`
 	Started   bool   `json:"started,omitempty"` // a Claude session exists to resume
+	// StartTurn is the 1-based transcript index of the segment's first turn;
+	// 0 in conversations saved before Jara recorded it.
+	StartTurn int `json:"start_turn,omitempty"`
 }
 
 type transcriptTurn struct {
@@ -68,8 +71,13 @@ func (t *routedThread) save() {
 	if !t.persistent() || !routedThreadIDRE.MatchString(t.ID) {
 		return
 	}
-	if len(t.Turns) > maxTranscriptTurns {
-		t.Turns = t.Turns[len(t.Turns)-maxTranscriptTurns:]
+	if removed := len(t.Turns) - maxTranscriptTurns; removed > 0 {
+		t.Turns = t.Turns[removed:]
+		for i := range t.Segments {
+			if t.Segments[i].StartTurn > 0 {
+				t.Segments[i].StartTurn = max(1, t.Segments[i].StartTurn-removed)
+			}
+		}
 	}
 	if err := writeJSON(filepath.Join(agentThreadsDir(), t.ID+".json"), t); err != nil {
 		fmt.Fprintln(os.Stderr, "save conversation record:", err)
@@ -126,7 +134,11 @@ func (t *routedThread) lastTurn() *transcriptTurn {
 }
 
 func (r *agentRouter) startThread(id json.RawMessage, params json.RawMessage) error {
-	if r.defaultAgent != agentClaude {
+	agent, model := r.startAgent()
+	if agent != agentClaude {
+		if model != "" {
+			params = withJSONField(params, "model", model)
+		}
 		return r.callCodex(codexCall{uiID: id, method: "thread/start"}, params)
 	}
 	var request struct {
@@ -137,8 +149,8 @@ func (r *agentRouter) startThread(id json.RawMessage, params json.RawMessage) er
 	if err != nil {
 		return err
 	}
-	thread := &routedThread{ID: threadID, CWD: request.CWD, Created: time.Now().Unix(), Model: claudeDefaultModel,
-		Reviewer: requestedReviewer(params), Segments: []threadSegment{{Agent: agentClaude, BackendID: threadID}}}
+	thread := &routedThread{ID: threadID, CWD: request.CWD, Created: time.Now().Unix(), Model: firstNonEmpty(model, claudeDefaultModel),
+		Reviewer: requestedReviewer(params), Segments: []threadSegment{{Agent: agentClaude, BackendID: threadID, StartTurn: 1}}}
 	r.threads[threadID] = thread
 	thread.claude = newClaudeSession(r, thread, threadID, false)
 	r.reply(id, map[string]any{"thread": map[string]any{"id": threadID, "turns": []any{}}, "model": thread.Model})
@@ -204,7 +216,7 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 	thread := r.threads[request.ThreadID]
 	if thread == nil {
 		// A Codex-only conversation not seen before: start tracking it.
-		thread = &routedThread{ID: request.ThreadID, Created: time.Now().Unix(), Segments: []threadSegment{{Agent: agentCodex, BackendID: request.ThreadID}}}
+		thread = &routedThread{ID: request.ThreadID, Created: time.Now().Unix(), Segments: []threadSegment{{Agent: agentCodex, BackendID: request.ThreadID, StartTurn: 1}}}
 		r.threads[request.ThreadID] = thread
 	}
 	thread.selectReviewer(params)
@@ -216,25 +228,26 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 	from := thread.current().Agent
 	switching := target != from
 	message := text
+	var plan agentSwitch
 	if switching {
-		message = thread.switchBriefing(from, target, text)
+		plan = thread.planSwitch(from, target, text)
+		message = firstNonEmpty(plan.returning, plan.fresh)
 	}
+	startTurn := len(thread.Turns) + 1
 	thread.beginTurn(text, target)
 	thread.goalContinuations = 0
 	if target == agentClaude {
 		message = goalPreamble(thread.Goal) + message
-	}
-	if target == agentClaude {
 		if switching {
-			backend, err := newUUID()
-			if err != nil {
-				return err
-			}
-			thread.Segments = append(thread.Segments, threadSegment{Agent: agentClaude, BackendID: backend})
 			if thread.claude != nil {
 				thread.claude.stop()
 			}
-			thread.claude = newClaudeSession(r, thread, backend, false)
+			segment, err := thread.claudeSegment(plan, startTurn)
+			if err != nil {
+				return err
+			}
+			thread.Segments = append(thread.Segments, segment)
+			thread.claude = newClaudeSession(r, thread, segment.BackendID, segment.Started)
 		} else if thread.claude == nil {
 			thread.claude = newClaudeSession(r, thread, thread.current().BackendID, thread.current().Started)
 		}
@@ -255,34 +268,7 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 		thread.claude.stop()
 		thread.claude = nil
 	}
-	// Open a Codex thread for the rest of the conversation, then send the
-	// briefing as its first turn.
-	startParams, _ := json.Marshal(thread.codexOpenParams(map[string]any{}))
-	return r.callCodex(codexCall{method: "thread/start", callback: func(result, failure json.RawMessage) {
-		var started struct {
-			Thread struct {
-				ID string `json:"id"`
-			} `json:"thread"`
-		}
-		if failure != nil || json.Unmarshal(result, &started) != nil || started.Thread.ID == "" {
-			r.fail(id, "could not open a Codex conversation for the switch")
-			return
-		}
-		thread.Segments = append(thread.Segments, threadSegment{Agent: agentCodex, BackendID: started.Thread.ID})
-		r.codexToVirtual[started.Thread.ID] = thread.ID
-		thread.save()
-		if goal := thread.Goal; goal != nil {
-			// Carry the goal to Codex, which then pursues it natively.
-			goalParams, _ := json.Marshal(map[string]any{"threadId": started.Thread.ID, "origin": "user", "objective": goal.Objective, "status": goal.Status, "tokenBudget": goal.TokenBudget})
-			_ = r.callCodex(codexCall{method: "thread/goal/set", callback: func(json.RawMessage, json.RawMessage) {}}, goalParams)
-		}
-		var fields map[string]any
-		_ = json.Unmarshal(params, &fields)
-		fields["threadId"] = started.Thread.ID
-		fields["input"] = []any{map[string]any{"type": "text", "text": message}}
-		turnParams, _ := json.Marshal(fields)
-		_ = r.callCodex(codexCall{uiID: id, method: "turn/start"}, turnParams)
-	}}, startParams)
+	return r.switchToCodex(id, thread, params, plan, startTurn)
 }
 
 // postProcessCodexResult merges Claude entries into model and thread lists
@@ -306,7 +292,7 @@ func (r *agentRouter) postProcessCodexResult(call codexCall, result, failure jso
 		}
 		if json.Unmarshal(result, &response) == nil && response.Thread.ID != "" && r.threads[response.Thread.ID] == nil {
 			thread := &routedThread{ID: response.Thread.ID, CWD: response.Thread.CWD, Created: time.Now().Unix(),
-				Segments: []threadSegment{{Agent: agentCodex, BackendID: response.Thread.ID}}}
+				Segments: []threadSegment{{Agent: agentCodex, BackendID: response.Thread.ID, StartTurn: 1}}}
 			thread.seedFromHistory(response.Thread.Turns)
 			r.threads[thread.ID] = thread
 		}

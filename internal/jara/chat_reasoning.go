@@ -31,6 +31,48 @@ func chatSupportsReasoning(model *codexModel, effort string) bool {
 	return false
 }
 
+// chatReasoningOrder ranks effort levels across providers: Codex offers
+// minimal and Claude Code offers max, so the scale spans both.
+var chatReasoningOrder = []string{"none", "minimal", "low", "medium", "high", "xhigh", "max"}
+
+// chatNearestReasoning keeps the effort when the model supports it and
+// otherwise picks the closest supported level, preferring the lower one on a
+// tie. Unknown efforts fall back to the model's default.
+func chatNearestReasoning(model *codexModel, effort string) string {
+	if model == nil || chatSupportsReasoning(model, effort) {
+		return effort
+	}
+	rank := func(value string) int {
+		for index, level := range chatReasoningOrder {
+			if level == value {
+				return index
+			}
+		}
+		return -1
+	}
+	want := rank(effort)
+	best, bestDistance := model.DefaultReasoningEffort, len(chatReasoningOrder)
+	if want < 0 {
+		return best
+	}
+	for _, option := range model.SupportedReasoningEfforts {
+		have := rank(option.Value)
+		if have < 0 {
+			continue
+		}
+		distance := have - want
+		if distance < 0 {
+			distance = -distance*2 - 1 // a lower level wins ties
+		} else {
+			distance *= 2
+		}
+		if distance < bestDistance {
+			best, bestDistance = option.Value, distance
+		}
+	}
+	return best
+}
+
 func (u *chatUI) reasoningModel() *codexModel {
 	modelID := u.nextModel
 	if modelID == "" {

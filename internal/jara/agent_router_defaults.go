@@ -13,9 +13,36 @@ import (
 // config.toml `model` and Claude Code's settings.json `model`.
 
 type defaultModels struct {
-	Agent  string `json:"agent"`  // agent new conversations start with
-	Codex  string `json:"codex"`  // Codex model ID, empty when unknown
-	Claude string `json:"claude"` // Claude UI model ID, e.g. claude/opus
+	Agent    string `json:"agent"`              // agent new conversations start with
+	Codex    string `json:"codex"`              // Codex model ID, empty when unknown
+	Claude   string `json:"claude"`             // Claude UI model ID, e.g. claude/opus
+	Default  string `json:"default,omitempty"`  // host default across providers
+	Fallback string `json:"fallback,omitempty"` // model used past a usage limit
+}
+
+// startAgent picks the agent and model for a new conversation: the host
+// default model decides unless an agent was chosen explicitly.
+func (r *agentRouter) startAgent() (agent, model string) {
+	prefs := loadModelPrefs()
+	if prefs.Default == "" {
+		return r.defaultAgent, ""
+	}
+	preferred := agentForModel(prefs.Default)
+	if r.agentExplicit && preferred != r.defaultAgent || preferred == agentClaude && !claudeAvailable() {
+		return r.defaultAgent, ""
+	}
+	return preferred, prefs.Default
+}
+
+func withJSONField(params json.RawMessage, key string, value any) json.RawMessage {
+	fields := map[string]any{}
+	_ = json.Unmarshal(params, &fields)
+	fields[key] = value
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return params
+	}
+	return out
 }
 
 func (r *agentRouter) getDefaultModels(id json.RawMessage, params json.RawMessage) error {
@@ -23,7 +50,9 @@ func (r *agentRouter) getDefaultModels(id json.RawMessage, params json.RawMessag
 		CWD string `json:"cwd"`
 	}
 	_ = json.Unmarshal(params, &request)
-	result := defaultModels{Agent: r.defaultAgent, Claude: claudeDefaultModel}
+	prefs := loadModelPrefs()
+	agent, _ := r.startAgent()
+	result := defaultModels{Agent: agent, Claude: claudeDefaultModel, Default: prefs.Default, Fallback: prefs.Fallback}
 	if claudeAvailable() {
 		if model := readClaudeDefaultModel(); model != "" {
 			result.Claude = claudeModelPrefix + model
@@ -68,12 +97,21 @@ func (r *agentRouter) setDefaultModel(id json.RawMessage, params json.RawMessage
 		r.fail(id, "choose a listed model or a valid model ID")
 		return nil
 	}
+	saved := func() {
+		prefs := loadModelPrefs()
+		prefs.Default = request.Model
+		if err := saveModelPrefs(prefs); err != nil {
+			r.fail(id, "could not save the default model: "+err.Error())
+			return
+		}
+		r.reply(id, map[string]any{"model": request.Model})
+	}
 	if agentForModel(request.Model) == agentClaude {
 		if err := writeClaudeDefaultModel(claudeCLIModel(request.Model)); err != nil {
 			r.fail(id, "could not save Claude Code's default model: "+err.Error())
 			return nil
 		}
-		r.reply(id, map[string]any{"model": request.Model})
+		saved()
 		return nil
 	}
 	writeParams, _ := json.Marshal(map[string]any{"keyPath": "model", "value": request.Model, "mergeStrategy": "replace"})
@@ -82,8 +120,29 @@ func (r *agentRouter) setDefaultModel(id json.RawMessage, params json.RawMessage
 			r.fail(id, "could not save Codex's default model: "+rpcErrorText(failure))
 			return
 		}
-		r.reply(id, map[string]any{"model": request.Model})
+		saved()
 	}}, writeParams)
+}
+
+// setFallbackModel saves the model that takes over at a usage limit; an
+// empty model turns the fallback off.
+func (r *agentRouter) setFallbackModel(id json.RawMessage, params json.RawMessage) error {
+	var request struct {
+		Model string `json:"model"`
+	}
+	_ = json.Unmarshal(params, &request)
+	if request.Model != "" && !validChatModelID(request.Model) {
+		r.fail(id, "choose a listed model or a valid model ID")
+		return nil
+	}
+	prefs := loadModelPrefs()
+	prefs.Fallback = request.Model
+	if err := saveModelPrefs(prefs); err != nil {
+		r.fail(id, "could not save the fallback model: "+err.Error())
+		return nil
+	}
+	r.reply(id, map[string]any{"model": request.Model})
+	return nil
 }
 
 func claudeSettingsPath() string {

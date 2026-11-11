@@ -64,6 +64,7 @@ type Request struct {
 	UserInterface      string   `json:"interface,omitempty"`
 	Agent              string   `json:"agent,omitempty"`
 	Runtime            string   `json:"runtime,omitempty"`
+	AgentExplicit      bool     `json:"agent_explicit,omitempty"` // Runtime was chosen explicitly
 	Handoff            bool     `json:"handoff,omitempty"`
 	ConversationCWD    string   `json:"conversation_cwd,omitempty"`
 	Conversation       string   `json:"conversation,omitempty"`

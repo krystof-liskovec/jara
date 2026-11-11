@@ -68,6 +68,8 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		}
 	case "code":
 		fg = palette.green
+	case "code-add", "code-delete", "code-hunk", "code-meta":
+		bg, fg = chatCodeLineColors(kind, palette)
 	case "completion":
 		bg = palette.surface
 		if selected {

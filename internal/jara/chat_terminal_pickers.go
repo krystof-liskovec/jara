@@ -89,7 +89,7 @@ func (p *chatTerminalPicker) active() bool { return p.kind != "" }
 func (p *chatTerminalPicker) selectCurrent(u *chatUI) {
 	p.selected = 0
 	switch p.kind {
-	case "model", "default":
+	case "model", "default", "fallback":
 		if u.models == nil {
 			return
 		}
@@ -97,8 +97,8 @@ func (p *chatTerminalPicker) selectCurrent(u *chatUI) {
 		if current == "" {
 			current = u.effectiveModel
 		}
-		if p.kind == "default" {
-			current = u.defaults.forAgent(agentForModel(current))
+		if p.kind != "model" {
+			current = u.pickerCurrentChoice(p.kind)
 		}
 		for index, model := range u.models.models {
 			id, _, _ := modelOverride(model)
@@ -132,8 +132,8 @@ func (p *chatTerminalPicker) choices(u *chatUI) []chatCompletionChoice {
 	switch p.kind {
 	case "model":
 		return chatModelPickerChoices(u.models, u.nextModel, u.effectiveModel, p.selected)
-	case "default":
-		return chatDefaultPickerChoices(u, p.selected)
+	case "default", "fallback":
+		return chatDefaultPickerChoices(u, p.selected, p.kind)
 	case "reasoning":
 		return chatReasoningPickerChoices(u, p.selected)
 	default:
@@ -167,7 +167,7 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 		}
 		u.print("Model set to " + u.nextModelLabel + " for the next and subsequent turns.\n")
 		p.close()
-	case "default":
+	case "default", "fallback":
 		if u.models == nil || p.selected >= len(u.models.models) {
 			return nil
 		}
@@ -175,7 +175,11 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 		if err != nil {
 			return err
 		}
+		kind := p.kind
 		p.close()
+		if kind == "fallback" {
+			return u.setChatFallbackModel(id)
+		}
 		return u.setChatDefaultModel(id)
 	case "reasoning":
 		model := u.reasoningModel()

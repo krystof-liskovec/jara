@@ -20,8 +20,7 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 		m.requestID, m.requestKind = "", ""
 		if message.Error != nil {
 			if kind == "turnStart" && chatCrunchIsUsageLimit(message.Error.Data, message.Error.Message) {
-				m.waitForUsageLocked(message.Error.Message)
-				followUp = "rateLimits"
+				followUp = m.usageLimitedLocked(message.Error.Message)
 			} else if kind == "turnInterrupt" {
 				m.job.Status = "stopped"
 				m.job.Error = ""
@@ -77,8 +76,7 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 					case "active":
 						m.job.Status = "pending"
 					case "usageLimited":
-						m.waitForUsageLocked("the goal is usage-limited")
-						followUp = "rateLimits"
+						followUp = m.usageLimitedLocked("the goal is usage-limited")
 					default:
 						m.failLocked("goal status is " + chatGoalStatusLabel(response.Goal.Status))
 					}
@@ -123,8 +121,7 @@ func (m *chatCrunchManager) handleAppMessage(message appMessage, input io.Writer
 				case event.Turn.Status == "completed":
 					m.job.Status = "completed"
 				case event.Turn.Error != nil && chatCrunchIsUsageLimit(event.Turn.Error.CodexErrorInfo, event.Turn.Error.Message):
-					m.waitForUsageLocked(event.Turn.Error.Message)
-					followUp = "rateLimits"
+					followUp = m.usageLimitedLocked(event.Turn.Error.Message)
 				default:
 					failure := "turn ended with status " + event.Turn.Status
 					if event.Turn.Error != nil && event.Turn.Error.Message != "" {

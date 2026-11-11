@@ -92,7 +92,7 @@ func TestChatDefaultCommandSetsHostDefault(t *testing.T) {
 	for id, pending := range u.pending {
 		u.acceptChatDefaultResponse(appMessage{ID: json.RawMessage(id), Result: json.RawMessage(`{}`)}, pending)
 	}
-	if u.defaults.Codex != "gpt-new" || u.modelControlLabel() != "gpt-new" || !strings.Contains(output.String(), "Default model for new Codex conversations: gpt-new") {
+	if u.defaults.Codex != "gpt-new" || u.modelControlLabel() != "gpt-new" || !strings.Contains(output.String(), "Default model for new conversations: gpt-new (Codex)") {
 		t.Fatalf("default not applied: %+v %q", u.defaults, output.String())
 	}
 	if !isChatDefaultCommand("/default") || isChatDefaultCommand("/defaults") {

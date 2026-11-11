@@ -25,6 +25,8 @@ type chatViewModel struct {
 	Activity                string
 	ActivityElapsed         string
 	ActivityFrame           int
+	ActivitySeed            int64  // per-turn seed for the thinking verb
+	ActivityHint            string // e.g. "ctrl+c to interrupt"
 	QueuedPrompts           []chatViewLine
 	QueueEditing            bool
 	QueueEditNumber         int
@@ -46,6 +48,8 @@ type chatFrame struct {
 type chatViewLine struct {
 	text, kind, role string
 	selected         bool
+	spans            []chatSyntaxSpan // highlighted code starting at codeStart
+	codeStart        int
 }
 
 const chatQueueViewRowLimit = 8
@@ -115,7 +119,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		if i < len(visibleTranscript) {
 			line = visibleTranscript[i]
 		}
-		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, line.role, false, width, palette, color)
+		frame.Lines[row] = paintChatTranscriptLine(" ", line, width, palette, color)
 		row++
 	}
 	row += separatorRows
@@ -353,7 +357,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		if index < len(visibleHistory) {
 			line = visibleHistory[index]
 		}
-		frame.Lines[row] = paintChatViewLine(fitChatView(line.text, width), line.kind, line.role, false, width, palette, color)
+		frame.Lines[row] = paintChatTranscriptLine("", line, width, palette, color)
 		row++
 	}
 	row += separatorRows
@@ -437,24 +441,6 @@ func chatComposerLabels(model chatViewModel) (string, string) {
 		return label, " Enter save "
 	}
 	return " Message ", " Enter send "
-}
-
-func chatActivityViewLine(model chatViewModel) chatViewLine {
-	spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-	text := spinner[max(0, model.ActivityFrame)%len(spinner)]
-	if model.ActivityElapsed != "" {
-		text += " · " + menuText(model.ActivityElapsed)
-	}
-	text += " · " + menuText(model.Activity)
-	kind := "activity-progress"
-	label, _, _ := strings.Cut(strings.TrimSpace(model.Activity), " · ") // "Thinking · ~N tokens"
-	switch label {
-	case "Running command", "Applying changes", "Compacting context":
-		kind = "activity-working"
-	case "Thinking", "Planning", "Waiting for approval", "Waiting for input", "Opening conversation", "Retrying", "Reconnecting", "Stopping":
-		kind = "activity"
-	}
-	return chatViewLine{text: text, kind: kind}
 }
 
 func chatViewWindow(text string, width, cursor int) (string, int, bool) {

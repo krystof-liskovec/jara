@@ -37,6 +37,7 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/models", description: "List available Codex models"},
 	{name: "/reasoning", description: "Select a reasoning effort", arguments: true},
 	{name: "/default", description: "Set the default model for new conversations", arguments: true},
+	{name: "/fallback", description: "Set the model that takes over at a usage limit", arguments: true},
 	{name: "/compose", description: "Compose a multi-line message"},
 	{name: "/send", description: "Send the composed message"},
 	{name: "/discard", description: "Discard the composed message"},

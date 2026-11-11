@@ -88,13 +88,29 @@ a conversation opens, the model a new one would use. For Claude Code's default
 entry it shows the model Claude Code reports once it starts.
 
 `/default` opens the same picker to set the default model for new conversations
-on this host; `/default ID` or `/default N` sets it directly. Jara saves it in the
-agent's own configuration (`model` in Codex's `config.toml`, or in Claude Code's
-`settings.json`), so that agent's terminals on the host use it too.
+on this host; `/default ID` or `/default N` sets it directly. The default model
+also picks the provider: with a Claude default, new conversations start on
+Claude Code even when the configured agent is Codex. Only an explicit choice
+(`--agent`, or "New … conversation" in the project browser) overrides it. Jara
+also saves the model in the agent's own configuration (`model` in Codex's
+`config.toml`, or in Claude Code's `settings.json`), so that agent's terminals
+on the host use it too.
+
+`/fallback` picks a model, typically from the other provider, that takes over
+when the current one reaches its usage limit. `/crunch` and `/goalcrunch`
+switch to it once instead of waiting for the reset, and wait only if the
+fallback reaches its limit too. An ordinary turn that hits the limit is retried
+once on the fallback. `/fallback off` turns it off. Both choices are stored on
+the host in `~/.local/share/jara/models.json`.
 When Codex is working, an animated activity row shows the latest concise
 progress summary when available; otherwise it reports whether Codex is thinking,
-running a command, applying changes, or waiting for input. Message headers show
-their timestamps when Codex provides them.
+running a command, applying changes, or waiting for input. Like Claude Code's
+spinner, the row reads `✻ Pondering… (12s · ctrl+c to interrupt)`: a star
+that grows and shrinks (`· ✢ ✳ ✶ ✻ ✽`), the label under a sweeping shimmer
+(plain thinking gets a verb picked per turn), and muted details for elapsed
+time, token progress, and how to interrupt. `JARA_REDUCED_MOTION=1` keeps the
+row but stops the shimmer. Message headers show their timestamps when Codex
+provides them.
 
 Bracketed paste inserts text, including multiple lines, without submitting it.
 Input history and cursor editing work in the composer. Text typed while an agent
@@ -287,10 +303,16 @@ When the terminal is at least 100 columns wide and 12 rows tall, file changes
 appear in a pane to the right of the conversation, newest edit first:
 
 - Each file shows its path and `+added −removed` counts, then its hunks with
-  tinted additions and deletions.
+  tinted additions and deletions. Code is syntax-highlighted by the file's
+  language, using GitHub's light or dark colors to match the terminal.
 - The pane opens automatically with the first change. **F4** hides or shows
   it, and **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
 - History loaded with `/resume` fills the pane without animation.
+
+Code blocks in the transcript are highlighted the same way: by the fence
+language (```` ```go ````) or, for file-change diffs, by the changed file.
+Highlighting is per line, so a string or comment spanning lines may be
+colored as code after its first line.
 
 While a turn runs, a highlight sweeps across the activity label and the header
 mark pulses. New changes wipe into the pane from the top, and the newest file
@@ -320,7 +342,11 @@ claude`, or switch at any time:
 - Picking the other agent's model moves the conversation to that agent. The UI
   keeps the same conversation ID. The receiving agent gets a briefing with the
   earlier exchange (messages and edited files); the working tree already holds
-  every change. Switching back opens a new segment again.
+  every change. Switching back to an agent that worked on the conversation
+  before resumes its own session, with its full earlier context, and briefs it
+  only on the turns it missed.
+- A reasoning effort the new model lacks becomes its closest level (Codex's
+  `minimal` becomes Claude's `low`; Claude's `max` becomes Codex's `xhigh`).
 
 The briefing replays each earlier turn: messages, commands run with their
 exit status and last output line, plans, edited files, and the active goal.
