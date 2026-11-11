@@ -57,6 +57,13 @@ func (u *chatUI) event(m appMessage) error {
 		if p.ThreadID == "" || p.ThreadID == u.thread {
 			u.printRole("progress", "Conversation context compacted.\n")
 		}
+	case "jara/model/resolved":
+		var resolved struct {
+			Model string `json:"model"`
+		}
+		if (p.ThreadID == "" || p.ThreadID == u.thread) && json.Unmarshal(m.Params, &resolved) == nil {
+			u.resolvedModel = chatText(resolved.Model)
+		}
 	case "jara/activity":
 		if u.busy && (p.ThreadID == "" || p.ThreadID == u.thread) && p.Label != "" {
 			u.setActivityLabel(chatText(p.Label))

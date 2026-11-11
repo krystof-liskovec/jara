@@ -37,6 +37,9 @@ func recoverChatRequestError(u *chatUI, pending chatPending, message appMessage)
 			operation = "start conversation"
 		}
 		u.print("\nCould not " + operation + ": " + detail + "\n")
+		if chatWriterConflict(detail) {
+			u.print(chatWriterConflictHint)
+		}
 		if u.threadReady {
 			u.print("Continuing previous conversation.\nYou> ")
 		} else {

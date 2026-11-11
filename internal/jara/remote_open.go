@@ -17,7 +17,7 @@ func connectCommand(args []string) error {
 	f := flag.NewFlagSet("connect", flag.ContinueOnError)
 	var codexArgs codexArgList
 	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
-	chatInterface := f.String("interface", "codex", "conversation interface: codex or jara")
+	chatInterface := f.String("interface", "jara", "conversation interface: jara or codex")
 	agentName := f.String("agent", os.Getenv("JARA_AGENT"), "agent runtime: codex or claude")
 	resume := f.Bool("resume", false, "use plain codex resume when starting a terminal")
 	fresh := f.Bool("new", false, "start another Codex terminal")
@@ -114,7 +114,7 @@ func remoteOpen(q Request) error {
 			if q.Background {
 				return fmt.Errorf("Codex session browsing is interactive; use `jara resume`")
 			}
-			command := codexResumeAllCommand(codexArgs)
+			command := codexWithoutSharedDaemon(codexResumeAllCommand(codexArgs))
 			if claude {
 				command = claudeCommand(true, false, codexArgs)
 			}

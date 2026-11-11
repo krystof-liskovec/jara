@@ -128,6 +128,9 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 		case now := <-timer.C:
 			for id, pending := range u.pending {
 				if now.After(pending.deadline) {
+					if u.expireChatDefaultRequest(id, pending) {
+						continue
+					}
 					if pending.method == "thread/list" {
 						u.expireChatSessionRequest(id)
 						continue

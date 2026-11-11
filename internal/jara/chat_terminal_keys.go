@@ -159,6 +159,20 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 	if event := chatTerminalMouseEvent(sequence); event != nil {
 		return event
 	}
+	switch chatFunctionKey(sequence) {
+	case 2:
+		event := editorEvent(chatEditorModelPicker)
+		return &event
+	case 3:
+		event := editorEvent(chatEditorReasoningPicker)
+		return &event
+	case 4:
+		return &chatTerminalKeyEvent{diffPane: true}
+	case 5:
+		return &chatTerminalKeyEvent{paneScroll: -chatDiffPaneScrollStep}
+	case 6:
+		return &chatTerminalKeyEvent{paneScroll: chatDiffPaneScrollStep}
+	}
 	switch sequence {
 	case "\x1b[1;5C", "\x1b[1;5:1C", "\x1b[5C", "\x1b[57351;5u", "\x1b[57351;5:1u":
 		event := editorEvent(chatEditorWordRight)
@@ -198,17 +212,11 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		key = chatEditorEnd
 	case "\x1b[3~":
 		key = chatEditorDelete
-	case "\x1bOQ", "\x1b[12~":
-		key = chatEditorModelPicker
-	case "\x1bOR", "\x1b[13~":
-		key = chatEditorReasoningPicker
 	case "\x1b[Z":
 		key = chatEditorTab
-	case "\x1bOS", "\x1b[14~", "\x1b[S":
-		return &chatTerminalKeyEvent{diffPane: true}
-	case "\x1b[5;3~", "\x1b[15~":
+	case "\x1b[5;3~":
 		return &chatTerminalKeyEvent{paneScroll: -chatDiffPaneScrollStep}
-	case "\x1b[6;3~", "\x1b[17~":
+	case "\x1b[6;3~":
 		return &chatTerminalKeyEvent{paneScroll: chatDiffPaneScrollStep}
 	case "\x1b[5~":
 		return &chatTerminalKeyEvent{scroll: 1}
@@ -292,4 +300,44 @@ func editorEvent(key chatEditorKey, text ...string) chatTerminalKeyEvent {
 		input.Text = text[0]
 	}
 	return chatTerminalKeyEvent{input: &input}
+}
+
+// chatFunctionKey returns N for an F1-F6 key sequence, or 0. Terminals encode
+// these keys differently: SS3 P-S (xterm, tmux), CSI 11-17 ~ (VT220), and,
+// with the kitty keyboard protocol Jara enables, CSI P, Q, S and CSI 13 ~ for
+// F1-F4. Modified keys add ";MODIFIERS" (CSI 1;2Q, CSI 13;5~) and kitty may
+// append ":EVENT"; any modifier still selects the key.
+func chatFunctionKey(sequence string) int {
+	if len(sequence) == 3 && strings.HasPrefix(sequence, "\x1bO") {
+		return strings.IndexByte("PQRS", sequence[2]) + 1
+	}
+	body, found := strings.CutPrefix(sequence, "\x1b[")
+	if !found || body == "" {
+		return 0
+	}
+	final := body[len(body)-1]
+	params := strings.Split(body[:len(body)-1], ";")
+	if len(params) > 2 {
+		return 0
+	}
+	for _, param := range params {
+		if strings.Trim(param, "0123456789:") != "" {
+			return 0
+		}
+	}
+	if final == '~' {
+		switch params[0] {
+		case "11", "12", "13", "14", "15":
+			return int(params[0][1] - '0')
+		case "17":
+			return 6
+		}
+		return 0
+	}
+	// CSI P/Q/S with no parameter or "1": the kitty form of F1, F2 and F4.
+	// CSI R is a cursor position report unless it carries modifiers.
+	if params[0] != "" && params[0] != "1" || final == 'R' && len(params) < 2 {
+		return 0
+	}
+	return strings.IndexByte("PQRS", final) + 1
 }

@@ -92,7 +92,7 @@ func (u *chatUI) modelControlLabel() string {
 	if u.effectiveModel != "" {
 		return u.effectiveModelLabel()
 	}
-	return "Codex default"
+	return u.newConversationModelLabel()
 }
 
 func (u *chatUI) reasoningControlLabel() string {

@@ -404,6 +404,9 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			}
 			for id, pending := range u.pending {
 				if now.After(pending.deadline) {
+					if u.expireChatDefaultRequest(id, pending) {
+						continue
+					}
 					if pending.method == "thread/list" {
 						u.expireChatSessionRequest(id)
 						if resumePickerPending && u.sessions != nil && u.sessions.complete {

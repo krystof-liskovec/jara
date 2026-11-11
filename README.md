@@ -6,9 +6,9 @@ Persistent remote Codex and Claude Code workspaces over standard OpenSSH, hosted
 with Docker or Compose. The Go CLI remembers environments and workspace associations.
 
 Jara launches Codex, or Claude Code with `--agent claude` ([agent runtimes](docs/agent-providers.md)),
-inside tmux. For Codex, Jara's [conversation interface](docs/conversation-interface.md) is
-available with `jara new --interface jara`: streamed replies, saved sessions, multiline prompts,
-explicit approvals and questions, and agent activity tracking. Each agent CLI owns inference,
+inside tmux. Conversations open in Jara's [conversation interface](docs/conversation-interface.md)
+by default: streamed replies, saved sessions, multiline prompts, explicit approvals and questions,
+and agent activity tracking. Pass `--interface codex` for the native Codex terminal. Each agent CLI owns inference,
 its authentication, and tools. Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain available.
 
 Codex startup arguments are configurable through `JARA_CODEX_ARGS` in the

@@ -40,6 +40,8 @@ func expandChatTranscript(messages []chatViewMessage, width int) []chatViewLine 
 			label, kind = "↳ "+agent+" progress", "role-progress"
 		case "subagent":
 			label, kind = "↳ Subagent activity", "role-subagent"
+		case "btw":
+			label, kind = "◇ By the way · not saved", "role-subagent"
 		}
 		if chatViewNeedsMessageGap(previousRole, role) {
 			lines = append(lines, chatViewLine{kind: "message-gap"})

@@ -22,6 +22,9 @@ type chatUI struct {
 	out                          io.Writer
 	cwd, thread, turn            string
 	busy, cancel, planMode       bool
+	manualApprovals              bool           // auto mode is the default
+	defaults                     *defaultModels // host defaults; nil while loading
+	resolvedModel                string         // concrete model behind a Claude alias
 	threadReady                  bool
 	connected                    bool
 	composing                    bool
@@ -158,7 +161,7 @@ func (u *chatUI) open(id string) error {
 	u.turnStartedAt = time.Time{}
 	u.setActivityLabel("")
 	u.setAgentState("starting")
-	params := map[string]any{"cwd": u.cwd}
+	params := map[string]any{"cwd": u.cwd, "approvalsReviewer": u.approvalsReviewer()}
 	method := "thread/start"
 	if id != "" {
 		method = "thread/resume"
@@ -180,6 +183,9 @@ func (u *chatUI) completeChatInitialization(sendNotification bool) error {
 		if err := u.c.encoder.Encode(map[string]string{"method": "initialized"}); err != nil {
 			return err
 		}
+	}
+	if err := u.requestDefaultModels(); err != nil {
+		return err
 	}
 	if u.resumeAtStart && u.thread == "" {
 		u.busy = false
@@ -231,6 +237,14 @@ func (u *chatUI) response(m appMessage) error {
 	}
 	if p.method == "thread/settings/update" {
 		return u.acceptChatPlanResponse(m, p)
+	}
+	if p.method == "jara/btw" {
+		u.acceptChatBtwResponse(m)
+		return nil
+	}
+	if p.method == "jara/defaultModel/get" || p.method == "jara/defaultModel/set" {
+		u.acceptChatDefaultResponse(m, p)
+		return nil
 	}
 	if m.Error != nil {
 		if p.method == "jara/shell" {
@@ -308,6 +322,7 @@ func (u *chatUI) response(m appMessage) error {
 			u.resetChatSubagentTracking()
 		}
 		u.setEffectiveModel(r.Model)
+		u.resolvedModel = chatText(r.ResolvedModel)
 		u.effectiveReasoning = ""
 		if r.ReasoningEffort != nil {
 			u.effectiveReasoning = *r.ReasoningEffort

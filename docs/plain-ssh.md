@@ -103,7 +103,7 @@ workspace files and conversation history persist, and `--resume` opens Codex's
 own session selector. Ctrl-C is passed to Codex as usual.
 
 For Jara's own conversation UI, use
-`jara connect --new --interface jara WORKSPACE_ID` from an ordinary SSH shell.
+`jara connect --new WORKSPACE_ID` from an ordinary SSH shell.
 It uses plain scrolling text and typed commands: `/compose` and `/send` for
 multiline prompts, `/status` to check activity, `/sessions` to browse history,
 and `/answer` for agent questions. Ctrl-C interrupts a running turn and exits

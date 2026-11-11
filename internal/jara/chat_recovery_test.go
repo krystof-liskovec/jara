@@ -125,6 +125,8 @@ func TestChatRecoveryAppServerFixture(t *testing.T) {
 		case "initialize":
 			send(map[string]any{"id": message.ID, "result": map[string]any{}})
 		case "initialized":
+		case "jara/defaultModel/get":
+			send(map[string]any{"id": message.ID, "result": map[string]any{"codex": "gpt-fixture"}})
 		case "thread/start":
 			send(map[string]any{"id": message.ID, "result": map[string]any{"thread": map[string]string{"id": "thread-old"}}})
 		case "thread/resume":

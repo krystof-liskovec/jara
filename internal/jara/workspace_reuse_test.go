@@ -189,7 +189,7 @@ func TestOpenLinksExistingCheckoutAndRemembersAssociation(t *testing.T) {
 	original := os.Stdin
 	os.Stdin = input
 	defer func() { os.Stdin = original }()
-	if err = Run([]string{"--source", root}); err != nil {
+	if err = Run([]string{"--interface", "codex", "--source", root}); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := readConfig()
@@ -209,7 +209,7 @@ func TestOpenLinksExistingCheckoutAndRemembersAssociation(t *testing.T) {
 	if _, err = input.Seek(0, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err = Run([]string{"--choose-workspace", "--source", root}); err != nil {
+	if err = Run([]string{"--interface", "codex", "--choose-workspace", "--source", root}); err != nil {
 		t.Fatal(err)
 	}
 	saved, err = readConfig()

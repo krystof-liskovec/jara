@@ -38,6 +38,7 @@ type claudeLine struct {
 		CacheCreation int64 `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
 	EstimatedTokens int64    `json:"estimated_tokens"`
+	Model           string   `json:"model"` // init: the model Claude Code resolved
 	IsError         bool     `json:"is_error"`
 	Errors          []string `json:"errors"`
 }
@@ -106,6 +107,10 @@ func (s *claudeSession) handleLine(raw []byte) {
 	case "rate_limit_event":
 		s.r.observeClaudeRateLimits(line.RateLimitInfo)
 	case "system":
+		if line.Subtype == "init" && line.Model != "" && line.Model != s.resolvedModel {
+			s.resolvedModel = line.Model
+			s.r.notify("jara/model/resolved", map[string]any{"threadId": s.thread.ID, "model": line.Model})
+		}
 		// Claude Code does not expose thinking text in stream-json mode, only
 		// a running estimate; show that as live progress.
 		if line.Subtype == "thinking_tokens" && line.EstimatedTokens > 0 && s.turnID != "" && !nested {

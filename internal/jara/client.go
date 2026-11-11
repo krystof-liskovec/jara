@@ -226,7 +226,7 @@ func Run(args []string) error {
 	args, tail := splitCodexArgs(args)
 	var codexArgs codexArgList
 	f.Var(&codexArgs, "codex-arg", "additional Codex argument (repeatable)")
-	chatInterface := f.String("interface", "codex", "conversation interface: codex or jara")
+	chatInterface := f.String("interface", "", "conversation interface: jara (default for open, new, resume, and sessions) or codex")
 	agentName := f.String("agent", "", "agent runtime: codex or claude")
 	note := f.String("note", "", "handoff note for the receiving agent")
 	remoteName := f.String("remote", "", "named remote")
@@ -262,6 +262,9 @@ func Run(args []string) error {
 	}
 	if err = validateChatInterface(*chatInterface); err != nil {
 		return err
+	}
+	if *chatInterface == "" {
+		*chatInterface = defaultChatInterface(action)
 	}
 	if err = validateAgentFlags(action, *agentName, *chatInterface, *note); err != nil {
 		return err

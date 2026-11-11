@@ -66,6 +66,8 @@ func TestChatMobileServerFixture(t *testing.T) {
 		case "initialize":
 			reply(map[string]any{})
 		case "initialized":
+		case "jara/defaultModel/get":
+			reply(map[string]any{"codex": "gpt-fixture"})
 		case "thread/start":
 			reply(map[string]any{"thread": map[string]string{"id": "thread-mobile"}})
 		case "turn/start":

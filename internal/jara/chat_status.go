@@ -48,6 +48,7 @@ func (u *chatUI) status() string {
 		mode = "Plan"
 	}
 	fmt.Fprintf(&b, "Mode: %s\n", mode)
+	fmt.Fprintf(&b, "Approvals: %s\n", u.approvalModeLabel())
 	if u.nextModel != "" {
 		fmt.Fprintf(&b, "Next turns model: %s (selected)\n", u.nextModelLabel)
 	}
@@ -91,6 +92,9 @@ func (u *chatUI) help() string {
 /discard         Discard the composed message
 /goal [ARGS]     Set or manage a persistent goal for this conversation
 /plan [PROMPT|off|status] Use Plan mode for this and later turns
+/auto [on|off|status] Let an automatic reviewer handle approvals (default on)
+/btw QUESTION    Ask a side question; works during a turn and is not saved
+/default [ID|N]  Set the default model for new conversations on this host
 /goalcrunch ...  Run a goal through usage-limit pauses
 /schedule ...    Schedule a prompt for this conversation
 /crunch ...      Run a prompt through usage-limit pauses
