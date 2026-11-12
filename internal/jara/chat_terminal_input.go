@@ -27,6 +27,8 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 		return false, nil
 	case event.interrupt:
 		return t.interrupt()
+	case event.tap != nil:
+		return t.tap(event.tap[0], event.tap[1])
 	case event.input == nil:
 		return false, nil
 	}
@@ -40,6 +42,10 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 		return false, nil
 	}
 	chatTerminalAttachImages(u, input)
+	if answer := chatApprovalKey(u, t.editor, *input); answer != "" {
+		t.dirty = true
+		return u.line(answer)
+	}
 	if t.handlePickerKey(*input) || t.handleSessionPickerKey(*input) {
 		t.dirty = true
 		return false, nil

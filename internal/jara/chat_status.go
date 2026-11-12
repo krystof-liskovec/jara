@@ -102,6 +102,7 @@ func (u *chatUI) help() string {
 /export [PATH]   Save the conversation as Markdown
 /image PATH      Attach an image; Ctrl+V pastes one from the clipboard
 /alerts [on|off] Bell and desktop alerts for long turns and pending requests
+/notify [URL|off|test] Push notifications to a phone (ntfy.sh topic or webhook)
 /default [ID|N]  Set the default model (and provider) for new conversations
 /fallback [ID|N|off] Continue on another model when a usage limit is reached
 /goalcrunch ...  Run a goal through usage-limit pauses

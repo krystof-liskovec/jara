@@ -26,6 +26,7 @@ func connectCommand(args []string) error {
 	fresh := f.Bool("new", false, "start another Codex terminal")
 	worktree := f.Bool("worktree", false, "start a new terminal in a Git worktree")
 	takeover := f.Bool("takeover", false, "detach other clients when attaching")
+	last := f.Bool("last", false, "attach to the most recently used running session")
 	if err := f.Parse(args); err != nil {
 		return err
 	}
@@ -41,6 +42,11 @@ func connectCommand(args []string) error {
 	}
 	if err := validateChatInterface(*chatInterface); err != nil {
 		return err
+	}
+	if *last && id == "" {
+		// Phones reconnect often (network changes, the app suspended); go
+		// straight back to the session, or to the menu when none is running.
+		id = lastActiveWorkspace()
 	}
 	runtime, err := protocol.NormalizeAgent(*agentName)
 	if err != nil {

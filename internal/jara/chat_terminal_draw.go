@@ -32,6 +32,7 @@ func (t *chatTerminal) draw() error {
 		width, height = 80, 24
 	}
 	frame := t.frame(max(1, width), max(1, height), time.Now())
+	t.targets = frame
 	_, err = io.WriteString(t.output, t.screen.update(frame, max(1, width), max(1, height)))
 	return err
 }
@@ -61,6 +62,7 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 		ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),
 		QueuedPrompts: queueLines, QueueEditing: t.queueEditor.active(), QueueEditNumber: queueEditNumber,
 		ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(), ControlContext: u.contextControlLabel(),
+		ApprovalPending: len(u.approvals) > 0, ChangedFiles: len(u.diff.changes),
 		Hints: hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
 		Pulse: chatBusyPulse(u.busy, t.motion, now), Mark: chatWelcomeMark(t.motion, now),
 	}, width, height, t.palette, color)

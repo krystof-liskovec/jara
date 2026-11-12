@@ -116,6 +116,40 @@ cannot run shell commands or SFTP. You can use `vim`/`nvim` over SSH when those
 packages were selected for the image. Docker and per-project toolchains work in
 SSH sessions as documented elsewhere.
 
+## Working from a phone
+
+The Jara conversation interface adapts to phone screens:
+
+- Below 18 rows (the on-screen keyboard is open) the header is one row, the
+  model, reasoning, and context meter move into the input box border, and the
+  hint line is dropped, so most of the screen shows the conversation.
+- Below 60 columns function-key labels and desktop-only hints disappear. Tap
+  instead: the model or reasoning label opens its picker, a menu entry chooses
+  it, `✎ N files` in the header lists the conversation's changes, and the
+  `[ y Allow ]` / `[ n Deny ]` row answers an approval. With an empty input
+  box, typing `y` or `n` answers it too.
+- End a line with `\` before Enter to continue the message on a new line.
+- Long code and diff lines are cut with `…` instead of wrapping; `/export`
+  saves the full text.
+
+**Push notifications.** `/notify https://ntfy.sh/YOUR-SECRET-TOPIC` makes the
+session send a notification when a turn that ran for 15 seconds or more
+finishes, or an approval or question waits, even after the phone disconnects.
+Install the ntfy app and subscribe to the same topic; any webhook that accepts a
+POSTed text body works too. Notifications name the workspace and the event,
+never conversation text. `/notify test` sends one now and `/notify off` stops
+them. The setting lives on the host and needs a persistent Jara session.
+
+**Reconnecting.** `jara connect --last` goes straight back to the most recently
+used running session, or opens the menu when none runs; use it as the Termius
+Startup Command. For connections that survive network changes, use mosh: the
+image includes `mosh-server`, and Compose publishes UDP ports 60001-60004 on
+`JARA_SSH_BIND` (change the host side with `JARA_MOSH_PORTS`, e.g.
+`61001-61004`). Enable Mosh on the Termius host and allow those UDP ports
+through any firewall; a jump-host tunnel carries only SSH, so mosh needs the
+ports reachable directly. Connect-only keys run `jara connect` and cannot start
+`mosh-server`.
+
 ## Verification
 
 `scripts/menu_e2e.py` checks 32-, 40- and 80-column SSH layouts, live resizing,

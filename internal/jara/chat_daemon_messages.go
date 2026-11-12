@@ -73,6 +73,24 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 				}
 				continue
 			}
+			if chatNotifyRequest(message.Method) {
+				if len(message.ID) > 0 {
+					stateMu.Lock()
+					workspace := state.Workspace
+					stateMu.Unlock()
+					result, requestErr := handleChatNotifyRequest(message.Method, message.Params, workspace)
+					response := map[string]any{"id": message.ID}
+					if requestErr != nil {
+						response["error"] = map[string]any{"code": -32602, "message": requestErr.Error()}
+					} else {
+						response["result"] = result
+					}
+					if line, marshalErr := json.Marshal(response); marshalErr == nil {
+						_ = client.write(line)
+					}
+				}
+				continue
+			}
 			if chatScheduleRequest(message.Method) {
 				if len(message.ID) > 0 {
 					stateMu.Lock()

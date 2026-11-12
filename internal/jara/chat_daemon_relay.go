@@ -97,6 +97,10 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 				}
 			}
 			if hasMessage {
+				stateMu.Lock()
+				workspace := state.Workspace
+				stateMu.Unlock()
+				chatPush.observe(message, workspace)
 				schedules.handleAppMessage(message)
 				isCrunchBusy := func() bool {
 					stateMu.Lock()

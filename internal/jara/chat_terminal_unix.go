@@ -51,6 +51,7 @@ type chatTerminal struct {
 	sessionSelection    int
 
 	dirty             bool
+	targets           chatFrame // the last frame drawn, for taps
 	lastDraw          time.Time
 	lastActivityFrame int
 	screen            chatScreenState

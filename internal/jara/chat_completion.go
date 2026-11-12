@@ -54,6 +54,7 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/export", description: "Save the conversation as Markdown", arguments: true},
 	{name: "/image", description: "Attach an image file to the next message", arguments: true},
 	{name: "/alerts", description: "Turn bell and desktop alerts on or off", arguments: true},
+	{name: "/notify", description: "Send push notifications to your phone", arguments: true},
 	{name: "/schedule", description: "Schedule a prompt in this conversation", arguments: true},
 	{name: "/crunch", description: "Run a prompt through usage-limit pauses", arguments: true},
 	{name: "/goalcrunch", description: "Run a persistent goal through usage-limit pauses", arguments: true},

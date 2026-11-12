@@ -170,6 +170,14 @@ func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
 			result.Changed = e.applySelectedCompletion()
 			break
 		}
+		if e.cursor > 0 && e.text[e.cursor-1] == '\\' {
+			// A trailing backslash continues the message on a new line, for
+			// keyboards (phones) that cannot send Shift+Enter or Ctrl+J.
+			e.text = e.text[:e.cursor-1] + "\n" + e.text[e.cursor:]
+			e.afterEdit()
+			result.Changed = true
+			break
+		}
 		result.Submitted = true
 		result.Value = e.text
 		e.remember(result.Value)
@@ -374,6 +382,15 @@ func (e *chatEditor) moveDown() bool {
 	e.pastePreviews = nil
 	e.afterCursorMove()
 	return true
+}
+
+// ApplyCompletion applies candidate index, as when it is tapped.
+func (e *chatEditor) ApplyCompletion(index int) bool {
+	if e.dismissed || index < 0 || index >= len(e.candidates) {
+		return false
+	}
+	e.selected = index
+	return e.applySelectedCompletion()
 }
 
 func (e *chatEditor) applySelectedCompletion() bool {

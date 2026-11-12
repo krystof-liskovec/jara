@@ -152,7 +152,11 @@ func chatDaemonSessions() []Session {
 		if attached == 0 && state.Attached {
 			attached = 1
 		}
-		out = append(out, Session{Name: name, Workspace: id, ChatDaemon: true, CreatedAt: state.CreatedAt, Conversation: state.Conversation, Attached: attached, AgentState: activity})
+		session := Session{Name: name, Workspace: id, ChatDaemon: true, CreatedAt: state.CreatedAt, Conversation: state.Conversation, Attached: attached, AgentState: activity}
+		if info, err := entry.Info(); err == nil {
+			session.LastAttach = info.ModTime().Unix() // the state file changes on attach and turn events
+		}
+		out = append(out, session)
 	}
 	return out
 }

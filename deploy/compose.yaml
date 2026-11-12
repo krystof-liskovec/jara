@@ -22,6 +22,8 @@ services:
     restart: unless-stopped
     ports:
       - "${JARA_SSH_BIND:-127.0.0.1}:${JARA_SSH_PORT:-2222}:22"
+      # mosh, for phones that change networks: UDP next to SSH.
+      - "${JARA_SSH_BIND:-127.0.0.1}:${JARA_MOSH_PORTS:-60001-60004}:60001-60004/udp"
     volumes:
       - agent-home:/home/agent
       - host-keys:/var/lib/jara/ssh

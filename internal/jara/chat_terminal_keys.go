@@ -22,6 +22,7 @@ type chatTerminalKeyEvent struct {
 	scrollRows   int
 	returnToLive bool
 	interrupt    bool
+	tap          *[2]int // column and row of a left click or tap, from zero
 	limitReached bool
 }
 
@@ -252,6 +253,14 @@ func chatTerminalMouseEvent(sequence string) *chatTerminalKeyEvent {
 		return event
 	}
 	button, err := strconv.Atoi(parts[0])
+	if err == nil && button&(64|32|3) == 0 { // a left press, not wheel, motion, or another button
+		column, columnErr := strconv.Atoi(parts[1])
+		row, rowErr := strconv.Atoi(parts[2])
+		if columnErr == nil && rowErr == nil && column > 0 && row > 0 {
+			event.tap = &[2]int{column - 1, row - 1}
+		}
+		return event
+	}
 	if err != nil || button&64 == 0 {
 		return event
 	}

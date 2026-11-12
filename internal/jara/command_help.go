@@ -119,6 +119,7 @@ var commandHelp = map[string]helpEntry{
 			"--new               Start another terminal.",
 			"--worktree          Start in a new Git worktree.",
 			"--takeover          Detach other terminal clients.",
+			"--last              Reattach to the most recently used session (phones).",
 			"--codex-arg VALUE   Add a Codex argument; repeatable.",
 			"-- CODEX_ARGS       Pass remaining arguments directly to Codex.",
 		},

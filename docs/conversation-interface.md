@@ -198,6 +198,9 @@ is cleared when that interface exits.
   waits for you, Jara rings the terminal bell and sends a desktop notification
   (OSC 9, passed through tmux when its `allow-passthrough` is on). The bell
   also flags the tmux window. `/alerts off` silences this for the session.
+- On phones the layout shrinks its chrome, controls become tap targets, `y`/`n`
+  answer approvals, `\` before Enter adds a newline, and `/notify URL` sends
+  push notifications; see [phone access](plain-ssh.md#working-from-a-phone).
 - `/diff` lists the file changes this conversation made, oldest first, and
   re-enables the changes pane. `/export [PATH]` saves the conversation as
   Markdown, by default as `jara-conversation-DATE-TIME.md` in the workspace.

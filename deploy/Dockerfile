@@ -37,7 +37,7 @@ ARG CLAUDE_CODE_VERSION=""
 ARG EDITOR_PACKAGES=""
 RUN test -n "$CODEX_VERSION" \
  && apt-get update \
- && apt-get install -y --no-install-recommends openssh-server openssh-client git tmux bubblewrap bash ca-certificates curl tar xz-utils libatomic1 ${EDITOR_PACKAGES} \
+ && apt-get install -y --no-install-recommends openssh-server openssh-client mosh git tmux bubblewrap bash ca-certificates curl tar xz-utils libatomic1 ${EDITOR_PACKAGES} \
  && rm -rf /var/lib/apt/lists/* \
  && npm install --global "@openai/codex@${CODEX_VERSION}" \
  && if [ -n "$CLAUDE_CODE_VERSION" ]; then \
@@ -46,6 +46,11 @@ RUN test -n "$CODEX_VERSION" \
       && ln -s "$(readlink -f /usr/local/bin/claude)" /opt/jara/claude-cli \
       && rm /usr/local/bin/claude; \
     fi \
+ && printf '%s\n' '#!/bin/sh' \
+      '# Keep mosh on the UDP ports Compose publishes (60001-60004).' \
+      'if [ "$1" = new ] && ! printf "%s\n" "$@" | grep -qx -- "-p"; then shift; exec /usr/bin/mosh-server new -p 60001:60004 "$@"; fi' \
+      'exec /usr/bin/mosh-server "$@"' > /usr/local/bin/mosh-server \
+ && chmod 755 /usr/local/bin/mosh-server \
  && useradd --uid 1001 --create-home --shell /bin/bash agent \
  && passwd -d agent \
  && mkdir -p /run/sshd /var/lib/jara/ssh /home/agent/.ssh \

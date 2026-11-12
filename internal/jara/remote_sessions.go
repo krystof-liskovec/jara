@@ -178,3 +178,30 @@ func attach(s Session, takeover bool) error {
 	}
 	return interactive(tmux(args...))
 }
+
+// lastActiveWorkspace names the workspace of the most recently used running
+// session, or "" when none runs.
+func lastActiveWorkspace() string {
+	running, err := activeSessions()
+	if err != nil {
+		return ""
+	}
+	best, bestAt := "", int64(-1)
+	for _, session := range running {
+		if session.Dead || session.Background || session.Workspace == "" {
+			continue
+		}
+		if at := max(session.LastAttach, chatSessionSeconds(session.CreatedAt)); at > bestAt {
+			best, bestAt = session.Workspace, at
+		}
+	}
+	return best
+}
+
+// chatSessionSeconds reads creation times stored in seconds or nanoseconds.
+func chatSessionSeconds(value int64) int64 {
+	if value > 1e12 {
+		return value / 1e9
+	}
+	return value
+}
