@@ -42,7 +42,7 @@ func (u *chatUI) event(m appMessage) error {
 			u.alertUser("Approval needed")
 			u.setActivityLabel("Waiting for approval")
 			u.setAgentState("waiting")
-			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%sType /approve to allow once or /deny to reject.\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID])))
+			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%sPress y to allow once or n to deny (or /approve, /deny).\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID])))
 			return nil
 		case "item/tool/requestUserInput":
 			u.alertUser("Question waiting for an answer")

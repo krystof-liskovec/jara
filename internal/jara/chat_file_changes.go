@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gitea.liskovec.dev/krystof.liskovec/jara/internal/protocol"
+	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
 )
 
 const (
@@ -37,44 +38,44 @@ func formatChatFileChangeList(status string, changes []protocol.FileChange) stri
 	}
 	b.WriteString(":\n")
 
-	remainingDiffLines := chatFileChangeTotalDiffLimit
-	for _, change := range changes {
-		path := change.Path
-		if path == "" {
-			path = change.NewPath
-		}
-		if path == "" {
-			path = change.OldPath
-		}
-		path = strings.Join(strings.Fields(chatText(path)), " ")
+	// Every file's summary comes first, then the diffs, so a narrow screen
+	// shows what changed before scrolling through the code.
+	paths := make([]string, len(changes))
+	for index, change := range changes {
+		path := strings.Join(strings.Fields(chatText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath))), " ")
 		if path == "" {
 			path = "Unknown file"
 		}
+		paths[index] = path
 		b.WriteString("- " + path)
 		if kind := chatFileChangeKind(change.Kind); kind != "" {
 			b.WriteString(" · " + kind)
 		}
-		added, removed := chatFileChangeCounts(change.Diff)
-		if added+removed > 0 {
+		if added, removed := chatFileChangeCounts(change.Diff); added+removed > 0 {
 			fmt.Fprintf(&b, " · +%d −%d", added, removed)
 		}
 		b.WriteByte('\n')
-
-		diffLines := strings.Split(strings.TrimRight(change.Diff, "\r\n"), "\n")
+	}
+	remainingDiffLines := chatFileChangeTotalDiffLimit
+	for index, change := range changes {
 		if change.Diff == "" {
 			continue
+		}
+		path := paths[index]
+		if len(changes) > 1 {
+			b.WriteString("  " + path + "\n")
 		}
 		if remainingDiffLines <= 0 {
 			b.WriteString("  … diff omitted (display limit reached)\n")
 			continue
 		}
+		diffLines := strings.Split(strings.TrimRight(change.Diff, "\r\n"), "\n")
 		shown := min(len(diffLines), min(chatFileChangeDiffLimit, remainingDiffLines))
 		b.WriteString("  ```diff " + strings.Join(strings.Fields(path), "_") + "\n")
 		for _, line := range diffLines[:shown] {
 			b.WriteString(line + "\n")
 		}
-		omitted := len(diffLines) - shown
-		if omitted > 0 {
+		if omitted := len(diffLines) - shown; omitted > 0 {
 			b.WriteString(fmt.Sprintf("… %d diff lines omitted\n", omitted))
 		}
 		b.WriteString("  ```\n")

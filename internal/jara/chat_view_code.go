@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gitea.liskovec.dev/krystof.liskovec/jara/internal/textutil"
+	"github.com/alecthomas/chroma/v2"
 	"github.com/rivo/uniseg"
 )
 
@@ -39,11 +40,23 @@ func chatCodeLines(raw string, width int, role, code string) []chatViewLine {
 	} else {
 		spans = chatSyntaxSpans(language, raw)
 	}
+	// On narrow screens code keeps one row per line, cut with an ellipsis:
+	// wrapped code is hard to read on a phone. /export has the full text.
+	narrow := width < chatNarrowColumns
 	if spans == nil {
-		return wrapChatLine(raw, width, chatCodeGutter, chatCodeGutter, kind, role, true)
+		lines := wrapChatLine(raw, width, chatCodeGutter, chatCodeGutter, kind, role, true)
+		if narrow && len(lines) > 1 {
+			lines = wrapChatLine(raw, max(2, width-1), chatCodeGutter, chatCodeGutter, kind, role, true)[:1]
+			lines[0].text += "…"
+		}
+		return lines
 	}
 	available := max(1, width-uniseg.StringWidth(chatCodeGutter)-len(marker))
 	rows := wrapChatSyntaxSpans(spans, available)
+	if narrow && len(rows) > 1 {
+		cut := wrapChatSyntaxSpans(spans, max(1, available-1))[0]
+		rows = [][]chatSyntaxSpan{append(cut, chatSyntaxSpan{text: "…", token: chroma.Comment})}
+	}
 	lines := make([]chatViewLine, 0, len(rows))
 	for index, row := range rows {
 		prefix := chatCodeGutter + marker

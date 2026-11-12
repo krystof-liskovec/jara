@@ -104,7 +104,7 @@ func TestChatProtocolConversation(t *testing.T) {
 	}
 	wait("You> ")
 	send("Hello")
-	wait("Type /approve")
+	wait("Press y to allow once")
 	send("/deny")
 	wait("[completed]")
 	if strings.Contains(transcript.String(), "\x1b") {
@@ -115,7 +115,7 @@ func TestChatProtocolConversation(t *testing.T) {
 	wait("Conversation thread-fixture\n\nYou> ")
 	transcript.Reset()
 	send("Cancel this turn")
-	wait("Type /approve")
+	wait("Press y to allow once")
 	send("/cancel")
 	wait("[interrupted]")
 	send("/quit")

@@ -125,6 +125,7 @@ var chatExtraCommands = map[string]func(u *chatUI, args string) error{
 	"/image":   func(u *chatUI, args string) error { u.runChatImageCommand(args); return nil },
 	"/export":  func(u *chatUI, args string) error { u.runChatExportCommand(args); return nil },
 	"/diff":    func(u *chatUI, _ string) error { u.runChatDiffCommand(); return nil },
+	"/notify":  func(u *chatUI, args string) error { return u.runChatNotifyCommand(args) },
 }
 
 func splitChatCommand(line string) (name, args string) {
@@ -157,6 +158,8 @@ func (u *chatUI) acceptChatExtraResponse(m appMessage, p chatPending) bool {
 		u.acceptChatMentionResponse(m, p)
 	case "jara/commands/list":
 		u.acceptCustomCommands(m)
+	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
+		u.acceptChatNotifyResponse(m, p)
 	default:
 		return false
 	}
@@ -168,6 +171,8 @@ func (u *chatUI) acceptChatExtraResponse(m appMessage, p chatPending) bool {
 func (u *chatUI) expireChatExtraRequest(id string, pending chatPending) bool {
 	switch pending.method {
 	case "fuzzyFileSearch", "jara/commands/list":
+	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
+		u.printRole("system", "Notifications: no reply in time.\n")
 	case "jara/rewind":
 		u.printRole("system", "Rewinding timed out.\n")
 	case "thread/compact/start":

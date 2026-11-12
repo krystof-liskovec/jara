@@ -93,6 +93,8 @@ func (u *chatUI) line(line string) (bool, error) {
 		return true, u.sendPersistentExit("jara/detach")
 	case line == "/cancel":
 		return false, u.interrupt()
+	case len(u.approvals) > 0 && (strings.EqualFold(line, "y") || strings.EqualFold(line, "n")):
+		return u.line(map[bool]string{true: "/approve", false: "/deny"}[strings.EqualFold(line, "y")])
 	case line == "/approve" || line == "/deny":
 		if len(u.approvals) == 0 {
 			u.print("No approval is pending.\n")
