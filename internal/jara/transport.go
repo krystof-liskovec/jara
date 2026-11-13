@@ -92,6 +92,7 @@ type Request struct {
 	IncludeIgnored     bool     `json:"include_ignored,omitempty"`
 	CodexArgs          []string `json:"codex_args,omitempty"`
 	AgentArgs          []string `json:"agent_args,omitempty"` // Claude Code arguments for the Jara UI
+	Reconnect          bool     `json:"reconnect,omitempty"`  // the client reconnects if the session stops
 }
 
 func rpc(r Remote, q Request, input io.Reader, v any) error {

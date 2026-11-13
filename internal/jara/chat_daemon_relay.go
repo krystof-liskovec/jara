@@ -49,6 +49,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		stateWriteMu.Lock()
 		stateMu.Lock()
 		state.AttachedClients = clients.count()
+		state.ReconnectingClients = clients.reconnecting()
 		state.Attached = state.AttachedClients > 0
 		snapshot := state
 		stateMu.Unlock()
@@ -132,6 +133,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 
 	var result error
 	serverExited := false
+	reconnect := false // tells attached clients whether to reconnect after shutdown
 running:
 	for {
 		select {
@@ -161,6 +163,18 @@ running:
 					break running
 				}
 			}
+			if event.suspend {
+				// Updates may stop a session whose remaining clients all
+				// reconnect by themselves; closing them starts that reconnect.
+				stateMu.Lock()
+				idle := !state.ActiveTurn
+				stateMu.Unlock()
+				if idle && clients.count() == clients.reconnecting() && !schedules.hasPending() && !crunch.hasPending() {
+					reconnect = true
+					shutdown.Store(true)
+					break running
+				}
+			}
 			if event.stop {
 				_ = schedules.cancelPending()
 				crunch.stopAll(input, &inputMu)
@@ -172,7 +186,7 @@ running:
 				break running
 			}
 			stateMu.Lock()
-			preserveDetachedIdle = (event.detach || event.disconnected || event.handoff) && clients.count() == 0
+			preserveDetachedIdle = (event.detach || event.disconnected || event.handoff || event.suspend) && clients.count() == 0
 			stateMu.Unlock()
 			if !event.detach && isDetachedAndIdle() {
 				shutdown.Store(true)
@@ -218,6 +232,7 @@ running:
 			}
 			break running
 		case <-signals:
+			reconnect = true
 			shutdown.Store(true)
 			break running
 		}
@@ -225,6 +240,9 @@ running:
 
 	close(stopAccept)
 	_ = listener.Close()
+	if ended, err := json.Marshal(map[string]any{"method": "jara/session/ended", "params": map[string]bool{"reconnect": reconnect}}); err == nil {
+		clients.broadcast(ended, appMessage{Method: "jara/session/ended"})
+	}
 	clients.closeAll()
 	for {
 		select {

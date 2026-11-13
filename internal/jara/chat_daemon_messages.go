@@ -20,6 +20,7 @@ type chatDaemonClientClosed struct {
 	detach       bool
 	stop         bool
 	handoff      bool
+	suspend      bool
 	disconnected bool
 }
 
@@ -40,15 +41,17 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 	requestedDetach := false
 	requestedStop := false
 	requestedHandoff := false
+	requestedSuspend := false
 	for scanner.Scan() {
 		line := append([]byte(nil), scanner.Bytes()...)
 		var message appMessage
 		if json.Unmarshal(line, &message) == nil {
-			if message.Method == "jara/close" || message.Method == "jara/detach" || message.Method == "jara/stop" || message.Method == "jara/handoff" {
+			if message.Method == "jara/close" || message.Method == "jara/detach" || message.Method == "jara/stop" || message.Method == "jara/handoff" || message.Method == "jara/suspend" {
 				requestedClose = message.Method == "jara/close" || message.Method == "jara/stop"
 				requestedDetach = message.Method == "jara/detach"
 				requestedStop = message.Method == "jara/stop"
 				requestedHandoff = message.Method == "jara/handoff"
+				requestedSuspend = message.Method == "jara/suspend"
 				break
 			}
 			if message.Method == "initialized" {
@@ -199,8 +202,8 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 	}
 	closed <- chatDaemonClientClosed{
 		client: client, close: requestedClose, detach: requestedDetach,
-		stop: requestedStop, handoff: requestedHandoff,
-		disconnected: !requestedClose && !requestedDetach && !requestedStop && !requestedHandoff,
+		stop: requestedStop, handoff: requestedHandoff, suspend: requestedSuspend,
+		disconnected: !requestedClose && !requestedDetach && !requestedStop && !requestedHandoff && !requestedSuspend,
 	}
 }
 

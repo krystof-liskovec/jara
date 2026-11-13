@@ -318,7 +318,8 @@ jara sync push --include-ignored # Explicitly include Git-ignored files
 Reopening never automatically synchronizes or switches branches. Transfer tracks
 content hashes and previous endpoint states. Conflicts abort before writes;
 destination-only changes and files are preserved. Transfers into an active
-Jara-managed workspace require an explicit override. Editor writes are not locked:
+Jara-managed workspace require an explicit override; an idle, detached Jara chat
+session is stopped instead and resumes later. Editor writes are not locked:
 avoid editing the destination during transfer.
 
 Sync hashes a metadata manifest for every eligible file on each side, then sends

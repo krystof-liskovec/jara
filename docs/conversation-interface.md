@@ -36,9 +36,24 @@ resumed by opening the workspace again. Closing the UI with `/quit` during an
 active turn or `/detach` leaves the remote agent running. An SSH disconnect
 does the same if a turn is active. When a disconnected turn finishes, Jara
 stops the app-server and releases the workspace lock; the saved conversation is
-resumed when you open the workspace again. An idle session stops on `/quit`,
-idle Ctrl-C, or an SSH disconnect. `/detach` keeps an idle session explicitly,
-and `/stop` always ends it. Direct SSH connections use the remote `jara connect`
+resumed when you open the workspace again. An idle session stops on `/quit`
+or idle Ctrl-C. An SSH disconnect or `/detach` keeps an idle session so a
+client, such as a phone, can reconnect. `/stop` always ends it.
+
+A detached, idle session (no running turn, attached client, or pending
+scheduled prompt or crunch task) does not block other work on the workspace.
+Automatic updates, `jara sync push` (including the push offered when you open the
+workspace), and workspace deletion stop it first, and `jara sync pull` proceeds
+alongside it. The next connection restarts the session on its saved
+conversation. A busy session still blocks these operations.
+
+The local CLI reconnects by itself when its connection to the session drops,
+for example after a network change or when an automatic update stops an idle
+session. It shows that it is reconnecting, queues prompts typed meanwhile and
+resumes the conversation. For this reason, automatic updates are not deferred by
+idle sessions whose attached clients are all local CLIs. If the session was
+stopped on purpose, such as with `/stop` from another client, the CLI exits
+instead. Clients in direct SSH sessions and worktree sessions do not reconnect. Direct SSH connections use the remote `jara connect`
 CLI and keep new workspace sessions in the same persistent service. Existing
 managed tmux sessions keep their current attach behavior.
 

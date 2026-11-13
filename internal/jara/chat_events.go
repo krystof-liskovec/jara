@@ -63,6 +63,12 @@ func (u *chatUI) event(m appMessage) error {
 		if p.ThreadID == "" || p.ThreadID == u.thread {
 			u.printRole("progress", "Conversation context compacted.\n")
 		}
+	case "jara/session/ended":
+		var ended struct {
+			Reconnect bool `json:"reconnect"`
+		}
+		_ = json.Unmarshal(m.Params, &ended)
+		u.sessionEnded = !ended.Reconnect
 	case "jara/model/resolved":
 		var resolved struct {
 			Model string `json:"model"`

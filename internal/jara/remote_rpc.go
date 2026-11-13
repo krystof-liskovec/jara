@@ -131,10 +131,12 @@ func remoteRPC(q Request) error {
 		return json.NewEncoder(os.Stdout).Encode(w)
 	case "chat-session-state":
 		state, active := readChatDaemonState(q.ID)
+		_, busy := chatDaemonIdleState(q.ID, false)
 		return json.NewEncoder(os.Stdout).Encode(struct {
 			Active bool            `json:"active"`
+			Idle   bool            `json:"idle,omitempty"`
 			State  chatDaemonState `json:"state,omitempty"`
-		}{Active: active, State: state})
+		}{Active: active, Idle: active && busy == "", State: state})
 	case "workspace-list":
 		workspaces, err := remoteWorkspaces()
 		if err != nil {
@@ -296,7 +298,10 @@ func remoteRPC(q Request) error {
 		if err != nil {
 			return err
 		}
-		if locked {
+		// Pulling only reads remote files, so an idle, detached Jara session may stay.
+		lock, _ := workspacePath(q.ID)
+		_, idleJara := idleChatDaemonWorkspace(lock+".lock", false)
+		if locked && !idleJara {
 			return fmt.Errorf("workspace operation or local-client agent is active; wait before pulling files")
 		}
 		ss, err := activeSessions()
@@ -305,13 +310,16 @@ func remoteRPC(q Request) error {
 		}
 		if !q.Force {
 			for _, s := range ss {
-				if s.Workspace == q.ID {
+				if s.Workspace == q.ID && !(s.ChatDaemon && idleJara) {
 					return fmt.Errorf("running agent in workspace; stop it or explicitly use --force")
 				}
 			}
 		}
 		return nil
 	case "apply":
+		if err := releaseIdleChatDaemon(q.ID); err != nil {
+			return err
+		}
 		unlock, err := lockWorkspace(q.ID)
 		if err != nil {
 			return err

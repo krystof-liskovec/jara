@@ -59,6 +59,9 @@ func remoteWorkspaces() ([]Workspace, error) {
 }
 
 func remoteDeleteWorkspace(id string) error {
+	if err := releaseIdleChatDaemon(id); err != nil {
+		return err
+	}
 	unlock, err := lockWorkspace(id)
 	if err != nil {
 		return err

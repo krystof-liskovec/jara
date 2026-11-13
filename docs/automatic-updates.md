@@ -36,6 +36,24 @@ Updates therefore wait until users exit their terminals, rather than interrupt
 them. Raw SSH/editor connections also cause deferral when detected. This is not
 a policy that tries to infer whether a model is currently thinking.
 
+A persistent Jara chat session with no running turn, pending scheduled prompt or
+crunch task does not defer updates, provided every attached client reconnects by
+itself. The local `jara` client does; a client run in a direct SSH session on the
+host does not, so it still defers. When the update takes its lease, it asks the
+session to stop. Local clients show that they are reconnecting, queue prompts
+typed meanwhile, and resume the conversation once the environment is back. The
+SSH connections carrying these clients do not count as open SSH connections.
+
+A deferred update lists each blocker: terminal sessions (attached or detached),
+busy Jara sessions with the reason, other workspace operations with their process,
+and SSH connections with their user and running programs. To update anyway, pass
+`--force` to `jara host update` or `jara deployment upgrade`. A forced update
+still stops idle Jara sessions cleanly, then replaces the container regardless,
+interrupting everything it lists, including running agent turns. Local Jara
+clients reconnect afterwards. A server whose Jara predates `--force` cannot take
+the maintenance lease in this mode, so the update continues without blocking new
+workspace operations during the replacement and prints a warning.
+
 If deployment or diagnostics fail, the updater attempts to restore the previous
 image and leaves the configured pin unchanged. Image rollback does **not** undo
 data-format migrations; maintain backups of persistent volumes independently.

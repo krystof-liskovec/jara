@@ -47,9 +47,11 @@ func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string,
 	if len(persistentJara) > 0 && persistentJara[0] {
 		var status struct {
 			Active bool `json:"active"`
+			Idle   bool `json:"idle"`
 		}
-		if stateErr := rpc(r, Request{Op: "chat-session-state", ID: b.Workspace}, nil, &status); stateErr == nil && status.Active {
-			fmt.Fprintln(os.Stderr, "Reconnecting to the persistent Jara session; local files will not sync until it is stopped with /stop.")
+		// An idle, detached session stops for the sync and resumes its conversation.
+		if stateErr := rpc(r, Request{Op: "chat-session-state", ID: b.Workspace}, nil, &status); stateErr == nil && status.Active && !status.Idle {
+			fmt.Fprintln(os.Stderr, "Reconnecting to the persistent Jara session, which is busy or has a client attached; local files will not sync until it is stopped with /stop.")
 			return nil
 		}
 	}
