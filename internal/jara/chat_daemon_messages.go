@@ -141,18 +141,25 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 		}
 		forwardLine := line
 		virtualID := message.ID
+		// A message to a subagent starts a turn in its own thread; it neither
+		// waits for nor marks the conversation's turn.
+		subagentTurn := message.Method == "turn/start" && chatDaemonOtherThread(message.Params, state, stateMu)
 		if len(message.ID) > 0 && message.Method != "" {
 			var rewriteErr error
 			forwardLine, virtualID, rewriteErr = router.rewrite(client, line, message.ID)
 			if rewriteErr != nil {
 				continue
 			}
+			method := message.Method
+			if subagentTurn {
+				method = chatDaemonSubagentTurn
+			}
 			pendingMu.Lock()
-			pending[string(virtualID)] = message.Method
+			pending[string(virtualID)] = method
 			pendingMu.Unlock()
 		}
 		inputMu.Lock()
-		if message.Method == "turn/start" {
+		if message.Method == "turn/start" && !subagentTurn {
 			stateMu.Lock()
 			activeTurn := state.ActiveTurn
 			stateMu.Unlock()
@@ -213,6 +220,9 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 		return false
 	}
 	changed := false
+	if (message.Method == "turn/started" || message.Method == "turn/completed") && chatDaemonOtherThread(message.Params, state, stateMu) {
+		return false // a subagent's turn, not the conversation's
+	}
 	stateMu.Lock()
 	switch message.Method {
 	case "turn/started":
@@ -338,4 +348,22 @@ func writeChatDaemonLine(conn net.Conn, line []byte) error {
 		line = line[written:]
 	}
 	return nil
+}
+
+// chatDaemonSubagentTurn records a turn/start sent to a subagent's thread.
+const chatDaemonSubagentTurn = "turn/start#subagent"
+
+// chatDaemonOtherThread reports whether params name a thread other than the
+// session's conversation, such as a subagent's.
+func chatDaemonOtherThread(params json.RawMessage, state *chatDaemonState, stateMu *sync.Mutex) bool {
+	var target struct {
+		ThreadID string `json:"threadId"`
+	}
+	if json.Unmarshal(params, &target) != nil || target.ThreadID == "" {
+		return false
+	}
+	stateMu.Lock()
+	conversation := state.Conversation
+	stateMu.Unlock()
+	return conversation != "" && target.ThreadID != conversation
 }

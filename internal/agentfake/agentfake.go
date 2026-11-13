@@ -96,6 +96,21 @@ func fakeClaude() {
 			emit(map[string]any{"type": "user", "message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": "updated"}}}, "tool_use_result": result})
 			text("edited")
 			emit(map[string]any{"type": "result", "subtype": "success"})
+		case strings.Contains(prompt, "SUBAGENT"):
+			Log("claude-forward-subagents", os.Getenv("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT"))
+			parent := "toolu_task"
+			emit(map[string]any{"type": "assistant", "message": map[string]any{"content": []any{map[string]any{"type": "tool_use", "id": parent, "name": "Task",
+				"input": map[string]any{"description": "Find tests", "prompt": "List the test files", "subagent_type": "Explore"}}}}})
+			emit(map[string]any{"type": "user", "parent_tool_use_id": parent, "message": map[string]any{"content": "List the test files"}})
+			emit(map[string]any{"type": "assistant", "parent_tool_use_id": parent, "agent_id": "a1b2", "message": map[string]any{"content": []any{
+				map[string]any{"type": "text", "text": "Looking for tests."},
+				map[string]any{"type": "tool_use", "id": "toolu_ls", "name": "Bash", "input": map[string]any{"command": "ls *_test.go"}}}}})
+			emit(map[string]any{"type": "user", "parent_tool_use_id": parent, "message": map[string]any{"content": []any{
+				map[string]any{"type": "tool_result", "tool_use_id": "toolu_ls", "content": "a_test.go"}}}})
+			emit(map[string]any{"type": "user", "message": map[string]any{"content": []any{
+				map[string]any{"type": "tool_result", "tool_use_id": parent, "content": "Found a_test.go\nagentId: a1b2"}}}})
+			text("one test file")
+			emit(map[string]any{"type": "result", "subtype": "success"})
 		case strings.Contains(prompt, "LIMIT"):
 			emit(map[string]any{"type": "rate_limit_event", "rate_limit_info": map[string]any{"status": "rejected", "resetsAt": time.Now().Add(2 * time.Hour).Unix(), "rateLimitType": "five_hour",
 				"unifiedWindows": map[string]any{"five_hour": map[string]any{"utilization": 1.0, "status": "rejected", "resetsAt": time.Now().Add(2 * time.Hour).Unix()}}}})
@@ -193,6 +208,9 @@ func fakeCodex() {
 		case "turn/start":
 			text := params["input"].([]any)[0].(map[string]any)["text"].(string)
 			Log("codex-turn", fmt.Sprint(params["threadId"], "|", text))
+			if _, marked := params["jaraSubagent"]; marked {
+				Log("codex-subagent-marker", "forwarded")
+			}
 			thread := params["threadId"]
 			reply(map[string]any{"turn": map[string]any{"id": "ct"}})
 			for _, n := range []map[string]any{

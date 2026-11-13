@@ -73,6 +73,7 @@ type chatConversationState struct {
 	reasoningSummaryIndexes  map[string]int
 	subagentPaths            map[string]string
 	subagentItemDisplays     map[string]string
+	chatAgentsState          // subagents, and which one is shown
 }
 
 // chatModelState tracks the models in use and the catalog.

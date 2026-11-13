@@ -45,6 +45,8 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 	composerText, composerCursor := editor.previewText()
 	cursorLine, cursorColumn := chatEditorCursorPosition(composerText, composerCursor)
 	paneWidth := chatDiffPaneWidth(&u.diff, width, height)
+	u.diff.fits = width >= chatDiffPaneMinWidth && height >= chatDiffPaneMinHeight
+	u.diff.shown = paneWidth > 0
 	width -= paneWidth
 	transcriptWidth := width - 4
 	if height < 7 || width < 18 {
@@ -53,22 +55,31 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 	suggestions := t.suggestions()
 	hints, queueLines, queueEditNumber := chatTerminalHints(u, editor, t.queueEditor, t.picker, t.sessionPicker, suggestions, paneWidth > 0)
 	activity, elapsed := chatTerminalActivity(u, now)
+	transcript := t.agentTranscriptLines(transcriptWidth)
+	if transcript == nil {
+		transcript = t.transcript.transcriptLines(transcriptWidth)
+	}
+	agentLines, agentTargets := chatAgentStrip(u, now)
+	composerTitle := ""
+	if agent := u.viewedAgent(); agent != nil {
+		composerTitle = chatAgentComposerLabel(agent)
+	}
 	frame := renderChatView(chatViewModel{
-		Workspace: t.workspace, Model: u.effectiveModelLabel(), State: u.currentState(),
-		TranscriptLines: t.transcript.transcriptLines(transcriptWidth),
-		Composer:        composerText, CursorByte: composerCursor,
+		TranscriptLines: transcript, Agents: agentLines, AgentTargets: agentTargets, ComposerTitle: composerTitle,
+		Composer: composerText, CursorByte: composerCursor,
 		CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
 		ScrollOffset: t.scrollOffset, Activity: activity, ActivityElapsed: elapsed,
 		ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),
 		QueuedPrompts: queueLines, QueueEditing: t.queueEditor.active(), QueueEditNumber: queueEditNumber,
 		ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(), ControlContext: u.contextControlLabel(),
-		ApprovalPending: len(u.approvals) > 0, ChangedFiles: len(u.diff.changes),
-		Hints: hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
-		Pulse: chatBusyPulse(u.busy, t.motion, now), Mark: chatWelcomeMark(t.motion, now),
+		ApprovalPending: len(u.approvals) > 0,
+		Hints:           hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
+		Mark: chatWelcomeMark(t.motion, now),
 	}, width, height, t.palette, color)
 	if paneWidth > 0 {
 		pane := renderChatDiffPane(&u.diff, paneWidth-1, height, now, t.motion, t.palette, color)
 		frame = composeChatScreen(frame, pane, t.palette, color)
+		frame.Targets = append(frame.Targets, chatDiffPaneTargets(&u.diff, paneWidth-1, height, width+1)...)
 	}
 	return frame
 }

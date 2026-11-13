@@ -23,6 +23,13 @@ func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 	case action == "diff":
 		t.u.runChatDiffCommand()
 		t.scroll(0)
+	case action == "diff-close":
+		t.u.diff.mode = chatDiffPaneForcedOff
+	case action == "diff-ask":
+		t.askAboutChanges()
+	case strings.HasPrefix(action, "agent:"):
+		id := strings.TrimPrefix(action, "agent:")
+		t.showAgent(func() { t.u.showChatAgent(id) })
 	case strings.HasPrefix(action, "suggestion:"):
 		index, _ := strconv.Atoi(strings.TrimPrefix(action, "suggestion:"))
 		return t.tapSuggestion(index)
@@ -65,4 +72,20 @@ func (t *chatTerminal) tapSuggestion(index int) (done bool, err error) {
 		}
 	}
 	return false, nil
+}
+
+// askAboutChanges starts a question about the changes pane's files in the
+// input box, keeping anything already typed.
+func (t *chatTerminal) askAboutChanges() {
+	question := chatDiffQuestion(&t.u.diff)
+	if question == "" {
+		return
+	}
+	text := t.editor.Text()
+	if !strings.HasPrefix(text, question) {
+		text = question + text
+	}
+	t.editor.SetText(text)
+	t.u.noteChatComposer(t.editor.Text(), t.editor.CursorByte())
+	t.scroll(0)
 }

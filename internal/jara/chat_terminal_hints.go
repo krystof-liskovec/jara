@@ -71,13 +71,6 @@ func chatAnimationFrame(u *chatUI, motion bool, now time.Time) int {
 	return -1
 }
 
-func chatBusyPulse(busy, motion bool, now time.Time) float64 {
-	if !busy || !motion {
-		return 0
-	}
-	return chatPulse(now)
-}
-
 func chatWelcomeMark(motion bool, now time.Time) string {
 	if !motion {
 		return "✦"

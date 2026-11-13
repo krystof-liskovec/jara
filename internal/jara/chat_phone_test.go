@@ -27,14 +27,15 @@ func phoneTranscript(width int) []chatViewLine {
 }
 
 func TestShortScreensKeepTheConversationVisible(t *testing.T) {
-	model := chatViewModel{Workspace: "jara", Model: "GPT-5.5", State: "idle", TranscriptLines: phoneTranscript(44),
-		ControlModel: "GPT-5.5", ControlReasoning: "high", ControlContext: "82% left", Hints: []string{"Shift+drag select", "Enter send"}, ChangedFiles: 2}
+	model := chatViewModel{TranscriptLines: phoneTranscript(44),
+		ControlModel: "GPT-5.5", ControlReasoning: "high", ControlContext: "82% left", Hints: []string{"Shift+drag select", "Enter send"}}
 	frame := renderChatView(model, 44, 14, menuColorsForTerminal(), false)
 	screen := strings.Join(frame.Lines, "\n")
-	if !strings.HasPrefix(frame.Lines[0], "✦ jara · GPT-5.5 · ✎ 2 files · idle") || strings.Contains(screen, "Shift+drag") || strings.Contains(screen, "(F2)") {
+	// No header: the conversation starts on the first row.
+	if !strings.Contains(frame.Lines[0], "You") || strings.Contains(screen, "Shift+drag") || strings.Contains(screen, "(F2)") {
 		t.Fatalf("short screen chrome:\n%s", screen)
 	}
-	if !strings.Contains(frame.Lines[13], "Enter send · GPT-5.5 · high · 82% left") || frame.target(13, 16) != "model" || frame.target(0, 20) != "diff" {
+	if !strings.Contains(frame.Lines[13], "Enter send · GPT-5.5 · high · 82% left") || frame.target(13, 16) != "model" {
 		t.Fatalf("controls in the border: %q targets %+v", frame.Lines[13], frame.Targets)
 	}
 	if !strings.Contains(screen, "Tests pass.") || strings.Contains(screen, "\n \n \n") {

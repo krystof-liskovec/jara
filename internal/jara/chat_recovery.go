@@ -69,7 +69,7 @@ func (u *chatUI) recoverChatRequest(pending chatPending, detail string) bool {
 // expireChatRequest handles a request that got no reply in time.
 func (u *chatUI) expireChatRequest(id string, pending chatPending) error {
 	switch {
-	case u.expireChatDefaultRequest(id, pending), u.expireChatExtraRequest(id, pending):
+	case u.expireChatDefaultRequest(id, pending), u.expireChatExtraRequest(id, pending), u.expireChatAgentRequest(id, pending):
 		return nil
 	case pending.method == "thread/list":
 		u.expireChatSessionRequest(id)

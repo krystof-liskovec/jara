@@ -16,10 +16,6 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 	}
 	bg, fg, bold := palette.canvas, palette.text, ""
 	switch kind {
-	case "header":
-		bg = palette.surface
-	case "subheader":
-		bg, fg = palette.surface, palette.muted
 	case "message-gap":
 		bg = palette.canvas
 	case "footer", "scroll", "empty":
@@ -87,39 +83,5 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		}
 	}
 	line := menuBG(bg) + menuFG(fg) + bold + plain
-	if kind == "header" {
-		line = strings.Replace(line, "JARA", menuFG(palette.brand)+"\x1b[1mJARA"+menuFG(fg)+bold, 1)
-	}
-	if kind == "subheader" {
-		if split := strings.LastIndex(text, " · "); split >= 0 {
-			state := strings.TrimSpace(text[split+3:])
-			stateColor := palette.muted
-			switch state {
-			case "running", "idle":
-				stateColor = palette.green
-			case "waiting", "starting", "resuming":
-				stateColor = palette.accent
-			}
-			statePaddedStart := split + 3
-			statePaddedEnd := statePaddedStart + uniseg.StringWidth(state)
-			plainRun := menuBG(bg) + menuFG(stateColor) + "\x1b[1m" + substringCells(plain, statePaddedStart, statePaddedEnd) + menuBG(bg) + menuFG(fg) + bold
-			line = menuBG(bg) + menuFG(fg) + bold + substringCells(plain, 0, statePaddedStart) + plainRun + substringCells(plain, statePaddedEnd, width)
-		}
-	}
 	return line + "\x1b[0m"
-}
-
-func substringCells(text string, start, end int) string {
-	start, end = max(0, start), max(0, end)
-	var b strings.Builder
-	position := 0
-	g := uniseg.NewGraphemes(text)
-	for g.Next() {
-		part, cells := g.Str(), g.Width()
-		if position >= start && position+cells <= end {
-			b.WriteString(part)
-		}
-		position += cells
-	}
-	return b.String()
 }

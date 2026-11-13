@@ -25,6 +25,9 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 	case event.returnToLive:
 		t.scroll(0)
 		return false, nil
+	case event.agentStep != 0:
+		t.showAgent(func() { u.cycleChatAgentView(event.agentStep) })
+		return false, nil
 	case event.interrupt:
 		return t.interrupt()
 	case event.tap != nil:
@@ -166,6 +169,9 @@ func (t *chatTerminal) submit(value string) (done bool, err error) {
 		t.queueEditor.save(u, editor, value)
 		return false, nil
 	}
+	if sent, err := t.submitToAgent(value); sent || err != nil {
+		return false, err
+	}
 	if line := strings.TrimSpace(value); line != "" {
 		isCommand := strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "//")
 		wasBusy, wasReady, queuedOffline := u.busy, u.threadReady, u.chatOffline() && !isCommand
@@ -181,6 +187,7 @@ func (t *chatTerminal) submit(value string) (done bool, err error) {
 		if err != nil || quit {
 			return true, err
 		}
+		t.applyAgentViewRequest()
 		t.picker.sync(u)
 		t.applyPrefill()
 		if line == "/resume" && u.sessions == previousSessions {

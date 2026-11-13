@@ -63,9 +63,11 @@ type agentRouter struct {
 	claudeLimits   *claudeRateLimits
 	threads        map[string]*Thread
 	codexToVirtual map[string]string
-	approvals      map[string]*claudeSession // UI request ID -> session awaiting a decision
-	btw            map[string]*btwFork       // Codex fork thread -> pending side question
-	btwForking     int                       // side-question forks awaiting their thread ID
+	approvals      map[string]*claudeSession  // UI request ID -> session awaiting a decision
+	btw            map[string]*btwFork        // Codex fork thread -> pending side question
+	btwForking     int                        // side-question forks awaiting their thread ID
+	codexChildren  map[string]bool            // Codex subagent threads
+	claudeAgents   map[string]*claudeSubagent // Claude Code subagents by virtual thread ID
 }
 
 func runAgentRouter(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, claudeArgs ...string) error {
@@ -227,6 +229,7 @@ func (r *agentRouter) fromCodex(m rpcMessage) error {
 		return nil
 	}
 	m.Params = r.rewriteCodexThread(m.Params)
+	r.observeCodexSubagents(m)
 	r.observeCodexNotification(m)
 	r.send(m)
 	return nil
@@ -289,7 +292,19 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 	case "thread/resume":
 		return r.resumeThread(m.ID, params)
 	case "turn/start":
+		if forward, thread, ok := r.subagentTurn(params); ok {
+			if strings.HasPrefix(thread, protocol.ClaudeSubagentThreadPrefix) {
+				r.fail(m.ID, "Claude Code subagents cannot receive messages directly; send it through the main agent")
+				return nil
+			}
+			return r.callCodex(codexCall{uiID: m.ID, method: m.Method}, forward)
+		}
 		return r.startTurn(m.ID, params)
+	case "thread/read":
+		if agent := r.claudeSubagentFor(params); agent != nil {
+			r.reply(m.ID, agent.threadRead())
+			return nil
+		}
 	case "jara/btw":
 		return r.askBtw(m.ID, params)
 	case "jara/rewind":

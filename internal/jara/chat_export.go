@@ -88,6 +88,9 @@ func (o *chatTerminalOutput) ClearChat() {
 }
 
 func (u *chatUI) runChatDiffCommand() {
+	if u.diff.togglePane() {
+		return
+	}
 	if len(u.diff.changes) == 0 {
 		u.printRole("system", "No file changes in this conversation yet.\n")
 		return

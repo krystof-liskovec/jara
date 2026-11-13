@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -117,6 +118,9 @@ func (s *claudeSession) startProcess() error {
 	}
 	cmd := exec.Command(protocol.ClaudeExecutable(), args...)
 	cmd.Dir = s.thread.CWD
+	// Forward subagents' messages so they can be viewed. An environment
+	// variable, unlike the matching flag, is ignored by older Claude Code.
+	cmd.Env = append(os.Environ(), "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT=1")
 	s.stderr = &tailBuffer{}
 	cmd.Stderr = s.stderr
 	stdin, err := cmd.StdinPipe()

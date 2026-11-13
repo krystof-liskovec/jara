@@ -12,7 +12,8 @@ import (
 )
 
 // The diff pane shows recent file changes beside the conversation on wide
-// terminals, newest first. F4 toggles it; Alt+PgUp/PgDn or F5/F6 scroll it.
+// terminals, newest first. F4 or /diff toggles it, as does its ✕ button;
+// Alt+PgUp/PgDn or F5/F6 scroll it.
 const (
 	chatDiffPaneMinWidth   = 100
 	chatDiffPaneMinHeight  = 12
@@ -29,6 +30,8 @@ type chatDiffState struct {
 	arrived time.Time
 	mode    int
 	scroll  int
+	fits    bool // the terminal has room for the pane (set on each draw)
+	shown   bool // the pane is on screen (set on each draw)
 }
 
 // recordFileChanges keeps the newest changes for the pane. Live changes
@@ -164,10 +167,8 @@ func renderChatDiffPane(d *chatDiffState, width, height int, now time.Time, moti
 		}
 		out[row] = paintChatDiffLine(line, width, flash, palette, color)
 	}
-	if maxScroll > 0 && height > 1 {
-		marker := fmt.Sprintf(" %d/%d ", d.scroll+1, maxScroll+1)
-		out[0] = paintChatDiffLine(chatDiffLine{text: overlayRight(lines[0].text, marker, width), kind: "pane-title"}, width, 0, palette, color)
-	}
+	title := overlayRight(lines[0].text, chatDiffPaneSuffix(d, width, height), width)
+	out[0] = paintChatDiffLine(chatDiffLine{text: title, kind: "pane-title"}, width, 0, palette, color)
 	return out
 }
 

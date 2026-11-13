@@ -139,6 +139,9 @@ func (u *chatUI) line(line string) (bool, error) {
 		return false, u.runChatCrunchCommand(line, true)
 	case isChatQueueCommand(line):
 		return false, u.runChatQueueCommand(line)
+	case isChatAgentsCommand(line):
+		u.runChatAgentsCommand(line)
+		return false, nil
 	case line == "/help":
 		u.print("\n" + u.help() + "You> ")
 		return false, nil
@@ -322,7 +325,7 @@ func (u *chatUI) agentTurnActive() bool {
 		return true
 	}
 	for _, pending := range u.pending {
-		if pending.method == "turn/start" {
+		if pending.method == "turn/start" && !strings.HasPrefix(pending.action, "agent:") {
 			return true
 		}
 	}
