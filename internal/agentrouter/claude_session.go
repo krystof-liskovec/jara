@@ -69,6 +69,7 @@ type queuedClaudeTurn struct {
 type claudeApproval struct {
 	requestID string
 	input     map[string]any
+	questions []string // AskUserQuestion: the question texts, in order
 }
 
 func newClaudeSession(r *agentRouter, thread *Thread, backendID string, resume bool) *claudeSession {

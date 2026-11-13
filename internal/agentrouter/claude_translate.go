@@ -373,6 +373,10 @@ func (s *claudeSession) handleControlRequest(requestID string, raw json.RawMessa
 		_ = s.write(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "error", "request_id": requestID, "error": "unsupported by Jara: " + request.Subtype}})
 		return
 	}
+	if request.ToolName == "AskUserQuestion" && s.turnID != "" {
+		s.askUserQuestion(requestID, request.ToolUseID, request.Input)
+		return
+	}
 	if request.ToolName == "AskUserQuestion" || s.turnID == "" {
 		s.respondPermission(requestID, nil, false, "Ask the question in your reply instead; the user answers in their next message.")
 		return
@@ -398,6 +402,10 @@ func (s *claudeSession) answerApproval(uiID string, result json.RawMessage) {
 		return
 	}
 	delete(s.approvals, uiID)
+	if approval.questions != nil {
+		s.answerQuestion(approval, result)
+		return
+	}
 	var answer struct {
 		Decision string `json:"decision"`
 	}

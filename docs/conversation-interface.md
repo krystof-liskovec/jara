@@ -194,7 +194,12 @@ is cleared when that interface exits.
   `/auto off` returns to asking you, and `/auto status` reports the mode.
   Shift+Tab (or tapping the control) toggles it too; the controls under the
   input show `⏵⏵ Auto mode on` or `◇ Auto mode off`. The choice applies from
-  the next turn and resets to on when Jara reopens.
+  the next turn and resets to on when Jara reopens. In auto mode, an approval
+  the reviewer still passes to you is allowed automatically after 3 minutes
+  without an answer, so an unattended session does not stay stuck; the
+  approval row counts down (`Auto-allow in 2:59`). Answering, or turning auto
+  mode off, stops the countdown. The countdown runs only while a Jara client
+  is attached, and restarts when one reattaches.
 - `/agents` lists the conversation's subagents; `/agents N` shows subagent N
   and `/agents main` returns to the main agent.
 - `/btw QUESTION` asks a quick side question about the conversation, even
@@ -267,9 +272,14 @@ is cleared when that interface exits.
 - `/approve` approves the oldest pending command or file approval once.
 - `/deny` rejects that approval; the agent can continue.
 - `/answer Q VALUE` answers question number `Q` in the current question set.
-  Use an option number or, when offered, free text. For example, `/answer 1 2`
+  Use an option number, comma-separated numbers for a multi-select question
+  (`/answer 1 1,3`), or, when offered, free text. For example, `/answer 1 2`
   chooses option 2 for question 1. Nothing is preselected or sent until every
-  question in that request has an explicit answer.
+  question in that request has an explicit answer. In the full-screen view,
+  the menu above the input box answers the current question: ↑↓ choose, Enter
+  selects, and in a multi-select question Enter or Space checks an option and
+  Submit sends the checked ones. Text typed in the input box and sent with
+  Enter is your own answer, added to any checked options.
 - `/quit` stops an idle persistent session. During an active turn it closes the
   UI and leaves the agent running until that turn finishes. Use `/stop` to stop
   immediately and release its workspace lock.
@@ -297,8 +307,11 @@ remain subject to the configured expiration policy; use
 `JARA_SESSION_IDLE_TIMEOUT=0` to disable expiration entirely.
 
 Approval requests show the request details and available file-change data.
-Only an explicit `/approve` grants approval for requests that reach you; in
-auto mode the agent's own reviewer decides them first. Structured non-secret questions
+In the full-screen view, Enter or `y` in an empty input box allows the oldest
+approval and `n` denies it; in plain line mode, answer `y` or `n`.
+In auto mode the agent's own reviewer decides approval requests first, and one
+that reaches you is approved automatically after 3 minutes without an answer.
+With auto mode off, only an explicit `/approve` grants approval. Structured non-secret questions
 show numbered options and queue additional question sets. `/cancel` rejects
 pending questions and interrupts the turn. Secret questions and unsupported
 interactions such as MCP elicitation receive a protocol error instead of being
@@ -449,6 +462,8 @@ For Claude Code turns:
 - Replies stream as usual. Shell commands, file edits, and other tools appear
   as tool items. Edits show real diffs from Claude's structured patches,
   including in the changes pane.
+- Claude Code's multiple-choice questions, including multi-select ones,
+  arrive as ordinary questions, and your own text is always accepted.
 - Claude Code runs in its `auto` permission mode unless `/auto off` is set;
   any remaining tool permissions arrive as ordinary approvals: `/approve` or `/deny`.
 - Ctrl+C interrupts the turn, and `/plan` switches Claude Code to plan mode.

@@ -42,10 +42,21 @@ func (u *chatUI) event(m appMessage) error {
 		switch m.Method {
 		case "item/commandExecution/requestApproval", "item/fileChange/requestApproval":
 			u.approvals = append(u.approvals, m)
+			if len(u.approvals) == 1 {
+				u.armAutoApproval(time.Now())
+			}
 			u.alertUser("Approval needed")
 			u.setActivityLabel("Waiting for approval")
 			u.setAgentState("waiting")
-			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%sPress y to allow once or n to deny (or /approve, /deny).\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID])))
+			keys := "Press y"
+			if chatUIIsInteractive(u) {
+				keys = "Press Enter or y" // the full-screen view answers on Enter
+			}
+			hint := ""
+			if !u.manualApprovals {
+				hint = fmt.Sprintf(" Auto mode allows it after %s without an answer.", formatChatAutoApproveDelay(chatAutoApproveDelay))
+			}
+			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%s%s to allow once or n to deny (or /approve, /deny).%s\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID]), keys, hint))
 			return nil
 		case "item/tool/requestUserInput":
 			u.alertUser("Question waiting for an answer")

@@ -48,12 +48,14 @@ type chatTerminal struct {
 	sessionPicker       bool
 	sessionSelection    int
 
-	agents            chatTerminalAgents
-	dirty             bool
-	targets           chatFrame // the last frame drawn, for taps
-	lastDraw          time.Time
-	lastActivityFrame int
-	screen            chatScreenState
+	agents                chatTerminalAgents
+	dirty                 bool
+	targets               chatFrame // the last frame drawn, for taps
+	lastDraw              time.Time
+	lastActivityFrame     int
+	lastApprovalCountdown string
+	question              chatQuestionMenu
+	screen                chatScreenState
 }
 
 func newChatTerminal(u *chatUI, output *os.File) *chatTerminal {
@@ -233,6 +235,15 @@ func (t *chatTerminal) tick(now time.Time) error {
 		} else if err := u.expireChatRequest(id, pending); err != nil {
 			return err
 		}
+		t.dirty = true
+	}
+	if answered, err := u.autoApproveExpired(now); err != nil {
+		return err
+	} else if answered {
+		t.dirty = true
+	}
+	if countdown := u.approvalCountdown(now); countdown != t.lastApprovalCountdown {
+		t.lastApprovalCountdown = countdown
 		t.dirty = true
 	}
 	t.picker.sync(u)

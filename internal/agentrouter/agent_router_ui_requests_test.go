@@ -136,3 +136,37 @@ func TestAgentRouterRunsClaudeInAutoMode(t *testing.T) {
 		t.Fatalf("approvals reviewer was not saved: %+v", routed)
 	}
 }
+
+func TestAgentRouterForwardsClaudeQuestions(t *testing.T) {
+	agentfake.Setup(t)
+	h := startRouterHarness(t, protocol.AgentClaude)
+	h.Response(h.Request("initialize", map[string]any{}))
+	started := h.Response(h.Request("thread/start", map[string]any{"cwd": t.TempDir()}))
+	thread := started["result"].(map[string]any)["thread"].(map[string]any)["id"].(string)
+	ask := func() map[string]any {
+		h.Request("turn/start", map[string]any{"threadId": thread, "input": []any{map[string]any{"type": "text", "text": "ASK please"}}})
+		request, _ := h.WaitFor(agentfake.IsMethod("item/tool/requestUserInput"))
+		return request
+	}
+	request := ask()
+	encoded, _ := json.Marshal(request["params"])
+	for _, want := range []string{`"question":"Which database?"`, `"label":"Postgres"`, `"description":"relational"`, `"multiSelect":true`, `"isOther":true`, `"id":"1"`} {
+		if !strings.Contains(string(encoded), want) {
+			t.Fatalf("question params missing %s: %s", want, encoded)
+		}
+	}
+	h.Send(map[string]any{"id": request["id"], "result": map[string]any{"answers": map[string]any{
+		"0": map[string]any{"answers": []string{"SQLite"}}, "1": map[string]any{"answers": []string{"Cache", "my own idea"}}}}})
+	h.WaitFor(agentfake.IsMethod("turn/completed"))
+	// A dismissed question tells Claude the user declined.
+	request = ask()
+	h.Send(map[string]any{"id": request["id"], "error": map[string]any{"code": -32000, "message": "cancelled"}})
+	h.WaitFor(agentfake.IsMethod("turn/completed"))
+	got := agentfake.ReadLog(t, "claude-question")
+	if len(got) != 2 || !strings.Contains(got[0], `"behavior":"allow"`) || !strings.Contains(got[0], `"answers":{"Which database?":"SQLite","Which extras?":"Cache, my own idea"}`) || !strings.Contains(got[0], `"questions":[`) {
+		t.Fatalf("answer sent to Claude: %v", got)
+	}
+	if !strings.Contains(got[1], `"behavior":"deny"`) {
+		t.Fatalf("dismissed question: %v", got[1])
+	}
+}

@@ -54,6 +54,7 @@ type chatTurnState struct {
 	activitySummaryIndex  int
 	activitySummaryText   string
 	approvals             []appMessage
+	approvalDeadline      time.Time // auto mode approves approvals[0] then
 	questionRequests      []chatQuestionRequest
 }
 

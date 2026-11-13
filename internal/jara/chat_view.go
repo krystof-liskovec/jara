@@ -15,34 +15,35 @@ type chatViewMessage struct {
 }
 
 type chatViewModel struct {
-	Messages         []chatViewMessage
-	TranscriptLines  []chatViewLine
-	Composer         string
-	CursorByte       int
-	CursorLine       int
-	CursorColumn     int
-	Suggestions      []chatCompletionChoice
-	Activity         string
-	ActivityElapsed  string
-	ActivityFrame    int
-	ActivitySeed     int64  // per-turn seed for the thinking verb
-	ActivityHint     string // e.g. "ctrl+c to interrupt"
-	QueuedPrompts    []chatViewLine
-	Agents           []chatViewLine // the subagent strip
-	AgentTargets     []string       // agent shown by each strip line, for taps
-	ComposerTitle    string         // replaces " Message " in the input border
-	QueueEditing     bool
-	QueueEditNumber  int
-	ControlModel     string
-	ControlReasoning string
-	ControlContext   string // context meter, "" when unknown
-	ControlAutoOff   bool   // auto mode is off: approvals ask the user
-	ApprovalPending  bool   // show the Allow/Deny row
-	ScrollOffset     int
-	Hints            []string
-	Motion           bool   // animations enabled
-	Tick             int    // shimmer frame
-	Mark             string // welcome mark glyph
+	Messages          []chatViewMessage
+	TranscriptLines   []chatViewLine
+	Composer          string
+	CursorByte        int
+	CursorLine        int
+	CursorColumn      int
+	Suggestions       []chatCompletionChoice
+	Activity          string
+	ActivityElapsed   string
+	ActivityFrame     int
+	ActivitySeed      int64  // per-turn seed for the thinking verb
+	ActivityHint      string // e.g. "ctrl+c to interrupt"
+	QueuedPrompts     []chatViewLine
+	Agents            []chatViewLine // the subagent strip
+	AgentTargets      []string       // agent shown by each strip line, for taps
+	ComposerTitle     string         // replaces " Message " in the input border
+	QueueEditing      bool
+	QueueEditNumber   int
+	ControlModel      string
+	ControlReasoning  string
+	ControlContext    string // context meter, "" when unknown
+	ControlAutoOff    bool   // auto mode is off: approvals ask the user
+	ApprovalPending   bool   // show the Allow/Deny row
+	ApprovalCountdown string // auto mode's "Auto-allow in 2:59", if any
+	ScrollOffset      int
+	Hints             []string
+	Motion            bool   // animations enabled
+	Tick              int    // shimmer frame
+	Mark              string // welcome mark glyph
 }
 
 type chatFrame struct {
@@ -186,9 +187,15 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		row++
 	}
 	if approvalRows > 0 {
-		line := " ⚠ Approve?  [ y Allow ]  [ n Deny ]"
+		line := " ⚠ Approve?  [ ⏎/y Allow ]  [ n Deny ]"
+		if countdown := model.ApprovalCountdown; countdown != "" {
+			if uniseg.StringWidth(line+"  "+countdown) > width {
+				countdown = strings.TrimPrefix(countdown, "Auto-allow in ") // phones show only the time
+			}
+			line += "  " + countdown
+		}
 		frame.Lines[row] = paintChatViewLine(fitChatView(line, width), "approval", "", false, width, palette, color)
-		frame.addTarget(row, line, "[ y Allow ]", "approve")
+		frame.addTarget(row, line, "[ ⏎/y Allow ]", "approve")
 		frame.addTarget(row, line, "[ n Deny ]", "deny")
 		row++
 	}

@@ -21,6 +21,15 @@ published port reaches the Debian service container's `sshd`.
 Sources: [OpenSSH 10.6p2 release notes](https://www.openssh.org/releasenotes.html#10.6p2)
 and the [researcher's write-up](https://sshhole.com/).
 
+## Auto-mode approval timeout
+
+Auto mode is on by default. In auto mode, an approval request that the agent's
+reviewer passes to the user is approved automatically after 3 minutes without
+an answer, including commands the reviewer declined to approve on its own.
+Unattended sessions therefore keep running actions nobody looked at. Use
+`/auto off` (or Shift+Tab) when every escalated action needs an explicit
+`/approve`.
+
 ## Configurable session authority
 
 Jara adds no Codex permission flags by default. The host can set

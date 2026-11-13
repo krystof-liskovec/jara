@@ -22,12 +22,14 @@ type chatQuestionOption struct {
 }
 
 type chatQuestion struct {
-	Header   string               `json:"header"`
-	ID       string               `json:"id"`
-	Question string               `json:"question"`
-	IsOther  bool                 `json:"isOther"`
-	IsSecret bool                 `json:"isSecret"`
-	Options  []chatQuestionOption `json:"options"`
+	Header   string `json:"header"`
+	ID       string `json:"id"`
+	Question string `json:"question"`
+	IsOther  bool   `json:"isOther"`
+	IsSecret bool   `json:"isSecret"`
+	// MultiSelect lets the user pick several options (Claude Code).
+	MultiSelect bool                 `json:"multiSelect"`
+	Options     []chatQuestionOption `json:"options"`
 }
 
 type chatQuestionParams struct {
@@ -140,10 +142,20 @@ func renderChatQuestions(u *chatUI) {
 			prefix := fmt.Sprintf("  %d) ", optionIndex+1)
 			u.print(chatWrappedLines(prefix, label, chatQuestionLineWidth))
 		}
-		u.print(fmt.Sprintf("Answer: /answer %d <number>\n", i+1))
+		if chatUIIsInteractive(u) {
+			continue // the menu above the input box answers it
+		}
+		if question.MultiSelect {
+			u.print(fmt.Sprintf("Answer: /answer %d <numbers, such as 1,3>\n", i+1))
+		} else {
+			u.print(fmt.Sprintf("Answer: /answer %d <number>\n", i+1))
+		}
 		if question.IsOther {
 			u.print(fmt.Sprintf("Other: /answer %d <text>\n", i+1))
 		}
+	}
+	if chatUIIsInteractive(u) {
+		u.print(chatWrappedLines("", "Choose with ↑↓ and Enter below, or type your own answer.", chatQuestionLineWidth))
 	}
 	if len(u.questionRequests[0].params.Questions) > len(u.questionRequests[0].answers) {
 		u.print(chatWrappedLines("", "/cancel rejects questions and stops the turn.", chatQuestionLineWidth))
@@ -221,18 +233,27 @@ func (u *chatUI) answerQuestion(line string) error {
 		u.print("Add an option number or answer text after the question number.\n")
 		return nil
 	}
+	values, err := resolveChatQuestionAnswer(u.questionRequests[0].params.Questions[questionNumber-1], answer)
+	if err != nil {
+		u.print(err.Error() + "\n")
+		return nil
+	}
+	return u.recordQuestionAnswer(questionNumber, values)
+}
+
+// recordQuestionAnswer saves the answer to question questionNumber (from 1)
+// of the current request, and sends the request's answers once all are in.
+func (u *chatUI) recordQuestionAnswer(questionNumber int, values []string) error {
+	if len(u.questionRequests) == 0 || questionNumber < 1 || questionNumber > len(u.questionRequests[0].params.Questions) {
+		return nil
+	}
 	request := &u.questionRequests[0]
 	question := request.params.Questions[questionNumber-1]
 	if _, answered := request.answers[question.ID]; answered {
 		u.print(fmt.Sprintf("Question %d already has an answer.\n", questionNumber))
 		return nil
 	}
-	value, err := resolveChatQuestionAnswer(question, answer)
-	if err != nil {
-		u.print(err.Error() + "\n")
-		return nil
-	}
-	request.answers[question.ID] = []string{value}
+	request.answers[question.ID] = values
 	if len(request.answers) < len(request.params.Questions) {
 		u.print(fmt.Sprintf("Saved answer for question %d of %d.\n", questionNumber, len(request.params.Questions)))
 		renderChatQuestions(u)
@@ -261,18 +282,33 @@ func (u *chatUI) answerQuestion(line string) error {
 	return nil
 }
 
-func resolveChatQuestionAnswer(question chatQuestion, answer string) (string, error) {
+// resolveChatQuestionAnswer turns /answer text into answer values: an option
+// number, several comma-separated numbers for a multi-select question, or the
+// user's own text where the question allows it.
+func resolveChatQuestionAnswer(question chatQuestion, answer string) ([]string, error) {
 	if len(question.Options) == 0 {
-		return answer, nil
+		return []string{answer}, nil
 	}
-	optionNumber, err := strconv.Atoi(answer)
-	if err == nil && optionNumber >= 1 && optionNumber <= len(question.Options) {
-		return question.Options[optionNumber-1].Label, nil
+	parts := []string{answer}
+	if question.MultiSelect {
+		parts = strings.Split(answer, ",")
+	}
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		optionNumber, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || optionNumber < 1 || optionNumber > len(question.Options) {
+			values = nil
+			break
+		}
+		values = append(values, question.Options[optionNumber-1].Label)
+	}
+	if len(values) > 0 {
+		return values, nil
 	}
 	if question.IsOther {
-		return answer, nil
+		return []string{answer}, nil
 	}
-	return "", fmt.Errorf("Choose an option from 1 to %d", len(question.Options))
+	return nil, fmt.Errorf("Choose an option from 1 to %d", len(question.Options))
 }
 
 func (u *chatUI) cancelQuestionRequests(message string) error {

@@ -52,9 +52,14 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 		return false, nil
 	}
 	chatTerminalAttachImages(u, input)
-	if answer := chatApprovalKey(u, t.editor, *input); answer != "" {
+	menuOpen := t.picker.active() || t.sessionPicker || t.queueEditor.active()
+	if answer := chatApprovalKey(u, t.editor, *input); answer != "" && !(menuOpen && input.Key == chatEditorEnter) {
 		t.dirty = true
 		return u.line(answer)
+	}
+	if handled, err := t.handleQuestionKey(*input); handled || err != nil {
+		t.dirty = true
+		return false, err
 	}
 	if t.handlePickerKey(*input) || t.handleSessionPickerKey(*input) {
 		t.dirty = true

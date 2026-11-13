@@ -140,6 +140,9 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 				return nil
 			}
 		case now := <-timer.C:
+			if _, err := u.autoApproveExpired(now); err != nil {
+				return err
+			}
 			for id, pending := range u.pending {
 				if now.After(pending.deadline) {
 					if err := u.expireChatRequest(id, pending); err != nil {
