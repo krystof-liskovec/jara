@@ -21,6 +21,7 @@ type chatTerminalKeyEvent struct {
 	scroll       int
 	scrollRows   int
 	returnToLive bool
+	agentStep    int // show the next (1) or previous (-1) agent's transcript
 	interrupt    bool
 	tap          *[2]int // column and row of a left click or tap, from zero
 	limitReached bool
@@ -178,6 +179,10 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		return &chatTerminalKeyEvent{paneScroll: chatDiffPaneScrollStep}
 	}
 	switch sequence {
+	case "\x1b[1;5B", "\x1b[1;5:1B", "\x1b[5B", "\x1b[57353;5u", "\x1b[57353;5:1u": // Ctrl+Down
+		return &chatTerminalKeyEvent{agentStep: 1}
+	case "\x1b[1;5A", "\x1b[1;5:1A", "\x1b[5A", "\x1b[57352;5u", "\x1b[57352;5:1u": // Ctrl+Up
+		return &chatTerminalKeyEvent{agentStep: -1}
 	case "\x1b[1;5C", "\x1b[1;5:1C", "\x1b[5C", "\x1b[57351;5u", "\x1b[57351;5:1u":
 		event := editorEvent(chatEditorWordRight)
 		return &event

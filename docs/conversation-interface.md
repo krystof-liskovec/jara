@@ -64,17 +64,29 @@ new authentication flow.
 
 ## Interactive terminal
 
-Interactive terminals use a full-screen conversation view with a persistent
-workspace/model/activity header, styled user/agent/tool messages, and a bordered
-composer. The transcript scrolls independently of your draft and reflows when
+Interactive terminals use a full-screen conversation view: the transcript fills
+the screen from the top, with styled user/agent/tool messages, an activity row,
+and a bordered composer above the model and reasoning controls. The transcript scrolls independently of your draft and reflows when
 the terminal is resized. Narrow terminals use the same controls with a compact
 layout. Message groups have clearer spacing, and Codex's concise reasoning
 summaries update the activity row instead of appearing as transcript messages.
 Subagent activity appears inline with its delegation prompt, lifecycle updates,
-and any status or result text Codex includes in the parent thread. The interface
-does not fetch the child agent's separate full transcript or display raw
-reasoning text. Plain output remains available for pipes and `TERM=dumb`
-terminals.
+and any status or result text the agent reports in the parent thread. While a
+conversation has subagents, a strip above the input box lists the main agent
+and each subagent with its status (the latest four, plus `/agents` for all).
+Ctrl+↓ and Ctrl+↑ switch the transcript to the next or previous agent, tapping
+a row shows that agent, and Esc returns to the main agent. A subagent's view
+shows its own transcript (prompts, replies, commands with output, and file
+changes) and refreshes while it runs. Raw reasoning text is not shown. Plain
+output remains available for pipes and `TERM=dumb` terminals.
+
+While a subagent is shown, what you type is sent to it, and slash commands still
+apply to the conversation (start a message with `//` to send a literal slash).
+A Codex subagent receives the message in its own thread, even while the main
+agent is working. Claude Code cannot deliver a message straight to a subagent,
+so Jara asks the main agent to forward it with its `SendMessage` tool. That
+request appears in the main conversation and waits in the queue while the main
+agent is busy.
 
 When Codex compacts conversation context, Jara shows a progress message in the
 chat and updates the live activity label until compaction completes.
@@ -181,6 +193,8 @@ is cleared when that interface exits.
   `auto_review` reviewer, and Claude Code runs in its `auto` permission mode.
   `/auto off` returns to asking you, and `/auto status` reports the mode. The
   choice applies from the next turn and resets to on when Jara reopens.
+- `/agents` lists the conversation's subagents; `/agents N` shows subagent N
+  and `/agents main` returns to the main agent.
 - `/btw QUESTION` asks a quick side question about the conversation, even
   while a turn is running. The answer appears in a "By the way" message and is
   not added to the conversation. Codex answers in an ephemeral, read-only fork
@@ -216,8 +230,9 @@ is cleared when that interface exits.
 - On phones the layout shrinks its chrome, controls become tap targets, `y`/`n`
   answer approvals, `\` before Enter adds a newline, and `/notify URL` sends
   push notifications; see [phone access](plain-ssh.md#working-from-a-phone).
-- `/diff` lists the file changes this conversation made, oldest first, and
-  re-enables the changes pane. `/export [PATH]` saves the conversation as
+- `/diff` shows or hides the changes pane. Where the terminal is too small
+  for the pane, it lists the conversation's file changes, oldest first.
+  `/export [PATH]` saves the conversation as
   Markdown, by default as `jara-conversation-DATE-TIME.md` in the workspace.
 - `/crunch PROMPT` works on the task until it is complete, then stops. If the
   agent stops because usage is exhausted, Jara waits for the reported
@@ -362,8 +377,12 @@ appear in a pane to the right of the conversation, newest edit first:
 - Each file shows its path and `+added −removed` counts, then its hunks with
   tinted additions and deletions. Code is syntax-highlighted by the file's
   language, using GitHub's light or dark colors to match the terminal.
-- The pane opens automatically with the first change. **F4** hides or shows
-  it, and **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
+- The pane opens automatically with the first change. Its **✕** button,
+  **F4**, or `/diff` hides it; it stays hidden until F4 or `/diff` shows it
+  again. **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
+- **[ ask ]** starts a question about the changes: it fills the input box with
+  "About your changes to …:" naming the changed files, so you type the
+  question and press Enter. Text already in the input box is kept.
 - History loaded with `/resume` fills the pane without animation.
 
 Code blocks in the transcript are highlighted the same way: by the fence
@@ -371,8 +390,7 @@ language (```` ```go ````) or, for file-change diffs, by the changed file.
 Highlighting is per line, so a string or comment spanning lines may be
 colored as code after its first line.
 
-While a turn runs, a highlight sweeps across the activity label and the header
-mark pulses. New changes wipe into the pane from the top, and the newest file
+While a turn runs, a highlight sweeps across the activity label. New changes wipe into the pane from the top, and the newest file
 briefly glows. The welcome mark twinkles. Only changed rows are redrawn, and
 idle sessions without visible animation do not redraw. Set
 `JARA_REDUCED_MOTION=1` to turn all animation off; `NO_COLOR` also disables
@@ -420,6 +438,10 @@ For Claude Code turns:
 - Claude Code runs in its `auto` permission mode unless `/auto off` is set;
   any remaining tool permissions arrive as ordinary approvals: `/approve` or `/deny`.
 - Ctrl+C interrupts the turn, and `/plan` switches Claude Code to plan mode.
+- Subagents started with the Task or Agent tool can be viewed like Codex
+  subagents. Their replies arrive as whole messages rather than streamed text,
+  and need Claude Code 2.1.275 or later; older versions show only their tool
+  calls. Their transcripts are kept only while the session runs.
 - Claude Code does not expose thinking text in stream-json mode, even with
   `showThinkingSummaries`. The activity line instead shows live progress such
   as *Thinking · ~330 tokens*.

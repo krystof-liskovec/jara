@@ -105,19 +105,12 @@ func TestChatAnimations(t *testing.T) {
 	if textutil.TerminalEscapes.ReplaceAllString(shimmer, "") != "Thinking" {
 		t.Fatal("shimmer must not change text")
 	}
-	base := time.UnixMilli(0)
-	if p := chatPulse(base); p != 0 {
-		t.Fatalf("pulse start %f", p)
-	}
-	if p := chatPulse(base.Add(chatPulsePeriod / 2)); p < 0.99 {
-		t.Fatalf("pulse peak %f", p)
-	}
 	palette := menuColorsForBackground(terminalRGB{r: 30, g: 30, b: 30})
-	model := chatViewModel{Workspace: "w", Activity: "Thinking", ActivityElapsed: "3s", Motion: true, Tick: 4, Pulse: 1, Mark: "✶"}
+	model := chatViewModel{Activity: "Thinking", ActivityElapsed: "3s", Motion: true, Tick: 4, Mark: "✶"}
 	frame := renderChatView(model, 80, 20, palette, true)
 	joined := strings.Join(frame.Lines, "\n")
-	if !strings.Contains(joined, "✶") || !strings.Contains(joined, menuFG(palette.brand)+"\x1b[1m✦") {
-		t.Fatal("welcome twinkle and header pulse should render")
+	if !strings.Contains(joined, "✶") {
+		t.Fatal("the welcome twinkle should render")
 	}
 	for i, line := range frame.Lines {
 		if got := uniseg.StringWidth(textutil.TerminalEscapes.ReplaceAllString(line, "")); got != 80 {

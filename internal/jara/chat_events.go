@@ -13,6 +13,9 @@ func (u *chatUI) event(m appMessage) error {
 	if m.Method == "" {
 		return u.response(m)
 	}
+	if u.routeChatAgentEvent(m) {
+		return nil
+	}
 	if m.Method == "thread/settings/updated" {
 		return u.acceptChatPlanUpdate(m.Params)
 	}

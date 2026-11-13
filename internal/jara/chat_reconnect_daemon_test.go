@@ -89,3 +89,40 @@ func TestReconnectingClientsDoNotBlockUpdates(t *testing.T) {
 		t.Fatal("update ignored a client that does not reconnect")
 	}
 }
+
+func TestSubagentTurnsDoNotTouchTheConversationTurn(t *testing.T) {
+	h := startDaemonHarness(t, daemonHarnessOptions{state: chatDaemonState{Conversation: "th-0", ThreadLoaded: true, ActiveTurn: true}})
+	client, _ := h.attach()
+	// A message to a subagent goes through while the conversation's turn runs.
+	client.send(map[string]any{"id": 7, "method": "turn/start", "params": map[string]any{"threadId": "child-1", "input": []any{}}})
+	forwarded := h.server.nextMethod("turn/start")
+	if params, _ := forwarded["params"].(map[string]any); params["threadId"] != "child-1" {
+		t.Fatalf("forwarded = %v", forwarded)
+	}
+	for {
+		message := client.next()
+		if message["id"] == float64(7) {
+			if message["error"] != nil {
+				t.Fatalf("subagent message refused: %v", message)
+			}
+			break
+		}
+	}
+	h.server.emit(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "child-1", "turn": map[string]any{"id": "turn-1", "status": "completed"}}})
+	for {
+		// The daemon applies events before relaying them, in order.
+		message := client.next()
+		if params, _ := message["params"].(map[string]any); message["method"] == "turn/completed" && params["threadId"] == "child-1" {
+			break
+		}
+	}
+	if state := h.state(); !state.ActiveTurn {
+		t.Fatal("a subagent's turn ending marked the conversation idle")
+	}
+	h.server.emit(map[string]any{"method": "turn/completed", "params": map[string]any{"threadId": "th-0", "turn": map[string]any{"id": "main", "status": "completed"}}})
+	h.waitState("conversation idle", func(s chatDaemonState) bool { return !s.ActiveTurn })
+	client.send(map[string]string{"method": "jara/close"})
+	if err := h.wait(); err != nil {
+		t.Fatal(err)
+	}
+}

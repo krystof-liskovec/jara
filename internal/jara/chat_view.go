@@ -15,33 +15,33 @@ type chatViewMessage struct {
 }
 
 type chatViewModel struct {
-	Workspace, Model, State string
-	Messages                []chatViewMessage
-	TranscriptLines         []chatViewLine
-	Composer                string
-	CursorByte              int
-	CursorLine              int
-	CursorColumn            int
-	Suggestions             []chatCompletionChoice
-	Activity                string
-	ActivityElapsed         string
-	ActivityFrame           int
-	ActivitySeed            int64  // per-turn seed for the thinking verb
-	ActivityHint            string // e.g. "ctrl+c to interrupt"
-	QueuedPrompts           []chatViewLine
-	QueueEditing            bool
-	QueueEditNumber         int
-	ControlModel            string
-	ControlReasoning        string
-	ControlContext          string // context meter, "" when unknown
-	ApprovalPending         bool   // show the Allow/Deny row
-	ChangedFiles            int    // files changed in this conversation, for the header
-	ScrollOffset            int
-	Hints                   []string
-	Motion                  bool // animations enabled
-	Tick                    int  // shimmer frame
-	Pulse                   float64
-	Mark                    string // welcome mark glyph
+	Messages         []chatViewMessage
+	TranscriptLines  []chatViewLine
+	Composer         string
+	CursorByte       int
+	CursorLine       int
+	CursorColumn     int
+	Suggestions      []chatCompletionChoice
+	Activity         string
+	ActivityElapsed  string
+	ActivityFrame    int
+	ActivitySeed     int64  // per-turn seed for the thinking verb
+	ActivityHint     string // e.g. "ctrl+c to interrupt"
+	QueuedPrompts    []chatViewLine
+	Agents           []chatViewLine // the subagent strip
+	AgentTargets     []string       // agent shown by each strip line, for taps
+	ComposerTitle    string         // replaces " Message " in the input border
+	QueueEditing     bool
+	QueueEditNumber  int
+	ControlModel     string
+	ControlReasoning string
+	ControlContext   string // context meter, "" when unknown
+	ApprovalPending  bool   // show the Allow/Deny row
+	ScrollOffset     int
+	Hints            []string
+	Motion           bool   // animations enabled
+	Tick             int    // shimmer frame
+	Mark             string // welcome mark glyph
 }
 
 type chatFrame struct {
@@ -58,6 +58,9 @@ type chatViewLine struct {
 
 const chatQueueViewRowLimit = 8
 
+// chatPromptMarker starts the input prompt.
+const chatPromptMarker = "❯"
+
 // renderChatView builds a fixed-size frame. ScrollOffset counts rows upward
 // from the newest transcript row; zero follows the newest content.
 func renderChatView(model chatViewModel, width, height int, palette menuPalette, color bool) chatFrame {
@@ -73,9 +76,9 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	// Phones: with the keyboard open the screen is short, so the chrome
 	// shrinks to one header row and the controls move into the input border.
 	short, narrow := height < chatShortScreenRows, width < chatNarrowColumns
-	headerRows, footerRows := 2, 1
+	footerRows := 1
 	if short {
-		headerRows, footerRows = 1, 0
+		footerRows = 0
 	}
 	keyLabel := func(key string) string {
 		if narrow {
@@ -105,11 +108,18 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	if len(model.QueuedPrompts) > 0 {
 		queueReserve = 1
 	}
-	maxInputRows := max(1, min(4, height-headerRows-footerRows-controlRows-approvalRows-2-queueReserve))
+	maxInputRows := max(1, min(4, height-footerRows-controlRows-approvalRows-2-queueReserve))
 	inputRows := max(1, min(maxInputRows, len(composerLines)))
 	composerRows := inputRows + 2
-	spare := max(0, height-headerRows-footerRows-controlRows-approvalRows-composerRows)
+	spare := max(0, height-footerRows-controlRows-approvalRows-composerRows)
 	queueRows := min(min(chatQueueViewRowLimit, len(model.QueuedPrompts)), spare)
+	agentLimit := len(model.Agents)
+	if short {
+		agentLimit = min(agentLimit, 2) // the viewed agent comes first when it matters
+	}
+	// Keep at least three transcript rows for the strip to sit above.
+	agentRows := min(agentLimit, max(0, spare-queueRows-3))
+	queueRows += agentRows // the strip shares the queue's place in the layout
 	completionRows := min(min(6, len(model.Suggestions)), max(0, spare-queueRows))
 	activityRows := 0
 	if model.Activity != "" && spare > queueRows+completionRows {
@@ -132,18 +142,6 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	visibleTranscript, clippedAbove, clippedBelow := chatTranscriptWindow(transcript, transcriptRows, model.ScrollOffset)
 
 	row := 0
-	if short {
-		header := chatShortHeader(model)
-		frame.Lines[row] = paintChatViewLine(header, "subheader", "", false, width, palette, color)
-		frame.addTarget(row, header, chatChangesLabel(model.ChangedFiles), "diff")
-	} else {
-		frame.Lines[row] = pulseChatHeader(paintChatViewLine(chatViewHeader(model, width, false), "header", "", false, width, palette, color), model, palette, color)
-		row++
-		subheader := chatViewHeader(model, width, true)
-		frame.Lines[row] = paintChatViewLine(subheader, "subheader", "", false, width, palette, color)
-		frame.addTarget(row, subheader, chatChangesLabel(model.ChangedFiles), "diff")
-	}
-	row++
 	for i := 0; i < transcriptRows; i++ {
 		line := chatViewLine{kind: "blank"}
 		if i < len(visibleTranscript) {
@@ -158,8 +156,15 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.Lines[row] = paintChatActivity(chatViewLine{text: " " + fitChatView(line.text, width-2), kind: line.kind}, model, width, palette, color)
 		row++
 	}
-	for _, line := range chatQueueWindow(model.QueuedPrompts, queueRows) {
+	for _, line := range chatQueueWindow(model.QueuedPrompts, queueRows-agentRows) {
 		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, "", false, width, palette, color)
+		row++
+	}
+	for _, line := range chatAgentStripWindow(model.Agents, model.AgentTargets, agentRows, short) {
+		frame.Lines[row] = paintChatViewLine(" "+fitChatView(line.text, width-2), line.kind, "", line.kind == "completion", width, palette, color)
+		if target := line.role; target != "" {
+			frame.Targets = append(frame.Targets, chatTapTarget{row: row, from: 0, to: width, action: "agent:" + target})
+		}
 		row++
 	}
 	choiceStart := chatCompletionWindow(model.Suggestions, completionRows)
@@ -195,7 +200,12 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		if i < len(composerParts) {
 			content = composerParts[i]
 		}
-		frame.Lines[row] = paintChatViewLine("  "+fitChatView(content, innerWidth)+"  ", "composer", "", false, width, palette, color)
+		// The prompt marker sits in the left margin of the message's first line.
+		margin := "  "
+		if visibleStart+i == 0 {
+			margin = chatPromptMarker + " "
+		}
+		frame.Lines[row] = paintChatViewLine(margin+fitChatView(content, innerWidth)+"  ", "composer", "", false, width, palette, color)
 		row++
 	}
 	if short {
@@ -229,28 +239,6 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.CursorCol = min(width-1, 2+max(0, cursorColumn))
 	}
 	return frame
-}
-
-func chatViewHeader(model chatViewModel, width int, sub bool) string {
-	if !sub {
-		workspace := strings.TrimSpace(textutil.SanitizeText(model.Workspace))
-		if workspace == "" {
-			workspace = "Workspace"
-		}
-		return "✦ JARA  /  " + workspace
-	}
-	modelName := strings.TrimSpace(textutil.SanitizeText(model.Model))
-	state := strings.TrimSpace(textutil.SanitizeText(model.State))
-	if modelName == "" || modelName == "not reported by Codex" {
-		modelName = "Codex"
-	}
-	if state == "" {
-		state = "idle"
-	}
-	if changes := chatChangesLabel(model.ChangedFiles); changes != "" {
-		return modelName + "   ·   " + changes + "   ·   " + state
-	}
-	return modelName + "   ·   " + state
 }
 
 func chatWelcomeTranscript(rows, width int, mark string) []chatViewLine {
@@ -377,5 +365,31 @@ func chatComposerLabels(model chatViewModel) (string, string) {
 		}
 		return label, " Enter save "
 	}
+	if model.ComposerTitle != "" {
+		return model.ComposerTitle, " Enter send · Esc main "
+	}
 	return " Message ", " Enter send "
+}
+
+// chatAgentStripWindow picks the strip lines that fit, carrying each line's
+// tap target in its role. On short screens the viewed agent stays visible.
+func chatAgentStripWindow(lines []chatViewLine, targets []string, rows int, short bool) []chatViewLine {
+	window := make([]chatViewLine, 0, len(lines))
+	for index, line := range lines {
+		if index < len(targets) {
+			line.role = targets[index]
+		}
+		window = append(window, line)
+	}
+	if rows >= len(window) {
+		return window
+	}
+	if short {
+		for index, line := range window {
+			if line.kind == "completion" && index >= rows {
+				return append(window[:rows-1:rows-1], line) // main, then the viewed agent
+			}
+		}
+	}
+	return window[:max(0, rows)]
 }

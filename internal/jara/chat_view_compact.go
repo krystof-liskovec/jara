@@ -18,7 +18,6 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	if height == 0 {
 		return frame
 	}
-	frame.Lines[0] = paintChatViewLine("JARA / "+textutil.SanitizeText(model.Workspace), "header", "", false, width, palette, color)
 	composerRows, controlRows := 1, 0
 	controlModel := compactChatModelText(textutil.SanitizeText(model.ControlModel), 24)
 	controlReasoning := compactChatModelText(textutil.SanitizeText(model.ControlReasoning), 20)
@@ -29,7 +28,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 			controlRows = 2
 		}
 	}
-	available := max(0, height-1-composerRows-controlRows)
+	available := max(0, height-composerRows-controlRows)
 	queueRows := min(min(chatQueueViewRowLimit, len(model.QueuedPrompts)), available)
 	completionRows := min(4, min(len(model.Suggestions), max(0, available-queueRows)))
 	activityRows := 0
@@ -42,9 +41,6 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	}
 	transcriptRows := max(0, available-queueRows-completionRows-activityRows-separatorRows)
 	content := []chatViewLine{}
-	if model.Model != "" || model.State != "" {
-		content = append(content, chatViewLine{text: textutil.SanitizeText(model.Model) + " · " + textutil.SanitizeText(model.State), kind: "subheader"})
-	}
 	transcript := model.TranscriptLines
 	if transcript == nil {
 		transcript = expandChatTranscript(model.Messages, width)
@@ -54,7 +50,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		content = append(content, chatWelcomeTranscript(max(0, transcriptRows-len(content)), width, model.Mark)...)
 	}
 	visibleHistory, _, _ := chatTranscriptWindow(content, transcriptRows, model.ScrollOffset)
-	row := 1
+	row := 0
 	for index := 0; index < transcriptRows; index++ {
 		line := chatViewLine{kind: "blank"}
 		if index < len(visibleHistory) {
@@ -87,9 +83,9 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		frame.Lines[row] = paintChatViewLine(marker+fitChatView(text, width-2), "completion", "", choice.Selected, width, palette, color)
 		row++
 	}
-	prefix := "> "
+	prefix := chatPromptMarker + " "
 	if width < 2 {
-		prefix = ">"
+		prefix = chatPromptMarker
 	}
 	if model.QueueEditing {
 		prefix = "Edit> "

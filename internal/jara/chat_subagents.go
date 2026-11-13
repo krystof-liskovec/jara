@@ -17,6 +17,7 @@ func (u *chatUI) renderLiveSubagentItem(item protocol.HistoryItem) {
 		}
 		u.subagentPaths[item.AgentThreadID] = item.AgentPath
 	}
+	u.noteSubagentItem(item, chatHistoryItemTime(item, time.Now()))
 	text := chatSubagentItemText(item, u.subagentPaths)
 	if text == "" {
 		return

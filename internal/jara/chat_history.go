@@ -60,6 +60,13 @@ func (u *chatUI) renderChatHistory(turns []protocol.HistoryTurn) {
 					u.promptLog = append(u.promptLog, chatPromptEntry{turnID: turn.ID, text: text.String()})
 				}
 			case "subAgentActivity", "collabAgentToolCall":
+				if u.subagentPaths == nil {
+					u.subagentPaths = map[string]string{}
+				}
+				for id, path := range paths {
+					u.subagentPaths[id] = path
+				}
+				u.noteSubagentItem(item, at)
 				if text := chatSubagentItemText(item, paths); text != "" {
 					u.printRoleAt("subagent", text+"\n", at)
 				}

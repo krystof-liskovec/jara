@@ -1,10 +1,8 @@
 package jara
 
 import (
-	"strconv"
 	"strings"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
 )
 
@@ -44,30 +42,6 @@ func (f chatFrame) target(row, column int) string {
 		}
 	}
 	return ""
-}
-
-func chatChangesLabel(files int) string {
-	switch {
-	case files <= 0:
-		return ""
-	case files == 1:
-		return "✎ 1 file"
-	default:
-		return "✎ " + strconv.Itoa(files) + " files"
-	}
-}
-
-// chatShortHeader fits workspace, model, changes, and state on one row.
-func chatShortHeader(model chatViewModel) string {
-	parts := []string{"✦ " + firstNonEmptyText(model.Workspace, "Workspace"), firstNonEmptyText(model.Model, "Codex")}
-	if changes := chatChangesLabel(model.ChangedFiles); changes != "" {
-		parts = append(parts, changes)
-	}
-	return strings.Join(append(parts, firstNonEmptyText(model.State, "idle")), " · ")
-}
-
-func firstNonEmptyText(value, fallback string) string {
-	return textutil.FirstNonEmpty(strings.TrimSpace(textutil.SanitizeText(value)), fallback)
 }
 
 // collapseChatBlankLines keeps at most one blank row in a row and none at

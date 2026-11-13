@@ -95,10 +95,11 @@ func (u *chatUI) help() string {
 /plan [PROMPT|off|status] Use Plan mode for this and later turns
 /auto [on|off|status] Let an automatic reviewer handle approvals (default on)
 /btw QUESTION    Ask a side question; works during a turn and is not saved
+/agents [N]      List subagents, or view subagent N (Ctrl+↓/↑ switch, Esc returns)
 /compact         Compact the conversation's context now
 /clear           Start a new conversation with an empty transcript
 /rewind [N]      Go back to before prompt N and edit it (files are not reverted)
-/diff            Show the file changes this conversation made
+/diff            Show or hide the changes pane; lists changes on narrow terminals
 /export [PATH]   Save the conversation as Markdown
 /image PATH      Attach an image; Ctrl+V pastes one from the clipboard
 /alerts [on|off] Bell and desktop alerts for long turns and pending requests

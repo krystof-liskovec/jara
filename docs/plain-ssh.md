@@ -120,13 +120,13 @@ SSH sessions as documented elsewhere.
 
 The Jara conversation interface adapts to phone screens:
 
-- Below 18 rows (the on-screen keyboard is open) the header is one row, the
-  model, reasoning, and context meter move into the input box border, and the
-  hint line is dropped, so most of the screen shows the conversation.
+- Below 18 rows (the on-screen keyboard is open) the model, reasoning, and
+  context meter move into the input box border, and the hint line is dropped,
+  so most of the screen shows the conversation.
 - Below 60 columns function-key labels and desktop-only hints disappear. Tap
   instead: the model or reasoning label opens its picker, a menu entry chooses
-  it, `✎ N files` in the header lists the conversation's changes, and the
-  `[ y Allow ]` / `[ n Deny ]` row answers an approval. With an empty input
+  it, and the `[ y Allow ]` / `[ n Deny ]` row answers an approval; `/diff`
+  lists the conversation's changes. With an empty input
   box, typing `y` or `n` answers it too.
 - End a line with `\` before Enter to continue the message on a new line.
 - Long code and diff lines are cut with `…` instead of wrapping; `/export`

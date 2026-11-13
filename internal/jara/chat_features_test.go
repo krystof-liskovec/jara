@@ -160,7 +160,7 @@ func TestChatContextAlertsAndExport(t *testing.T) {
 }
 
 func TestChatControlsShowTheContextMeter(t *testing.T) {
-	frame := renderChatView(chatViewModel{Workspace: "w", ControlModel: "GPT", ControlReasoning: "high", ControlContext: "75% left"}, 100, 20, menuColorsForTerminal(), false)
+	frame := renderChatView(chatViewModel{ControlModel: "GPT", ControlReasoning: "high", ControlContext: "75% left"}, 100, 20, menuColorsForTerminal(), false)
 	if !strings.Contains(strings.Join(frame.Lines, "\n"), "◔ Context 75% left") {
 		t.Fatalf("controls:\n%s", strings.Join(frame.Lines, "\n"))
 	}

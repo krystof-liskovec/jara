@@ -76,6 +76,12 @@ type HistoryContent struct {
 	Text string `json:"text"`
 }
 
+// ClaudeSubagentThreadPrefix marks the virtual thread ID the agent router
+// gives each Claude Code subagent (Task/Agent tool call). Claude Code cannot
+// deliver a message straight to one, so the interface relays through the
+// main agent instead.
+const ClaudeSubagentThreadPrefix = "claude-agent-"
+
 type SubagentAgentState struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
@@ -86,6 +92,7 @@ type HistoryItem struct {
 	Type              string                        `json:"type"`
 	Text              string                        `json:"text"`
 	Command           string                        `json:"command"`
+	AggregatedOutput  string                        `json:"aggregatedOutput"`
 	Status            string                        `json:"status"`
 	Changes           []FileChange                  `json:"changes"`
 	Summary           []ReasoningSummaryPart        `json:"summary"`

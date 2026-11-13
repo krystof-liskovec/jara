@@ -29,6 +29,10 @@ type claudeLine struct {
 		} `json:"delta"`
 	} `json:"event"`
 	ParentToolUseID *string `json:"parent_tool_use_id"`
+	AgentID         string  `json:"agent_id"`    // the subagent that wrote a nested message
+	ToolUseID       string  `json:"tool_use_id"` // task_notification: the Task/Agent call
+	Status          string  `json:"status"`      // task_notification: completed, failed or stopped
+	Summary         string  `json:"summary"`     // task_notification
 	Message         struct {
 		Content json.RawMessage `json:"content"`
 		Usage   *claudeUsage    `json:"usage"`
@@ -53,6 +57,7 @@ type claudeLine struct {
 type claudeContentBlock struct {
 	Type      string          `json:"type"`
 	ID        string          `json:"id"`
+	Text      string          `json:"text"`
 	Name      string          `json:"name"`
 	Input     map[string]any  `json:"input"`
 	ToolUseID string          `json:"tool_use_id"`
@@ -65,8 +70,12 @@ func (s *claudeSession) handleLine(raw []byte) {
 	if json.Unmarshal(raw, &line) != nil {
 		return
 	}
-	// Subagent (Task) traffic is summarized by its parent tool call.
+	// Subagent (Task) traffic goes to that subagent's own transcript.
 	nested := line.ParentToolUseID != nil && *line.ParentToolUseID != ""
+	if nested && (line.Type == "assistant" || line.Type == "user") {
+		s.recordNestedClaudeLine(line)
+		return
+	}
 	switch line.Type {
 	case "stream_event":
 		if nested || s.turnID == "" {
@@ -118,6 +127,9 @@ func (s *claudeSession) handleLine(raw []byte) {
 	case "rate_limit_event":
 		s.r.observeClaudeRateLimits(line.RateLimitInfo)
 	case "system":
+		if line.Subtype == "task_notification" {
+			s.finishBackgroundClaudeSubagent(line)
+		}
 		if line.Subtype == "init" && line.Model != "" && line.Model != s.resolvedModel {
 			s.resolvedModel = line.Model
 			s.r.notify("jara/model/resolved", map[string]any{"threadId": s.thread.ID, "model": line.Model})
@@ -231,6 +243,12 @@ func (s *claudeSession) toolStarted(id, name string, input map[string]any) *clau
 	}
 	tool := &claudeTool{id: id, name: name, input: input}
 	switch {
+	case claudeSubagentTool(name):
+		_, activity, call := s.startClaudeSubagent(id, input)
+		tool.item = call
+		if s.turnID != "" {
+			s.r.notify("item/completed", map[string]any{"threadId": s.thread.ID, "turnId": s.turnID, "item": activity})
+		}
 	case name == "Bash":
 		tool.item = map[string]any{"id": id, "type": "commandExecution", "command": stringField(input, "command"), "status": "inProgress"}
 	case claudeFileTool(name):
@@ -258,6 +276,8 @@ func (s *claudeSession) toolFinished(id, content string, failed bool, result jso
 	item := tool.item
 	item["status"] = status
 	switch {
+	case claudeSubagentTool(tool.name):
+		s.finishClaudeSubagent(tool, content, failed)
 	case tool.name == "Bash":
 		var output struct {
 			Stdout string `json:"stdout"`

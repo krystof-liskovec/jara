@@ -186,6 +186,9 @@ func (u *chatUI) response(m appMessage) error {
 		return nil
 	}
 	delete(u.pending, string(m.ID))
+	if u.acceptChatAgentResponse(m, p) {
+		return nil
+	}
 	if (chatGoalRequest(p.method) || p.method == "thread/settings/update") && p.threadID != "" && p.threadID != u.thread {
 		return nil
 	}

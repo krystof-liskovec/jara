@@ -17,7 +17,6 @@ import (
 const (
 	chatShimmerStep  = 45 * time.Millisecond
 	chatShimmerBand  = 6
-	chatPulsePeriod  = 1600 * time.Millisecond
 	chatTwinklePace  = 700 * time.Millisecond
 	chatRevealPerRow = 12 * time.Millisecond
 	chatFlashLength  = 1500 * time.Millisecond
@@ -66,12 +65,6 @@ func chatDiffColors(palette menuPalette) (addBG, delBG, delFG string) {
 		red = "190;40;40"
 	}
 	return blendChatColor(palette.canvas, palette.green, 0.2), blendChatColor(palette.canvas, red, 0.22), red
-}
-
-// chatPulse returns a smooth 0..1 breathing value for the header mark.
-func chatPulse(now time.Time) float64 {
-	phase := float64(now.UnixMilli()%chatPulsePeriod.Milliseconds()) / float64(chatPulsePeriod.Milliseconds())
-	return 0.5 - 0.5*math.Cos(2*math.Pi*phase)
 }
 
 func chatTwinkleMark(now time.Time) string {
@@ -177,14 +170,4 @@ func paintChatActivity(line chatViewLine, model chatViewModel, width int, palett
 	padding := strings.Repeat(" ", max(0, width-uniseg.StringWidth(text)))
 	return menuBG(palette.canvas) + menuFG(base) + "\x1b[1m" + glyph + " " + painted + "\x1b[22m" +
 		menuFG(palette.muted) + details + padding + "\x1b[0m"
-}
-
-// pulseChatHeader breathes the header mark between the muted and brand colors
-// while a turn runs.
-func pulseChatHeader(line string, model chatViewModel, palette menuPalette, color bool) string {
-	if !color || !model.Motion || model.Pulse <= 0 {
-		return line
-	}
-	glow := blendChatColor(palette.muted, palette.brand, model.Pulse)
-	return strings.Replace(line, "✦", menuFG(glow)+"\x1b[1m✦\x1b[22m"+menuFG(palette.text), 1)
 }

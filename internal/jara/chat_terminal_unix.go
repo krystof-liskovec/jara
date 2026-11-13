@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -38,7 +37,6 @@ type chatTerminal struct {
 	transcript *chatTerminalOutput
 	palette    menuPalette
 	motion     bool
-	workspace  string
 
 	editor      *chatEditor
 	parser      *chatTerminalKeyParser
@@ -50,6 +48,7 @@ type chatTerminal struct {
 	sessionPicker       bool
 	sessionSelection    int
 
+	agents            chatTerminalAgents
 	dirty             bool
 	targets           chatFrame // the last frame drawn, for taps
 	lastDraw          time.Time
@@ -68,13 +67,6 @@ func newChatTerminal(u *chatUI, output *os.File) *chatTerminal {
 	}
 	u.out = t.transcript
 	u.alert = func(sequence string) { _, _ = io.WriteString(output, sequence) }
-	t.workspace = u.workspaceLabel
-	if t.workspace == "" {
-		t.workspace = filepath.Base(filepath.Clean(u.cwd))
-		if t.workspace == "." || t.workspace == string(filepath.Separator) {
-			t.workspace = u.cwd
-		}
-	}
 	return t
 }
 
@@ -221,6 +213,8 @@ func (t *chatTerminal) tick(now time.Time) error {
 			t.queueEditor.cancel(u, t.editor)
 			t.scrollOffset = 0
 			t.dirty = true
+		} else if !t.picker.active() && !t.sessionPicker && t.escapeAgent() {
+			// Escape returned from a subagent to the main agent.
 		} else {
 			result := t.editor.Apply(*event.input)
 			t.dirty = t.dirty || result.Changed
@@ -239,6 +233,9 @@ func (t *chatTerminal) tick(now time.Time) error {
 		t.dirty = true
 	}
 	t.picker.sync(u)
+	if err := t.tickAgents(now); err != nil {
+		return err
+	}
 	if u.busy && u.turnStartedAt.IsZero() && u.activityLabel != "" {
 		// Preserve a useful timer while the start request is pending.
 		u.turnStartedAt = now
