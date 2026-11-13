@@ -24,7 +24,7 @@ func chatTerminalHints(u *chatUI, editor *chatEditor, queueEditor *chatQueueEdit
 	hints := []string{"Shift+drag select", tabHint, "PgUp/Dn/wheel", "Shift+Enter", "Enter send", interruptHint}
 	if paneShown {
 		hints = append(hints, "F4 hide changes", "Alt+PgUp/Dn changes")
-	} else if len(u.diff.changes) > 0 {
+	} else if len(u.diff.visible()) > 0 {
 		hints = append(hints, "F4 changes")
 	}
 	queueLines := u.queueViewLines(queueEditor.id)

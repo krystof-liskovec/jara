@@ -160,6 +160,8 @@ func (u *chatUI) acceptChatExtraResponse(m appMessage, p chatPending) bool {
 		u.acceptCustomCommands(m)
 	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
 		u.acceptChatNotifyResponse(m, p)
+	case "jara/git/diff":
+		u.acceptGitDiffResponse(m)
 	default:
 		return false
 	}
@@ -170,6 +172,8 @@ func (u *chatUI) acceptChatExtraResponse(m appMessage, p chatPending) bool {
 // without ending the session.
 func (u *chatUI) expireChatExtraRequest(id string, pending chatPending) bool {
 	switch pending.method {
+	case "jara/git/diff":
+		u.expireGitDiffRequest()
 	case "fuzzyFileSearch", "jara/commands/list":
 	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
 		u.printRole("system", "Notifications: no reply in time.\n")

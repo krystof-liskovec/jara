@@ -304,6 +304,7 @@ func (u *chatUI) response(m appMessage) error {
 			u.print("\nConversation " + u.thread + "\n")
 		}
 		u.renderChatHistory(r.Thread.Turns)
+		u.refreshGitDiff()
 		if u.afterHistory != "" {
 			u.printRole("system", u.afterHistory)
 			u.afterHistory = ""

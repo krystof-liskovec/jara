@@ -130,6 +130,7 @@ func (u *chatUI) acceptChatShellResponse(message appMessage) error {
 		return nil
 	}
 	u.renderChatShellResult(result)
+	u.refreshGitDiff() // the command may have changed or committed files
 	return nil
 }
 

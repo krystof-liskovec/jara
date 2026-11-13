@@ -35,6 +35,7 @@ type chatDiffState struct {
 	// The interactive terminal's size, recorded on each draw; zero in plain
 	// output, where /diff lists the changes instead.
 	screenWidth, screenHeight int
+	git                       chatGitDiff // uncommitted changes, in a Git workspace
 }
 
 // recordFileChanges keeps the newest changes for the pane. Live changes
@@ -117,20 +118,28 @@ type chatDiffLine struct {
 }
 
 func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
+	changes := d.visible()
 	added, removed := 0, 0
-	for _, change := range d.changes {
+	for _, change := range changes {
 		a, r := chatFileChangeCounts(change.Diff)
 		added, removed = added+a, removed+r
 	}
-	files := fmt.Sprintf("%d files", len(d.changes))
-	if len(d.changes) == 1 {
+	files := fmt.Sprintf("%d files", len(changes))
+	if len(changes) == 1 {
 		files = "1 file"
 	}
-	lines := []chatDiffLine{{text: fmt.Sprintf(" Changes · %s · +%d −%d", files, added, removed), kind: "pane-title"}}
-	if len(d.changes) == 0 {
-		return append(lines, chatDiffLine{kind: "pane-blank"}, chatDiffLine{text: "  No file changes yet.", kind: "pane-empty"}, chatDiffLine{text: "  Edits from the agent appear here.", kind: "pane-empty"})
+	title, empty := "Changes", []string{"No file changes yet.", "Edits from the agent appear here."}
+	if d.git.available {
+		title, empty = "Uncommitted", []string{"Working tree is clean.", "Uncommitted changes appear here."}
+		if d.git.omitted > 0 {
+			files += fmt.Sprintf(" (+%d not shown)", d.git.omitted)
+		}
 	}
-	for index, change := range d.changes {
+	lines := []chatDiffLine{{text: fmt.Sprintf(" %s · %s · +%d −%d", title, files, added, removed), kind: "pane-title"}}
+	if len(changes) == 0 {
+		return append(lines, chatDiffLine{kind: "pane-blank"}, chatDiffLine{text: "  " + empty[0], kind: "pane-empty"}, chatDiffLine{text: "  " + empty[1], kind: "pane-empty"})
+	}
+	for index, change := range changes {
 		path := strings.Join(strings.Fields(chatText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath, "Unknown file"))), " ")
 		a, r := chatFileChangeCounts(change.Diff)
 		header := fmt.Sprintf(" ● %s", path)

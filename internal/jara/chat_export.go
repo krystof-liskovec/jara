@@ -88,7 +88,16 @@ func (o *chatTerminalOutput) ClearChat() {
 }
 
 func (u *chatUI) runChatDiffCommand() {
+	u.refreshGitDiff()
 	if u.diff.togglePane() {
+		return
+	}
+	if u.diff.git.available {
+		if len(u.diff.git.changes) == 0 {
+			u.printRole("system", "No uncommitted changes.\n")
+			return
+		}
+		u.printRole("tool", "\nUncommitted changes:\n"+formatChatFileChangeList("", u.diff.git.changes))
 		return
 	}
 	if len(u.diff.changes) == 0 {

@@ -231,7 +231,8 @@ is cleared when that interface exits.
   answer approvals, `\` before Enter adds a newline, and `/notify URL` sends
   push notifications; see [phone access](plain-ssh.md#working-from-a-phone).
 - `/diff` shows or hides the changes pane. In plain output, which has no
-  pane, it lists the conversation's file changes, oldest first.
+  pane, it lists the uncommitted changes (or, outside Git, the conversation's
+  file changes, oldest first).
   `/export [PATH]` saves the conversation as
   Markdown, by default as `jara-conversation-DATE-TIME.md` in the workspace.
 - `/crunch PROMPT` works on the task until it is complete, then stops. If the
@@ -378,16 +379,23 @@ it would squeeze the conversation. **F4** or `/diff` shows it over the whole
 screen instead: PgUp/PgDn and the mouse wheel scroll it, and **✕**, Esc,
 **F4** or `/diff` closes it. Typing closes it and goes to the input box.
 
+- In a Git workspace the pane shows the **uncommitted** changes: tracked files
+  against `HEAD`, staged or not, plus untracked files, most recently modified
+  first. It refreshes when a conversation opens, after each turn and file edit,
+  after `!` commands, on `/diff`, and every 10 seconds while it is on screen,
+  so a commit empties it and edits made outside the agent appear too. Very
+  large change sets show the 100 newest files. Outside Git, the pane lists
+  the edits the agent made in this conversation, as reported by the agent.
 - Each file shows its path and `+added −removed` counts, then its hunks with
   tinted additions and deletions. Code is syntax-highlighted by the file's
   language, using GitHub's light or dark colors to match the terminal.
-- On wide terminals the pane opens automatically with the first change. Its
-  **✕** button, **F4**, or `/diff` hides it; it stays hidden until F4 or
-  `/diff` shows it again. **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
+- On wide terminals the pane opens automatically with the agent's first
+  edit. Its **✕** button, **F4**, or `/diff` hides it; it stays hidden until
+  F4 or `/diff` shows it again. **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
 - **[ ask ]** starts a question about the changes: it fills the input box with
   "About your changes to …:" naming the changed files, so you type the
   question and press Enter. Text already in the input box is kept.
-- History loaded with `/resume` fills the pane without animation.
+- History loaded with `/resume` fills the agent's edits without animation.
 
 Code blocks in the transcript are highlighted the same way: by the fence
 language (```` ```go ````) or, for file-change diffs, by the changed file.

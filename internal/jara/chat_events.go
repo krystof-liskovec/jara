@@ -140,12 +140,14 @@ func (u *chatUI) event(m appMessage) error {
 				u.setActivityLabel("Thinking")
 				u.printRole("tool", "\n"+formatChatFileChanges(p.Item))
 				u.diff.recordFileChanges(p.Item, true)
+				u.refreshGitDiff()
 			}
 		}
 		if item.Type == "commandExecution" && m.Method == "item/completed" {
 			u.setActivityLabel("Thinking")
 		}
 	case "turn/completed":
+		u.refreshGitDiff()
 		u.alertTurnEnded(p.Turn.Status)
 		u.finishAllReasoningSummaries()
 		if err := u.cancelQuestionRequests("Turn ended before the question was answered."); err != nil {

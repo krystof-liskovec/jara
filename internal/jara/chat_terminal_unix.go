@@ -239,6 +239,7 @@ func (t *chatTerminal) tick(now time.Time) error {
 	if err := t.tickAgents(now); err != nil {
 		return err
 	}
+	u.refreshGitDiffWhileShown(now)
 	if u.busy && u.turnStartedAt.IsZero() && u.activityLabel != "" {
 		// Preserve a useful timer while the start request is pending.
 		u.turnStartedAt = now
