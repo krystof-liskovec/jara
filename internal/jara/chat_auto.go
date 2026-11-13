@@ -46,6 +46,20 @@ func (u *chatUI) runChatAutoCommand(line string) {
 	u.print(state + "\n" + prompt)
 }
 
+// toggleAutoMode flips auto mode for Shift+Tab or a tap on its control. Like
+// /auto, the change applies from the next turn.
+func (u *chatUI) toggleAutoMode() {
+	u.manualApprovals = !u.manualApprovals
+}
+
+// chatAutoModeLabel is the auto-mode control shown under the input box.
+func chatAutoModeLabel(off bool) string {
+	if off {
+		return "◇ Auto mode off"
+	}
+	return "⏵⏵ Auto mode on"
+}
+
 func (u *chatUI) approvalModeLabel() string {
 	if u.manualApprovals {
 		return "Ask"

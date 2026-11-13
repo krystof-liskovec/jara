@@ -31,6 +31,10 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 	case event.agentStep != 0:
 		t.showAgent(func() { u.cycleChatAgentView(event.agentStep) })
 		return false, nil
+	case event.autoMode:
+		u.toggleAutoMode()
+		t.dirty = true
+		return false, nil
 	case event.interrupt:
 		return t.interrupt()
 	case event.tap != nil:

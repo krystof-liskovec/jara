@@ -36,6 +36,7 @@ type chatViewModel struct {
 	ControlModel     string
 	ControlReasoning string
 	ControlContext   string // context meter, "" when unknown
+	ControlAutoOff   bool   // auto mode is off: approvals ask the user
 	ApprovalPending  bool   // show the Allow/Deny row
 	ScrollOffset     int
 	Hints            []string
@@ -92,10 +93,12 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	if model.ControlContext != "" {
 		contextMeter = "  ◔ Context " + textutil.SanitizeText(model.ControlContext)
 	}
-	controls := "◈ Model " + controlModel + keyLabel("F2") + "  ◉ Reasoning " + controlReasoning + keyLabel("F3") + contextMeter
+	autoMode := chatAutoModeLabel(model.ControlAutoOff)
+	autoControl := "  " + autoMode + keyLabel("Shift+Tab")
+	controls := "◈ Model " + controlModel + keyLabel("F2") + "  ◉ Reasoning " + controlReasoning + keyLabel("F3") + contextMeter + autoControl
 	controlLines := []string{controls}
 	if uniseg.StringWidth(" "+controls) > width {
-		controlLines = []string{"◈ Model " + controlModel + keyLabel("F2"), "◉ Reasoning " + controlReasoning + keyLabel("F3") + contextMeter}
+		controlLines = []string{"◈ Model " + controlModel + keyLabel("F2") + autoControl, "◉ Reasoning " + controlReasoning + keyLabel("F3") + contextMeter}
 	}
 	if short {
 		controlLines = nil
@@ -214,6 +217,8 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		if meter := textutil.SanitizeText(model.ControlContext); meter != "" {
 			parts = append(parts, meter)
 		}
+		autoMode, _, _ = strings.Cut(autoMode, " ") // just the glyph fits
+		parts = append(parts, autoMode)
 		sendLabel = " " + strings.Join(parts, " · ") + " "
 	}
 	bottom := chatComposerBorder(width, "╰", "╯", sendLabel, visibleStart+inputRows < len(composerLines))
@@ -221,6 +226,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	if short {
 		frame.addTarget(row, bottom, controlModel, "model")
 		frame.addTarget(row, bottom, controlReasoning, "reasoning")
+		frame.addTarget(row, bottom, autoMode, "auto")
 	}
 	row++
 	for _, control := range controlLines {
@@ -228,6 +234,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.Lines[row] = paintChatViewLine(line, "controls", "", false, width, palette, color)
 		frame.addTarget(row, line, "◈ Model "+controlModel, "model")
 		frame.addTarget(row, line, "◉ Reasoning "+controlReasoning, "reasoning")
+		frame.addTarget(row, line, autoMode, "auto")
 		row++
 	}
 	if footerRows > 0 {

@@ -75,6 +75,7 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 		ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),
 		QueuedPrompts: queueLines, QueueEditing: t.queueEditor.active(), QueueEditNumber: queueEditNumber,
 		ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(), ControlContext: u.contextControlLabel(),
+		ControlAutoOff:  u.manualApprovals,
 		ApprovalPending: len(u.approvals) > 0,
 		Hints:           hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
 		Mark: chatWelcomeMark(t.motion, now),

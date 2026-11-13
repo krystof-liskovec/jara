@@ -21,7 +21,8 @@ type chatTerminalKeyEvent struct {
 	scroll       int
 	scrollRows   int
 	returnToLive bool
-	agentStep    int // show the next (1) or previous (-1) agent's transcript
+	agentStep    int  // show the next (1) or previous (-1) agent's transcript
+	autoMode     bool // Shift+Tab toggles auto mode
 	interrupt    bool
 	tap          *[2]int // column and row of a left click or tap, from zero
 	limitReached bool
@@ -204,9 +205,8 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 	case "\x1b[118;5u", "\x1b[118;5:1u", "\x1b[27;5;118~":
 		event := editorEvent(chatEditorClipboardImage)
 		return &event
-	case "\x1b[9;2u", "\x1b[9;2:1u", "\x1b[27;2;9~":
-		event := editorEvent(chatEditorTab)
-		return &event
+	case "\x1b[9;2u", "\x1b[9;2:1u", "\x1b[27;2;9~", "\x1b[Z": // Shift+Tab
+		return &chatTerminalKeyEvent{autoMode: true}
 	}
 	var key chatEditorKey
 	switch sequence {
@@ -224,8 +224,6 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		key = chatEditorEnd
 	case "\x1b[3~":
 		key = chatEditorDelete
-	case "\x1b[Z":
-		key = chatEditorTab
 	case "\x1b[5;3~":
 		return &chatTerminalKeyEvent{paneScroll: -chatDiffPaneScrollStep}
 	case "\x1b[6;3~":
