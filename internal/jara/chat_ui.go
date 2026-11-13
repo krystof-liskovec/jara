@@ -58,6 +58,10 @@ func (u *chatUI) request(method string, params any) error {
 	return u.requestWithAction(method, params, "")
 }
 func (u *chatUI) requestWithAction(method string, params any, action string) error {
+	if u.chatOffline() {
+		u.printRole("system", "Not connected to the Jara session yet; try again once it reconnects.\n")
+		return nil
+	}
 	id, err := u.c.request(method, params)
 	if err != nil {
 		return err

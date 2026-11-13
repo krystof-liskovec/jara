@@ -42,6 +42,7 @@ type chatLoopOptions struct {
 	attachedTurnActive      bool
 	resumeAtStart           bool
 	resumeLatest            bool
+	reconnect               chatReconnector // nil when a lost connection ends the interface
 }
 
 func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id string) error {
@@ -59,6 +60,13 @@ func chatLoopWithOptions(c *appConnection, input io.Reader, output io.Writer, op
 		pending: map[string]chatPending{}, pendingTurnModels: map[string]chatTurnRequest{},
 		items: map[string]json.RawMessage{},
 	}
+	u.reconnect = options.reconnect
+	defer func() {
+		u.stopReconnecting()
+		if u.c != c {
+			u.c.close() // the caller closes the connection it passed in
+		}
+	}()
 	if u.trackAgentState {
 		defer clearChatAgentState()
 	}
@@ -102,7 +110,13 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 				return err
 			}
 		case err := <-u.c.errors:
-			return fmt.Errorf("Codex app-server disconnected: %w", err)
+			if !u.connectionLost(err) {
+				return fmt.Errorf("Codex app-server disconnected: %w", err)
+			}
+		case result := <-u.reconnectRuns:
+			if err := u.acceptReconnect(result); err != nil {
+				return err
+			}
 		case line := <-lines:
 			quit, err := u.line(line)
 			if err != nil {

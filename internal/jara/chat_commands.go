@@ -263,6 +263,8 @@ func (u *chatUI) line(line string) (bool, error) {
 		return false, nil
 	case strings.HasPrefix(line, "!"):
 		return false, u.runChatShellCommand(line[1:])
+	case u.chatOffline() && line != "" && !strings.HasPrefix(line, "/"):
+		return false, u.sendPrompt(line) // queued until the session reconnects
 	case u.busy:
 		u.print("A turn is running. Use /cancel or wait for it to finish.\n")
 		return false, nil
@@ -353,6 +355,14 @@ func (u *chatUI) sendQueuedPrompt(message string) error {
 }
 
 func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
+	if u.chatOffline() && u.thread != "" {
+		if err := u.queuePrompt(u.thread, message); err != nil {
+			u.printRole("system", "Not connected, and the prompt could not be queued: "+err.Error()+"\n")
+		} else {
+			u.printRole("system", "Not connected; the prompt will run once the session reconnects.\n")
+		}
+		return nil
+	}
 	if !u.threadReady {
 		u.print("No conversation is open. Use /resume ID or /new first.\nYou> ")
 		return nil

@@ -45,22 +45,9 @@ func prepareChatDaemonForCodex(id string) (chatDaemonState, bool, error) {
 	if clients != 0 {
 		return state, true, fmt.Errorf("another client is attached to the persistent Jara session; detach it before switching to Codex")
 	}
-	conn, err := net.DialTimeout("unix", paths.socket, 2*time.Second)
-	if err != nil {
-		return state, true, fmt.Errorf("persistent Jara session is not accepting a handoff: %w", err)
+	if err = requestChatDaemonControl(paths, "jara/handoff"); err != nil {
+		return state, true, err
 	}
-	// The daemon greets every client with jara/ready before it reads; a client
-	// that hangs up first makes that write fail and the handoff is never seen.
-	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
-	if _, err = bufio.NewReader(conn).ReadBytes('\n'); err != nil {
-		_ = conn.Close()
-		return state, true, fmt.Errorf("persistent Jara session did not answer the handoff: %w", err)
-	}
-	if err = json.NewEncoder(conn).Encode(map[string]string{"method": "jara/handoff"}); err != nil {
-		_ = conn.Close()
-		return state, true, fmt.Errorf("request Codex handoff: %w", err)
-	}
-	_ = conn.Close()
 	deadline := time.Now().Add(chatDaemonHandoffTimeout)
 	for time.Now().Before(deadline) {
 		if chatDaemonPID(paths) == 0 {
@@ -76,6 +63,27 @@ func prepareChatDaemonForCodex(id string) (chatDaemonState, bool, error) {
 		return latest, true, fmt.Errorf("a Jara turn started during the handoff; the persistent session is still running")
 	}
 	return state, true, fmt.Errorf("persistent Jara session did not stop; it may have attached clients or scheduled work. Reconnect with `jara connect --interface jara %s`", id)
+}
+
+// requestChatDaemonControl sends jara/handoff (exit if idle with no attached
+// clients or pending work) or jara/suspend (also allows clients that reconnect
+// by themselves); the daemon ignores the request when it is busy.
+func requestChatDaemonControl(paths chatDaemonPaths, method string) error {
+	conn, err := net.DialTimeout("unix", paths.socket, 2*time.Second)
+	if err != nil {
+		return fmt.Errorf("persistent Jara session is not accepting a handoff: %w", err)
+	}
+	defer conn.Close()
+	// The daemon greets every client with jara/ready before it reads; a client
+	// that hangs up first makes that write fail and the handoff is never seen.
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
+	if _, err = bufio.NewReader(conn).ReadBytes('\n'); err != nil {
+		return fmt.Errorf("persistent Jara session did not answer the handoff: %w", err)
+	}
+	if err = json.NewEncoder(conn).Encode(map[string]string{"method": method}); err != nil {
+		return fmt.Errorf("request Jara session handoff: %w", err)
+	}
+	return nil
 }
 
 func readSavedChatDaemonState(id string, paths chatDaemonPaths) (chatDaemonState, bool, error) {

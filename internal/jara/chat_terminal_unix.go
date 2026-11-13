@@ -117,11 +117,19 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 		case message := <-u.c.messages:
 			err = t.handleMessage(message)
 		case connectionErr := <-u.c.errors:
+			if u.connectionLost(connectionErr) {
+				err = t.draw()
+				break
+			}
 			t.transcript.append("system", "Codex app-server disconnected: "+connectionErr.Error()+"\n")
 			if drawErr := t.draw(); drawErr != nil {
 				return drawErr
 			}
 			return fmt.Errorf("Codex app-server disconnected: %w", connectionErr)
+		case result := <-u.reconnectRuns:
+			if err = u.acceptReconnect(result); err == nil {
+				err = t.draw()
+			}
 		case data := <-inputChunks:
 			for _, event := range t.parser.feed(data) {
 				if done, err = t.handleKey(event); done || err != nil {

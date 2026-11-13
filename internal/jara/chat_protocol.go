@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sync"
 	"time"
 
 	"krystof.liskovec/jara/internal/protocol"
@@ -30,6 +31,7 @@ type appConnection struct {
 	stop     chan struct{}
 	encoder  *json.Encoder
 	sequence int
+	closed   sync.Once
 }
 
 func startChatServer(binary string, args []string, stderr io.Writer) (*appConnection, error) {
@@ -83,7 +85,13 @@ func newAppConnection(cmd *exec.Cmd, input io.WriteCloser, output io.Reader) *ap
 	}()
 	return c
 }
+
+// close is idempotent: a reconnecting interface closes connections it replaced.
 func (c *appConnection) close() {
+	c.closed.Do(c.closeOnce)
+}
+
+func (c *appConnection) closeOnce() {
 	close(c.stop)
 	_ = c.input.Close()
 	if c.cmd == nil {

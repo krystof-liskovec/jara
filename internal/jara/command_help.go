@@ -422,9 +422,9 @@ var commandHelp = map[string]helpEntry{
 		},
 	},
 	"deployment upgrade": {
-		usage:   "jara deployment upgrade [NAME] [--force-downgrade] [--keep-codex-version]",
+		usage:   "jara deployment upgrade [NAME] [--force] [--force-downgrade] [--keep-codex-version]",
 		summary: "Build and validate this CLI's Jara source bundle on the Docker host.",
-		options: []string{"--force-downgrade      Permit replacing a newer server with this older CLI version.", "--keep-codex-version   Keep the deployment's current Codex version."},
+		options: []string{"--force                Upgrade even while sessions or connections are active; they are interrupted.", "--force-downgrade      Permit replacing a newer server with this older CLI version.", "--keep-codex-version   Keep the deployment's current Codex version."},
 		examples: []string{
 			"jara deployment upgrade jellyfish",
 			"jara deployment upgrade jellyfish --force-downgrade",
@@ -458,6 +458,7 @@ var commandHelp = map[string]helpEntry{
 			"--native-manifest FILE  Native Docker deployment manifest.",
 			"--check             Report an update without deploying it.",
 			"--version VERSION   Pin an explicit Codex version.",
+			"--force             Update even while sessions or connections are active; they are interrupted.",
 		},
 		examples: []string{
 			"jara host update --project jara-jellyfish --check",

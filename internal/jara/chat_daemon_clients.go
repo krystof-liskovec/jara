@@ -9,8 +9,9 @@ import (
 )
 
 type chatDaemonClient struct {
-	conn    net.Conn
-	writeMu sync.Mutex
+	conn       net.Conn
+	writeMu    sync.Mutex
+	reconnects bool // a relay for a client that reconnects after the session stops
 }
 
 func (c *chatDaemonClient) write(line []byte) error {
@@ -19,6 +20,10 @@ func (c *chatDaemonClient) write(line []byte) error {
 	_ = c.conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 	return writeChatDaemonLine(c.conn, line)
 }
+
+// chatClientReconnects reports whether the peer is a relay for a client that
+// reconnects by itself; tests replace it.
+var chatClientReconnects = func(conn net.Conn) bool { return reconnectingChatRelay(chatPeerPID(conn)) }
 
 type chatDaemonClientHub struct {
 	mu       sync.Mutex
@@ -33,7 +38,7 @@ func newChatDaemonClientHub(requests *chatDaemonRequestQueue) *chatDaemonClientH
 func (h *chatDaemonClientHub) attach(conn net.Conn, ready remoteChatServerReady) (*chatDaemonClient, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	client := &chatDaemonClient{conn: conn}
+	client := &chatDaemonClient{conn: conn, reconnects: chatClientReconnects(conn)}
 	if err := writeChatDaemonReady(conn, ready); err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -70,6 +75,18 @@ func (h *chatDaemonClientHub) count() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.clients)
+}
+
+func (h *chatDaemonClientHub) reconnecting() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	count := 0
+	for client := range h.clients {
+		if client.reconnects {
+			count++
+		}
+	}
+	return count
 }
 
 func (h *chatDaemonClientHub) broadcast(line []byte, message appMessage) {

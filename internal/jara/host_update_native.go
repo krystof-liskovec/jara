@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func updateNativeDeployment(project, manifestPath, envPath, target string, check bool,
+func updateNativeDeployment(project, manifestPath, envPath, target string, check, force bool,
 	run func(time.Duration, []string, bool) ([]byte, error), latest func() (string, error), log io.Writer) error {
 	manifestData, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -109,8 +109,7 @@ func updateNativeDeployment(project, manifestPath, envPath, target string, check
 	if err != nil {
 		return err
 	}
-	if busy.Busy {
-		fmt.Fprintln(log, "Deferred:", busy.Reason)
+	if !admitUpdate(log, busy, force) {
 		return nil
 	}
 	raw := make([]byte, 12)
@@ -148,13 +147,8 @@ func updateNativeDeployment(project, manifestPath, envPath, target string, check
 		return fmt.Errorf("deployment changed during build; refusing to replace it")
 	}
 	lease := "update-" + hex.EncodeToString(raw)
-	busy, err = gate.maintenance(container, "begin", lease)
-	if err != nil {
-		return err
-	}
-	if busy.Busy {
-		fmt.Fprintln(log, "Deferred after build:", busy.Reason)
-		return nil
+	if admitted, gateErr := gate.beginUpdate(container, lease, force, log); gateErr != nil || !admitted {
+		return gateErr
 	}
 	defer func() {
 		if id, e := nativeContainer(run, deployment.Container); e == nil {

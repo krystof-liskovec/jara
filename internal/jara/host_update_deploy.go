@@ -103,8 +103,7 @@ func (u hostUpdater) update(target string, check bool) error {
 	if err != nil {
 		return err
 	}
-	if busy.Busy {
-		fmt.Fprintln(u.log, "Deferred:", busy.Reason)
+	if !admitUpdate(u.log, busy, u.Force) {
 		return nil
 	}
 	var config struct {
@@ -191,13 +190,8 @@ func (u hostUpdater) update(target string, check bool) error {
 	if active != container {
 		return fmt.Errorf("deployment changed during build; refusing to replace it")
 	}
-	busy, err = u.maintenance(container, "begin", lease)
-	if err != nil {
-		return err
-	}
-	if busy.Busy {
-		fmt.Fprintln(u.log, "Deferred after build:", busy.Reason)
-		return nil
+	if admitted, gateErr := u.beginUpdate(container, lease, u.Force, u.log); gateErr != nil || !admitted {
+		return gateErr
 	}
 	defer func() {
 		if id, e := u.container(); e == nil {

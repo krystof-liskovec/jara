@@ -168,7 +168,7 @@ func (t *chatTerminal) submit(value string) (done bool, err error) {
 	}
 	if line := strings.TrimSpace(value); line != "" {
 		isCommand := strings.HasPrefix(line, "/") && !strings.HasPrefix(line, "//")
-		wasBusy, wasReady := u.busy, u.threadReady
+		wasBusy, wasReady, queuedOffline := u.busy, u.threadReady, u.chatOffline() && !isCommand
 		busyControl := wasBusy && (line == "/new" || strings.HasPrefix(line, "/resume ") || line == "/compose")
 		if line == "/resume" {
 			t.picker.close()
@@ -186,7 +186,7 @@ func (t *chatTerminal) submit(value string) (done bool, err error) {
 		if line == "/resume" && u.sessions == previousSessions {
 			t.resumePickerPending, t.sessionPicker = false, false
 		}
-		if (!isCommand || busyControl) && (wasBusy || !wasReady) {
+		if (!isCommand || busyControl) && (wasBusy || !wasReady) && !queuedOffline {
 			editor.SetText(value) // not sent; keep it to send later
 		}
 	}

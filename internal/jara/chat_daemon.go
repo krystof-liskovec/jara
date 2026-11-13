@@ -26,8 +26,10 @@ type chatDaemonState struct {
 	ActiveTurn      bool   `json:"active_turn,omitempty"`
 	Attached        bool   `json:"attached,omitempty"`
 	AttachedClients int    `json:"attached_clients,omitempty"`
-	PID             int    `json:"pid"`
-	CreatedAt       int64  `json:"created_at"`
+	// ReconnectingClients counts attached clients that reconnect by themselves.
+	ReconnectingClients int   `json:"reconnecting_clients,omitempty"`
+	PID                 int   `json:"pid"`
+	CreatedAt           int64 `json:"created_at"`
 }
 
 type chatDaemonPaths struct {

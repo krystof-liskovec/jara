@@ -161,11 +161,16 @@ type daemonHarnessOptions struct {
 	state      chatDaemonState
 	exitStatus int
 	setup      func(h *daemonHarness)
+	// dir places the daemon files there instead of a fresh temporary directory.
+	dir string
 }
 
 func startDaemonHarness(t *testing.T, options daemonHarnessOptions) *daemonHarness {
 	t.Helper()
-	dir := shortTempDir(t)
+	dir := options.dir
+	if dir == "" {
+		dir = shortTempDir(t)
+	}
 	h := &daemonHarness{t: t, paths: testChatDaemonPaths(dir, "w-test"), done: make(chan error, 1)}
 	var err error
 	if h.schedules, err = newChatScheduleManager(h.paths.schedules); err != nil {

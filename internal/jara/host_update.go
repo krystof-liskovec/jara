@@ -21,6 +21,7 @@ import (
 
 type hostUpdater struct {
 	Project, Compose, EnvFile, ExtraCompose string
+	Force                                   bool // update even while sessions or connections are active
 	run                                     func(time.Duration, []string, bool) ([]byte, error)
 	latest                                  func() (string, error)
 	log                                     io.Writer
@@ -28,7 +29,7 @@ type hostUpdater struct {
 
 func hostCommand(args []string) error {
 	if len(args) == 0 || args[0] != "update" {
-		return fmt.Errorf("use jara host update --project NAME [--native] [--compose FILE] [--env-file FILE] [--check]")
+		return fmt.Errorf("use jara host update --project NAME [--native] [--compose FILE] [--env-file FILE] [--check] [--force]")
 	}
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("run host update on the Linux Docker host")
@@ -42,6 +43,7 @@ func hostCommand(args []string) error {
 	manifest := f.String("native-manifest", envDefault("JARA_NATIVE_MANIFEST", "deploy/.jara-native.json"), "native Docker deployment manifest")
 	check := f.Bool("check", false, "report available stable update without building or deploying")
 	version := f.String("version", "", "explicit stable version; default: npm latest")
+	force := f.Bool("force", false, "update even while sessions or connections are active; they are interrupted")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -67,7 +69,7 @@ func hostCommand(args []string) error {
 		if statErr != nil {
 			return fmt.Errorf("native deployment manifest not found: %s", mp)
 		}
-		return updateNativeDeployment(*project, mp, ep, *version, *check, runHostCommand, latestCodex, os.Stdout)
+		return updateNativeDeployment(*project, mp, ep, *version, *check, *force, runHostCommand, latestCodex, os.Stdout)
 	}
 	if *version != "" {
 		if _, err = parseRelease(*version); err != nil {
@@ -81,7 +83,7 @@ func hostCommand(args []string) error {
 			return err
 		}
 	}
-	u := hostUpdater{ExtraCompose: extraPath, Project: *project, Compose: cp, EnvFile: ep, run: runHostCommand, latest: latestCodex, log: os.Stdout}
+	u := hostUpdater{ExtraCompose: extraPath, Project: *project, Compose: cp, EnvFile: ep, Force: *force, run: runHostCommand, latest: latestCodex, log: os.Stdout}
 	return u.update(*version, *check)
 }
 
@@ -137,12 +139,13 @@ func (u hostUpdater) container() (string, error) {
 	return id, nil
 }
 
-func (u hostUpdater) maintenance(container, action, lease string) (maintenanceStatus, error) {
+func (u hostUpdater) maintenance(container, action, lease string, extra ...string) (maintenanceStatus, error) {
 	var s maintenanceStatus
 	a := []string{"docker", "exec", "--user", "1001", container, "jara", "_maintenance", action}
 	if lease != "" {
 		a = append(a, lease)
 	}
+	a = append(a, extra...)
 	b, err := u.run(20*time.Second, a, false)
 	if err != nil {
 		return s, fmt.Errorf("maintenance gate failed; deploy the current Jara image before enabling updates: %w", err)

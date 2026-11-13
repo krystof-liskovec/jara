@@ -28,6 +28,7 @@ type chatUI struct {
 	chatComposerState
 	chatBrowserState
 	chatExtras
+	chatReconnectState
 }
 
 // chatSessionOptions describe how this interface was started.

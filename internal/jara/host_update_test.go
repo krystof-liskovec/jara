@@ -56,6 +56,7 @@ type updateFixture struct {
 	commands                              []string
 	busy, lateBusy, smokeFail, deployFail bool
 	gate, ended                           bool
+	oldServer                             bool // the running Jara predates --force
 	version                               string
 	installs                              int
 }
@@ -77,12 +78,22 @@ func newUpdateFixture(t *testing.T) *updateFixture {
 		case strings.HasSuffix(cmd, "codex --version"):
 			return []byte("codex-cli " + x.version), nil
 		case strings.Contains(cmd, "_maintenance status"):
-			return json.Marshal(maintenanceStatus{Busy: x.busy, Reason: "active session"})
+			if !x.busy {
+				return []byte(`{"Busy":false}`), nil
+			}
+			return json.Marshal(maintenanceStatus{Busy: true, Reason: "active session", Blockers: []string{"terminal session jara-demo (attached)"}})
 		case strings.Contains(cmd, "_maintenance begin"):
-			if x.lateBusy {
-				return json.Marshal(maintenanceStatus{Busy: true, Reason: "session opened during build"})
+			forced := strings.HasSuffix(cmd, " force")
+			if forced && x.oldServer {
+				return nil, fmt.Errorf("invalid maintenance invocation")
+			}
+			if x.lateBusy && !forced {
+				return json.Marshal(maintenanceStatus{Busy: true, Reason: "session opened during build", Blockers: []string{"SSH connection by alice running bash"}})
 			}
 			x.gate = true
+			if forced {
+				return json.Marshal(maintenanceStatus{Busy: x.busy || x.lateBusy, Forced: true, Blockers: []string{"SSH connection by alice running bash"}})
+			}
 			return []byte(`{"Busy":false}`), nil
 		case strings.Contains(cmd, "_maintenance end"):
 			x.ended = true
@@ -106,7 +117,7 @@ func newUpdateFixture(t *testing.T) *updateFixture {
 		case strings.Contains(cmd, "docker tag"):
 			return nil, nil
 		case strings.Contains(cmd, " up -d"):
-			if !x.gate {
+			if !x.gate && !x.oldServer {
 				t.Fatal("replaced container without gate")
 			}
 			x.installs++
