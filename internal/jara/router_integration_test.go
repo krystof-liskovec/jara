@@ -20,6 +20,7 @@ import (
 // The test binary doubles as the fake agent CLIs; see internal/agentfake.
 func TestMain(m *testing.M) {
 	agentfake.ServeIfRequested()
+	serveSyncRPCIfRequested()
 	os.Exit(m.Run())
 }
 

@@ -151,6 +151,8 @@ func remoteRPC(q Request) error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(repositories)
+	case "git-state", "git-bundle", "git-advance":
+		return syncGitRPC(q)
 	case "clone":
 		return remoteCloneRepository(q)
 	case "docker-stale-list":
@@ -317,29 +319,11 @@ func remoteRPC(q Request) error {
 		}
 		return nil
 	case "apply":
-		if err := releaseIdleChatDaemon(q.ID); err != nil {
-			return err
-		}
-		unlock, err := lockWorkspace(q.ID)
+		w, unlock, err := lockWorkspaceForWrite(q)
 		if err != nil {
 			return err
 		}
 		defer unlock()
-		w, err := workspaceInfo(q.ID)
-		if err != nil {
-			return err
-		}
-		ss, err := activeSessions()
-		if err != nil {
-			return err
-		}
-		if !q.Force {
-			for _, s := range ss {
-				if s.Workspace == q.ID {
-					return fmt.Errorf("running agent in workspace; detach is insufficient, stop it or explicitly use --force")
-				}
-			}
-		}
 		var update Update
 		if err = json.NewDecoder(io.LimitReader(os.Stdin, maxTransfer*2)).Decode(&update); err != nil {
 			return err

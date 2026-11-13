@@ -64,7 +64,12 @@ history using a Git bundle. Copy transfers working files, edits and eligible
 untracked files, independently of Git history. Exclusions use Git ignore rules
 where available plus `.jaraignore`; ignored-file inclusion must be explicit.
 
-Push and pull are separate, explicit commands. Record previous successful
+Push and pull are separate, explicit commands. Between Git checkouts they move
+commits before files: missing commits travel as a bundle and the destination
+fast-forwards; only uncommitted edits transfer as files. Sync never merges,
+rebases or switches branches, and refuses diverged history or uncommitted
+destination edits that incoming commits would overwrite; uncommitted files that
+already match the incoming commits are accepted. Record previous successful
 transfer state and content hashes. Detect conflicting edits and require an
 explicit source choice. Preserve destination-only files by default. Propagating
 deletions requires an explicit option. Refuse transfer into an environment with

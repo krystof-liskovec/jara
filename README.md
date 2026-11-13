@@ -315,23 +315,23 @@ jara sync push --delete # Propagate deletions of previously synchronized files
 jara sync push --include-ignored # Explicitly include Git-ignored files
 ```
 
-Reopening never automatically synchronizes or switches branches. Transfer tracks
+Reopening never automatically synchronizes or switches branches. Git commits
+transfer first by fast-forward, then only uncommitted edits as files
+([details](docs/design.md#repository-and-transfer-behavior)). Transfer tracks
 content hashes and previous endpoint states. Conflicts abort before writes;
 destination-only changes and files are preserved. Transfers into an active
-Jara-managed workspace require an explicit override; an idle, detached Jara chat
+Jara-managed workspace need an explicit override; an idle, detached Jara chat
 session is stopped instead and resumes later. Editor writes are not locked:
 avoid editing the destination during transfer.
 
 Sync hashes a metadata manifest for every eligible file on each side, then sends
-content only for files selected by the sync plan. Scanning still reads every
-eligible file to compute its hash, so disk work grows with the workspace size.
-Older hosts use the previous full-snapshot path until upgraded with
-`jara deployment upgrade`.
-Current protocol limits: 64 MiB of changed file content per sync, held in memory;
-regular files and internal relative symlinks; no empty
-directory replication, Git index transfer, submodule transfer, or Git LFS object
-management. A failed I/O operation can leave earlier individual file updates in
-place; each regular file replacement is atomic, the whole batch is not.
+content only for files selected by the sync plan; scanning still hashes every
+eligible file. Older hosts send full snapshots and sync commits as files until
+`jara deployment upgrade`. Current protocol limits: 64 MiB of changed file
+content per sync, held in memory; regular files and internal relative symlinks;
+no empty directory replication, Git index transfer, submodule transfer, or Git
+LFS object management. A failed I/O operation can leave earlier individual file
+updates in place; each regular file replacement is atomic, the batch is not.
 
 Git repositories use `git ls-files --cached --others --exclude-standard`.
 `.jaraignore` supports `*`, `?`, `**`, root anchoring, directory

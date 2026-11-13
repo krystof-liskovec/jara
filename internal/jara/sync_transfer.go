@@ -24,6 +24,10 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	if len(options) > 1 {
 		deleteMissing = options[1]
 	}
+	advance, err := syncCommits(r, b, root, direction, force)
+	if err != nil {
+		return err
+	}
 	local, err := manifestWithIgnored(root, includeIgnored)
 	if err != nil {
 		return err
@@ -52,6 +56,16 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 		}
 	} else if !os.IsNotExist(err) {
 		return err
+	}
+	if advance != nil {
+		// Save now: a later file conflict must not leave the checkout update
+		// looking like an edit on the side that was fast-forwarded.
+		if err = alignCommittedBaseline(root, &baseline, advance); err != nil {
+			return err
+		}
+		if err = fsutil.WriteJSON(state, baseline); err != nil {
+			return err
+		}
 	}
 	var u Update
 	if direction == "push" {
@@ -365,7 +379,8 @@ func existingPaths(root string, paths []string) (map[string]bool, error) {
 	return present, nil
 }
 
-func repositoryBundle(root string) (io.Reader, func(), error) {
+// repositoryBundle bundles HEAD, omitting history the receiver already has.
+func repositoryBundle(root string, exclude ...string) (io.Reader, func(), error) {
 	f, err := os.CreateTemp("", "jara-bundle-*")
 	if err != nil {
 		return nil, func() {}, err
@@ -373,7 +388,11 @@ func repositoryBundle(root string) (io.Reader, func(), error) {
 	p := f.Name()
 	f.Close()
 	os.Remove(p)
-	cmd := exec.Command("git", "-C", root, "bundle", "create", p, "HEAD")
+	args := []string{"-C", root, "bundle", "create", p, "HEAD"}
+	for _, commit := range exclude {
+		args = append(args, "^"+commit)
+	}
+	cmd := exec.Command("git", args...)
 	cmd.Stderr = os.Stderr
 	if err = cmd.Run(); err != nil {
 		os.Remove(p)
