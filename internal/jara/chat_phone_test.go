@@ -79,6 +79,15 @@ func TestTapsOpenPickersAndAnswerApprovals(t *testing.T) {
 	if term.editor.Text() != "n" {
 		t.Fatal("without a pending approval, n is just text")
 	}
+	typeChatKeys(t, term, "\x1b[Z")
+	if !term.u.manualApprovals || term.editor.Text() != "n" {
+		t.Fatal("Shift+Tab turns auto mode off without touching the input")
+	}
+	term.targets = chatFrame{Targets: []chatTapTarget{{row: 3, from: 2, to: 10, action: "auto"}}}
+	typeChatKeys(t, term, "\x1b[<0;5;4M\x1b[<0;5;4m")
+	if term.u.manualApprovals {
+		t.Fatal("tapping the auto mode control turns it back on")
+	}
 }
 
 func TestBackslashEnterInsertsANewline(t *testing.T) {

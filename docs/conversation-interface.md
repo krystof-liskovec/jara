@@ -191,8 +191,10 @@ is cleared when that interface exits.
 - `/auto` (on by default) lets an automatic reviewer approve or deny agent
   actions instead of asking you: Codex routes approval requests to its
   `auto_review` reviewer, and Claude Code runs in its `auto` permission mode.
-  `/auto off` returns to asking you, and `/auto status` reports the mode. The
-  choice applies from the next turn and resets to on when Jara reopens.
+  `/auto off` returns to asking you, and `/auto status` reports the mode.
+  Shift+Tab (or tapping the control) toggles it too; the controls under the
+  input show `⏵⏵ Auto mode on` or `◇ Auto mode off`. The choice applies from
+  the next turn and resets to on when Jara reopens.
 - `/agents` lists the conversation's subagents; `/agents N` shows subagent N
   and `/agents main` returns to the main agent.
 - `/btw QUESTION` asks a quick side question about the conversation, even

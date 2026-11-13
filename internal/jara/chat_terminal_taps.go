@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// tap runs the control under a click or tap: the model and reasoning
-// labels, menu entries, the approval buttons, and the changed-files label.
+// tap runs the control under a click or tap: the model, reasoning and
+// auto-mode labels, menu entries, the approval buttons, and the changed-files label.
 func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 	action := t.targets.target(row, column)
 	if action == "" {
@@ -18,6 +18,8 @@ func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 	switch {
 	case action == "model" || action == "reasoning":
 		t.openPicker(action)
+	case action == "auto":
+		t.u.toggleAutoMode()
 	case action == "approve" || action == "deny":
 		return t.u.line("/" + action)
 	case action == "diff":
