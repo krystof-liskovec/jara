@@ -44,9 +44,12 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 	color := os.Getenv("NO_COLOR") == ""
 	composerText, composerCursor := editor.previewText()
 	cursorLine, cursorColumn := chatEditorCursorPosition(composerText, composerCursor)
+	u.diff.screenWidth, u.diff.screenHeight = width, height
+	if chatDiffFullScreen(&u.diff, width, height) {
+		lines := renderChatDiffPane(&u.diff, width, height, now, t.motion, t.palette, color)
+		return chatFrame{Lines: lines, CursorRow: -1, Targets: chatDiffPaneTargets(&u.diff, width, height, 0)}
+	}
 	paneWidth := chatDiffPaneWidth(&u.diff, width, height)
-	u.diff.fits = width >= chatDiffPaneMinWidth && height >= chatDiffPaneMinHeight
-	u.diff.shown = paneWidth > 0
 	width -= paneWidth
 	transcriptWidth := width - 4
 	if height < 7 || width < 18 {

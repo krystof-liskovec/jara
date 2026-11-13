@@ -209,7 +209,10 @@ func (t *chatTerminal) interrupt() (done bool, err error) {
 func (t *chatTerminal) tick(now time.Time) error {
 	u := t.u
 	if event := t.parser.flushEscape(now); event != nil && event.input != nil {
-		if t.queueEditor.active() {
+		if u.diff.fullScreen() {
+			u.diff.hideOnScreen()
+			t.dirty = true
+		} else if t.queueEditor.active() {
 			t.queueEditor.cancel(u, t.editor)
 			t.scrollOffset = 0
 			t.dirty = true

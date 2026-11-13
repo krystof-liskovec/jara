@@ -230,8 +230,8 @@ is cleared when that interface exits.
 - On phones the layout shrinks its chrome, controls become tap targets, `y`/`n`
   answer approvals, `\` before Enter adds a newline, and `/notify URL` sends
   push notifications; see [phone access](plain-ssh.md#working-from-a-phone).
-- `/diff` shows or hides the changes pane. Where the terminal is too small
-  for the pane, it lists the conversation's file changes, oldest first.
+- `/diff` shows or hides the changes pane. In plain output, which has no
+  pane, it lists the conversation's file changes, oldest first.
   `/export [PATH]` saves the conversation as
   Markdown, by default as `jara-conversation-DATE-TIME.md` in the workspace.
 - `/crunch PROMPT` works on the task until it is complete, then stops. If the
@@ -371,15 +371,19 @@ Runtime ownership and future adapter requirements are described in
 
 ## Changes pane and motion
 
-When the terminal is at least 100 columns wide and 12 rows tall, file changes
-appear in a pane to the right of the conversation, newest edit first:
+When the terminal is at least 120 columns wide and 18 rows tall, file changes
+appear in a pane to the right of the conversation, newest edit first. On
+smaller terminals, such as phones, the pane never opens by itself, because
+it would squeeze the conversation. **F4** or `/diff` shows it over the whole
+screen instead: PgUp/PgDn and the mouse wheel scroll it, and **✕**, Esc,
+**F4** or `/diff` closes it. Typing closes it and goes to the input box.
 
 - Each file shows its path and `+added −removed` counts, then its hunks with
   tinted additions and deletions. Code is syntax-highlighted by the file's
   language, using GitHub's light or dark colors to match the terminal.
-- The pane opens automatically with the first change. Its **✕** button,
-  **F4**, or `/diff` hides it; it stays hidden until F4 or `/diff` shows it
-  again. **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
+- On wide terminals the pane opens automatically with the first change. Its
+  **✕** button, **F4**, or `/diff` hides it; it stays hidden until F4 or
+  `/diff` shows it again. **Alt+PgUp/PgDn** (or **F5/F6**) scrolls it.
 - **[ ask ]** starts a question about the changes: it fills the input box with
   "About your changes to …:" naming the changed files, so you type the
   question and press Enter. Text already in the input box is kept.

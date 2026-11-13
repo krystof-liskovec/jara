@@ -49,18 +49,21 @@ func chatDiffPaneTargets(d *chatDiffState, width, height, offset int) []chatTapT
 	return targets
 }
 
-// togglePane shows or hides the pane where the terminal has room for
-// it, and reports whether it could.
+// togglePane shows or hides the pane in the interactive terminal, and
+// reports whether there is one.
 func (d *chatDiffState) togglePane() bool {
-	if !d.fits {
+	if d.screenWidth == 0 {
 		return false
 	}
-	if d.shown {
-		d.mode = chatDiffPaneForcedOff
-	} else {
-		d.mode = chatDiffPaneForcedOn
-	}
+	d.toggle(d.screenWidth, d.screenHeight)
 	return true
+}
+
+// hideOnScreen closes the pane as drawn on the current screen.
+func (d *chatDiffState) hideOnScreen() { d.hide(d.screenWidth, d.screenHeight) }
+
+func (d *chatDiffState) fullScreen() bool {
+	return chatDiffFullScreen(d, d.screenWidth, d.screenHeight)
 }
 
 // chatDiffQuestion starts a question about the changes in the pane, newest

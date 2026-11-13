@@ -11,12 +11,14 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// The diff pane shows recent file changes beside the conversation on wide
-// terminals, newest first. F4 or /diff toggles it, as does its ✕ button;
-// Alt+PgUp/PgDn or F5/F6 scroll it.
+// The diff pane shows recent file changes, newest first. On wide terminals
+// it sits beside the conversation and opens with the first change. Smaller
+// terminals, such as phones, would squeeze the conversation, so there it
+// never opens by itself: F4 or /diff shows it over the whole screen. F4,
+// /diff and its ✕ button toggle it; Alt+PgUp/PgDn or F5/F6 scroll it.
 const (
-	chatDiffPaneMinWidth   = 100
-	chatDiffPaneMinHeight  = 12
+	chatDiffPaneMinWidth   = 120 // leaves the conversation about 72 columns
+	chatDiffPaneMinHeight  = chatShortScreenRows
 	chatDiffPaneKeepFiles  = 30
 	chatDiffPaneFileLines  = 400
 	chatDiffPaneAuto       = 0
@@ -30,8 +32,9 @@ type chatDiffState struct {
 	arrived time.Time
 	mode    int
 	scroll  int
-	fits    bool // the terminal has room for the pane (set on each draw)
-	shown   bool // the pane is on screen (set on each draw)
+	// The interactive terminal's size, recorded on each draw; zero in plain
+	// output, where /diff lists the changes instead.
+	screenWidth, screenHeight int
 }
 
 // recordFileChanges keeps the newest changes for the pane. Live changes
@@ -61,11 +64,33 @@ func (d *chatDiffState) record(changes []protocol.FileChange, live bool) {
 }
 
 func (d *chatDiffState) toggle(width, height int) {
-	if chatDiffPaneWidth(d, width, height) > 0 {
-		d.mode = chatDiffPaneForcedOff
+	if chatDiffPaneWidth(d, width, height) > 0 || chatDiffFullScreen(d, width, height) {
+		d.hide(width, height)
 	} else {
 		d.mode = chatDiffPaneForcedOn
 	}
+}
+
+// hide closes the pane. A closed side pane stays closed until reopened; a
+// closed full-screen view lets the pane open by itself again should the
+// terminal grow wide enough.
+func (d *chatDiffState) hide(width, height int) {
+	if chatDiffFullScreen(d, width, height) {
+		d.mode = chatDiffPaneAuto
+	} else {
+		d.mode = chatDiffPaneForcedOff
+	}
+}
+
+// chatDiffSideFits reports whether the pane fits beside the conversation.
+func chatDiffSideFits(width, height int) bool {
+	return width >= chatDiffPaneMinWidth && height >= chatDiffPaneMinHeight
+}
+
+// chatDiffFullScreen reports whether the pane, opened on purpose, covers the
+// screen because it does not fit beside the conversation.
+func chatDiffFullScreen(d *chatDiffState, width, height int) bool {
+	return d != nil && d.mode == chatDiffPaneForcedOn && !chatDiffSideFits(width, height) && width > 0 && height > 0
 }
 
 // animating reports whether the reveal or highlight is still in progress.
@@ -76,7 +101,7 @@ func (d *chatDiffState) animating(now time.Time) bool {
 // chatDiffPaneWidth returns the pane width including its separator, or 0
 // when the pane is hidden or the terminal is too small.
 func chatDiffPaneWidth(d *chatDiffState, width, height int) int {
-	if d == nil || d.mode == chatDiffPaneForcedOff || width < chatDiffPaneMinWidth || height < chatDiffPaneMinHeight {
+	if d == nil || d.mode == chatDiffPaneForcedOff || !chatDiffSideFits(width, height) {
 		return 0
 	}
 	if d.mode == chatDiffPaneAuto && len(d.changes) == 0 {

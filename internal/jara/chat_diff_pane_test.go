@@ -22,8 +22,8 @@ func TestChatDiffPaneLayoutAndOrder(t *testing.T) {
 	if got := []string{d.changes[0].Path, d.changes[1].Path, d.changes[2].Path}; strings.Join(got, ",") != "c.go,a.go,b.go" {
 		t.Fatalf("order %v", got)
 	}
-	if chatDiffPaneWidth(&d, 99, 40) != 0 || chatDiffPaneWidth(&d, 160, 11) != 0 {
-		t.Fatal("pane must hide on small terminals")
+	if chatDiffPaneWidth(&d, 119, 40) != 0 || chatDiffPaneWidth(&d, 160, 17) != 0 {
+		t.Fatal("the pane must not open by itself on small terminals")
 	}
 	width := chatDiffPaneWidth(&d, 160, 40)
 	if width < 44 || width > 100 {
