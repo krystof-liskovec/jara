@@ -62,7 +62,8 @@ Linking preserves the remote branch and files. Local working edits can be synced
 after confirmation, or later with `jara sync push`; remote edits are preserved
 and conflicting changes stop the transfer. Initial sync uses the local committed
 tree as its baseline, so joining does not replace a remote checkout with local
-commits. Later file changes and commits are tracked by the usual sync baseline.
+commits. Later file changes are tracked by the usual sync baseline, and later
+commits transfer as commits when the destination can fast-forward.
 
 Opening a project shows conversation names, falling back to the prompt preview.
 The secondary line contains the agent, age and any matched live terminal count.

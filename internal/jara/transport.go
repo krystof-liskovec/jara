@@ -79,6 +79,7 @@ type Request struct {
 	SourceHost         string   `json:"source_host,omitempty"`
 	SourcePath         string   `json:"source_path,omitempty"`
 	Commit             string   `json:"commit,omitempty"`
+	Base               string   `json:"base,omitempty"` // commit the endpoint is expected to have checked out
 	Subdir             string   `json:"subdir,omitempty"`
 	Resume             bool     `json:"resume,omitempty"`
 	ResumeLatest       bool     `json:"resume_latest,omitempty"`
@@ -111,6 +112,20 @@ func rpc(r Remote, q Request, input io.Reader, v any) error {
 	}
 	return nil
 }
+
+// rpcStream copies the remote command's raw output to out.
+func rpcStream(r Remote, q Request, input io.Reader, out io.Writer) error {
+	cmd := sshCommand(r, false, shellArgs("jara", "_rpc", token(q)))
+	cmd.Stdin = input
+	var stderr bytes.Buffer
+	cmd.Stdout = out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("remote %s: %w: %s", q.Op, err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
 func openRemote(r Remote, q Request) error {
 	if q.Background {
 		wire := q
