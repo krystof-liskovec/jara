@@ -11,6 +11,9 @@ import (
 // handleKey applies one key or paste event; done means the interface exits.
 func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err error) {
 	u := t.u
+	if u.diff.fullScreen() && t.handleFullScreenDiffKey(event) {
+		return false, nil
+	}
 	switch {
 	case event.scrollRows != 0:
 		t.scroll(t.scrollOffset + event.scrollRows)

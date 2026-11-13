@@ -24,8 +24,11 @@ func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 		t.u.runChatDiffCommand()
 		t.scroll(0)
 	case action == "diff-close":
-		t.u.diff.mode = chatDiffPaneForcedOff
+		t.u.diff.hideOnScreen()
 	case action == "diff-ask":
+		if t.u.diff.fullScreen() {
+			t.u.diff.hideOnScreen() // back to the input box
+		}
 		t.askAboutChanges()
 	case strings.HasPrefix(action, "agent:"):
 		id := strings.TrimPrefix(action, "agent:")
@@ -88,4 +91,28 @@ func (t *chatTerminal) askAboutChanges() {
 	t.editor.SetText(text)
 	t.u.noteChatComposer(t.editor.Text(), t.editor.CursorByte())
 	t.scroll(0)
+}
+
+// handleFullScreenDiffKey routes keys while the changes cover the screen:
+// scrolling moves the diff, Escape closes it, and other keys close it and
+// then act as usual. It reports whether the key was used up.
+func (t *chatTerminal) handleFullScreenDiffKey(event chatTerminalKeyEvent) bool {
+	d := &t.u.diff
+	t.dirty = true
+	switch {
+	case event.scrollRows != 0:
+		d.scroll = max(0, d.scroll-event.scrollRows)
+	case event.scroll != 0:
+		d.scroll = max(0, d.scroll-event.scroll*max(1, d.screenHeight/2))
+	case event.returnToLive:
+		d.scroll = 0
+	case event.paneScroll != 0, event.diffPane, event.tap != nil, event.interrupt:
+		return false // handled as usual: scroll, F4, taps, Ctrl+C
+	case event.input != nil && event.input.Key == chatEditorEscape:
+		d.hideOnScreen()
+	default:
+		d.hideOnScreen()
+		return false
+	}
+	return true
 }

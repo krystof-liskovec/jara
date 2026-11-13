@@ -72,7 +72,7 @@ func TestDiffQuestionNamesNewestFiles(t *testing.T) {
 func TestDiffPaneButtonsAndCommand(t *testing.T) {
 	term, _ := newTestChatTerminal(t)
 	term.u.diff = *diffWithFiles("main.go")
-	term.u.diff.fits, term.u.diff.shown = true, true
+	term.u.diff.screenWidth, term.u.diff.screenHeight = 160, 40
 	term.editor.SetText("why")
 	term.targets = chatFrame{Targets: []chatTapTarget{{row: 0, from: 80, to: 87, action: "diff-ask"}, {row: 0, from: 90, to: 91, action: "diff-close"}}}
 	typeChatKeys(t, term, fmt.Sprintf("\x1b[<0;%d;1M", 82))
@@ -87,19 +87,17 @@ func TestDiffPaneButtonsAndCommand(t *testing.T) {
 	if term.u.diff.mode != chatDiffPaneForcedOff {
 		t.Fatal("✕ did not close the pane")
 	}
-	// /diff opens it again where it fits, and closes it when shown.
-	term.u.diff.shown = false
+	// /diff opens it again, and closes it when shown.
 	term.u.runChatDiffCommand()
 	if term.u.diff.mode != chatDiffPaneForcedOn {
 		t.Fatal("/diff did not reopen the pane")
 	}
-	term.u.diff.shown = true
 	term.u.runChatDiffCommand()
 	if term.u.diff.mode != chatDiffPaneForcedOff {
 		t.Fatal("/diff did not close the pane")
 	}
-	// Without room for the pane, /diff lists the changes instead.
-	term.u.diff.fits = false
+	// Plain output has no pane, so /diff lists the changes instead.
+	term.u.diff.screenWidth, term.u.diff.screenHeight = 0, 0
 	before := len(term.transcript.entries)
 	term.u.runChatDiffCommand()
 	if len(term.transcript.entries) == before {
@@ -123,7 +121,65 @@ func TestComposedScreenTargetsPaneButtons(t *testing.T) {
 			t.Fatalf("%s covers %q on %q", target.action, got, frame.Lines[target.row])
 		}
 	}
-	if found != 2 || !term.u.diff.fits || !term.u.diff.shown {
-		t.Fatalf("buttons=%d fits=%v shown=%v", found, term.u.diff.fits, term.u.diff.shown)
+	if found != 2 || chatDiffPaneWidth(&term.u.diff, 140, 24) == 0 {
+		t.Fatalf("buttons=%d, side pane width %d", found, chatDiffPaneWidth(&term.u.diff, 140, 24))
+	}
+}
+
+func TestChangesCoverSmallScreensOnlyWhenAsked(t *testing.T) {
+	t.Setenv("NO_COLOR", "1")
+	term, _ := newTestChatTerminal(t)
+	files := make([]string, 12)
+	for index := range files {
+		files[index] = fmt.Sprintf("file%d.go", index)
+	}
+	term.u.diff = *diffWithFiles(files...)
+	for _, size := range [][2]int{{60, 30}, {110, 40}, {160, 15}} {
+		frame := term.frame(size[0], size[1], time.Now())
+		if strings.Contains(strings.Join(frame.Lines, "\n"), "Changes ·") {
+			t.Fatalf("the pane opened by itself at %dx%d", size[0], size[1])
+		}
+	}
+
+	// On a phone-sized screen, /diff covers the whole screen.
+	term.frame(60, 20, time.Now())
+	term.u.runChatDiffCommand()
+	frame := term.frame(60, 20, time.Now())
+	if !strings.HasPrefix(frame.Lines[0], " Changes · 12 files") || frame.CursorRow != -1 || strings.Contains(strings.Join(frame.Lines, "\n"), "❯") {
+		t.Fatalf("full-screen changes:\n%s", strings.Join(frame.Lines, "\n"))
+	}
+	if !strings.Contains(frame.Lines[0], "✕") || frame.target(0, 58) != "diff-close" {
+		t.Fatalf("close button %q targets %+v", frame.Lines[0], frame.Targets)
+	}
+	typeChatKeys(t, term, "\x1b[6~") // PageDown scrolls the changes
+	if term.u.diff.scroll == 0 || !term.u.diff.fullScreen() {
+		t.Fatalf("PageDown: scroll %d, full screen %v", term.u.diff.scroll, term.u.diff.fullScreen())
+	}
+	typeChatKeys(t, term, "x") // typing returns to the conversation
+	if term.u.diff.fullScreen() || term.editor.Text() != "x" || term.u.diff.mode != chatDiffPaneAuto {
+		t.Fatalf("typing: full screen %v, input %q, mode %d", term.u.diff.fullScreen(), term.editor.Text(), term.u.diff.mode)
+	}
+
+	// The close button, F4 and /diff all leave the full-screen view.
+	term.u.runChatDiffCommand()
+	term.frame(60, 20, time.Now())
+	term.targets = term.frame(60, 20, time.Now())
+	typeChatKeys(t, term, "\x1b[<0;59;1M")
+	if term.u.diff.fullScreen() {
+		t.Fatal("✕ did not close the full-screen changes")
+	}
+	term.u.runChatDiffCommand()
+	term.u.runChatDiffCommand()
+	if term.u.diff.fullScreen() {
+		t.Fatal("/diff did not close the full-screen changes")
+	}
+	term.u.runChatDiffCommand()
+	term.editor.SetText("")
+	term.parser.feed([]byte("\x1b")) // a lone Escape resolves on the next tick
+	if err := term.tick(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if term.u.diff.mode != chatDiffPaneAuto || term.editor.Text() != "" {
+		t.Fatalf("Escape: mode %d, input %q", term.u.diff.mode, term.editor.Text())
 	}
 }
