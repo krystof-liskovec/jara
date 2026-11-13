@@ -75,9 +75,10 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 		ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),
 		QueuedPrompts: queueLines, QueueEditing: t.queueEditor.active(), QueueEditNumber: queueEditNumber,
 		ControlModel: u.modelControlLabel(), ControlReasoning: u.reasoningControlLabel(), ControlContext: u.contextControlLabel(),
-		ControlAutoOff:  u.manualApprovals,
-		ApprovalPending: len(u.approvals) > 0,
-		Hints:           hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
+		ControlAutoOff:    u.manualApprovals,
+		ApprovalPending:   len(u.approvals) > 0,
+		ApprovalCountdown: u.approvalCountdown(now),
+		Hints:             hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
 		Mark: chatWelcomeMark(t.motion, now),
 	}, width, height, t.palette, color)
 	if paneWidth > 0 {
@@ -98,9 +99,11 @@ func (t *chatTerminal) suggestions() []chatCompletionChoice {
 		return t.picker.choices(t.u)
 	case t.queueEditor.active():
 		return nil
-	default:
-		return t.editor.Completions()
 	}
+	if choices, ok := t.questionChoices(); ok {
+		return choices
+	}
+	return t.editor.Completions()
 }
 
 // update returns the escape sequences that turn the previous frame into

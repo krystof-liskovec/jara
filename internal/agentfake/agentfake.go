@@ -96,6 +96,20 @@ func fakeClaude() {
 			emit(map[string]any{"type": "user", "message": map[string]any{"content": []any{map[string]any{"type": "tool_result", "tool_use_id": "toolu_1", "content": "updated"}}}, "tool_use_result": result})
 			text("edited")
 			emit(map[string]any{"type": "result", "subtype": "success"})
+		case strings.Contains(prompt, "ASK"):
+			input := map[string]any{"questions": []any{
+				map[string]any{"question": "Which database?", "header": "DB", "multiSelect": false, "options": []any{map[string]any{"label": "Postgres", "description": "relational"}, map[string]any{"label": "SQLite"}}},
+				map[string]any{"question": "Which extras?", "header": "Extras", "multiSelect": true, "options": []any{map[string]any{"label": "Cache"}, map[string]any{"label": "Search"}}},
+			}}
+			emit(map[string]any{"type": "control_request", "request_id": "ask-1", "request": map[string]any{"subtype": "can_use_tool", "tool_name": "AskUserQuestion", "input": input, "tool_use_id": "toolu_ask"}})
+			var answer map[string]any
+			for answer == nil || answer["type"] != "control_response" {
+				answer = next()
+			}
+			encoded, _ := json.Marshal(answer["response"].(map[string]any)["response"])
+			Log("claude-question", string(encoded))
+			text("answered")
+			emit(map[string]any{"type": "result", "subtype": "success"})
 		case strings.Contains(prompt, "SUBAGENT"):
 			Log("claude-forward-subagents", os.Getenv("CLAUDE_CODE_FORWARD_SUBAGENT_TEXT"))
 			parent := "toolu_task"

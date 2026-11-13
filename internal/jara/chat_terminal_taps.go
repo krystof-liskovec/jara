@@ -42,10 +42,16 @@ func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 	return false, nil
 }
 
-// chatApprovalKey answers a pending approval with a single y or n typed
-// into an empty input box.
+// chatApprovalKey answers a pending approval with Enter or a single y or n
+// typed into an empty input box.
 func chatApprovalKey(u *chatUI, editor *chatEditor, input chatEditorInput) string {
-	if len(u.approvals) == 0 || editor.Text() != "" || input.Key != chatEditorText {
+	if len(u.approvals) == 0 || editor.Text() != "" {
+		return ""
+	}
+	if input.Key == chatEditorEnter {
+		return "/approve"
+	}
+	if input.Key != chatEditorText {
 		return ""
 	}
 	switch strings.ToLower(input.Text) {
@@ -72,6 +78,12 @@ func (t *chatTerminal) tapSuggestion(index int) (done bool, err error) {
 		t.picker.selected = choice.Index
 		t.handlePickerKey(chatEditorInput{Key: chatEditorEnter})
 	default:
+		if _, ok := t.questionChoices(); ok {
+			t.question.cursor = choice.Index
+			_, err = t.handleQuestionKey(chatEditorInput{Key: chatEditorEnter})
+			t.dirty = true
+			return false, err
+		}
 		if t.editor.ApplyCompletion(choice.Index) {
 			t.u.noteChatComposer(t.editor.Text(), t.editor.CursorByte())
 		}

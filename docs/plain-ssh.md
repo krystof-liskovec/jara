@@ -125,9 +125,9 @@ The Jara conversation interface adapts to phone screens:
   so most of the screen shows the conversation.
 - Below 60 columns function-key labels and desktop-only hints disappear. Tap
   instead: the model or reasoning label opens its picker, a menu entry chooses
-  it, and the `[ y Allow ]` / `[ n Deny ]` row answers an approval; `/diff`
-  lists the conversation's changes. With an empty input
-  box, typing `y` or `n` answers it too.
+  it, and the `[ ⏎/y Allow ]` / `[ n Deny ]` row answers an approval; `/diff`
+  lists the conversation's changes. With an empty input box, Enter or `y`
+  allows the approval and `n` denies it.
 - End a line with `\` before Enter to continue the message on a new line.
 - Long code and diff lines are cut with `…` instead of wrapping; `/export`
   saves the full text.

@@ -106,6 +106,7 @@ func (u *chatUI) line(line string) (bool, error) {
 		}
 		m := u.approvals[0]
 		u.approvals = u.approvals[1:]
+		u.armAutoApproval(time.Now())
 		if len(u.approvals) > 0 {
 			u.setActivityLabel("Waiting for approval")
 		} else if len(u.questionRequests) > 0 {

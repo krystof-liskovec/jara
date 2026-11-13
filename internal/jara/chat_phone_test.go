@@ -46,7 +46,7 @@ func TestShortScreensKeepTheConversationVisible(t *testing.T) {
 	}
 	model.ApprovalPending = true
 	frame = renderChatView(model, 44, 14, menuColorsForTerminal(), false)
-	if row := frame.Lines[10]; !strings.Contains(row, "[ y Allow ]  [ n Deny ]") || frame.target(10, strings.Index(row, "[ n")) != "deny" {
+	if row := frame.Lines[10]; !strings.Contains(row, "[ ⏎/y Allow ]  [ n Deny ]") || frame.target(10, strings.Index(row, "[ n")) != "deny" {
 		t.Fatalf("approval row %q %+v", row, frame.Targets)
 	}
 	tall := renderChatView(model, 44, 30, menuColorsForTerminal(), false)
