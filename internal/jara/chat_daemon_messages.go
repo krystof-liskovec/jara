@@ -63,6 +63,15 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 				_ = writeChatDaemonState(paths, snapshot)
 				stateWriteMu.Unlock()
 			}
+			if message.Method == "jara/git/diff" {
+				if len(message.ID) > 0 {
+					stateMu.Lock()
+					cwd := state.CWD
+					stateMu.Unlock()
+					handleChatGitDiffRequest(message.ID, cwd, client)
+				}
+				continue
+			}
 			if message.Method == "jara/shell" {
 				if len(message.ID) > 0 {
 					stateMu.Lock()

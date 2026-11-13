@@ -26,7 +26,7 @@ func chatDiffPaneSuffix(d *chatDiffState, width, height int) string {
 		maxScroll := body - (height - 1)
 		suffix = fmt.Sprintf(" %d/%d", min(max(0, d.scroll), maxScroll)+1, maxScroll+1)
 	}
-	if len(d.changes) > 0 {
+	if len(d.visible()) > 0 {
 		suffix += "  " + chatDiffAskButton
 	}
 	return suffix + "  " + chatDiffCloseButton + " "
@@ -71,7 +71,7 @@ func (d *chatDiffState) fullScreen() bool {
 func chatDiffQuestion(d *chatDiffState) string {
 	var names []string
 	seen := map[string]bool{}
-	for _, change := range d.changes {
+	for _, change := range d.visible() {
 		path := textutil.SanitizeText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath))
 		if path == "" || seen[path] {
 			continue
@@ -79,12 +79,16 @@ func chatDiffQuestion(d *chatDiffState) string {
 		seen[path] = true
 		names = append(names, path)
 	}
+	lead := "About your changes to "
+	if d.git.available {
+		lead = "About the uncommitted changes to "
+	}
 	switch {
 	case len(names) == 0:
 		return ""
 	case len(names) > chatDiffAskFiles:
-		return fmt.Sprintf("About your changes to %s and %d more files: ", strings.Join(names[:chatDiffAskFiles], ", "), len(names)-chatDiffAskFiles)
+		return fmt.Sprintf("%s%s and %d more files: ", lead, strings.Join(names[:chatDiffAskFiles], ", "), len(names)-chatDiffAskFiles)
 	default:
-		return "About your changes to " + strings.Join(names, ", ") + ": "
+		return lead + strings.Join(names, ", ") + ": "
 	}
 }

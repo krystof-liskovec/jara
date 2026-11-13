@@ -20,6 +20,9 @@ type chatThreadResponse struct {
 
 func (u *chatUI) renderChatHistory(turns []protocol.HistoryTurn) {
 	u.promptLog = nil
+	// The history replays the conversation's edits; start from none so a
+	// reconnect or another conversation does not repeat or mix them.
+	u.diff.resetAgentChanges()
 	for _, turn := range turns {
 		paths := make(map[string]string)
 		for _, item := range turn.Items {
