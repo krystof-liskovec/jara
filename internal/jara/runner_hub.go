@@ -2,6 +2,7 @@ package jara
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -21,6 +22,13 @@ type runnerClaim struct {
 	Conversation string `json:"conversation,omitempty"`
 	Socket       string `json:"socket,omitempty"`
 	Root         string `json:"root,omitempty"`
+}
+
+// runnerCheckpointAnswer is the host's answer to a checkpoint: its number, or
+// the session files that did not match, when it stored nothing.
+type runnerCheckpointAnswer struct {
+	Seq    int64          `json:"seq,omitempty"`
+	Resync []runnerResync `json:"resync,omitempty"`
 }
 
 type runnerStatus struct {
@@ -84,10 +92,15 @@ func runnerRPC(q Request) error {
 			lease.LastSeen = time.Now().Unix()
 			return storeRunnerCheckpoint(paths, lease, checkpoint, q.Runner)
 		})
+		var resync *runnerResyncError
+		if errors.As(err, &resync) {
+			// Nothing was stored; the device continues each file from here.
+			return out.Encode(runnerCheckpointAnswer{Resync: resync.files})
+		}
 		if err != nil {
 			return err
 		}
-		return out.Encode(map[string]int64{"seq": lease.Seq})
+		return out.Encode(runnerCheckpointAnswer{Seq: lease.Seq})
 	case "runner-release", "runner-tunnel":
 		var socket string
 		_, err = updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
@@ -117,6 +130,9 @@ func runnerRPC(q Request) error {
 // writer as the next checkpoint. The caller holds the lease lock.
 func storeRunnerCheckpoint(paths runnerPaths, lease *runnerLease, checkpoint runnerCheckpoint, writer string) error {
 	if err := os.MkdirAll(paths.threads, 0700); err != nil {
+		return err
+	}
+	if err := checkNativeFiles(paths, checkpoint.Threads); err != nil {
 		return err
 	}
 	lease.Seq++

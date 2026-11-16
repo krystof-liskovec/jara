@@ -25,12 +25,17 @@ type runnerNativeFile struct {
 	Data []byte `json:"data,omitempty"`
 	Base int64  `json:"base,omitempty"`
 	Tail string `json:"tail,omitempty"`
+	// Sum is the SHA-256 of the whole file, sent when a turn has ended.
+	Sum   string `json:"sum,omitempty"`
+	local string // the exporting machine's path
 }
 
 // runnerSentState tracks which session file contents the host stores: Prev
 // before this checkpoint, Next once the host accepts it. Paths are local.
+// Verify adds whole-file checksums.
 type runnerSentState struct {
 	Prev, Next map[string]runnerSentFile
+	Verify     bool
 }
 
 // runnerBundle is a conversation checkpoint: Jara's own transcript plus the
@@ -95,10 +100,11 @@ func exportThread(thread *agentrouter.Thread, root, writer string, rollouts map[
 			continue
 		}
 		var prev map[string]runnerSentFile
+		verify := false
 		if sent != nil {
-			prev = sent.Prev
+			prev, verify = sent.Prev, sent.Verify
 		}
-		state, readErr := readNativeFile(path, info.Size(), prev, &file)
+		state, readErr := readNativeFile(path, info.Size(), prev, verify, &file)
 		if readErr != nil {
 			continue
 		}

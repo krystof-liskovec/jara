@@ -9,67 +9,152 @@ import (
 	"testing"
 )
 
-func TestCheckpointSendsOnlyAppendedSessionBytes(t *testing.T) {
+// nativeFixture is one device session file and the host's stored copy.
+type nativeFixture struct {
+	t       *testing.T
+	paths   runnerPaths
+	session string
+	sent    map[string]runnerSentFile
+}
+
+func newNativeFixture(t *testing.T) *nativeFixture {
 	base := t.TempDir()
 	t.Setenv("JARA_DATA", filepath.Join(base, "d"))
 	paths, err := runnerPathSet("w-delta")
 	if err != nil {
 		t.Fatal(err)
 	}
-	session := filepath.Join(base, "session.jsonl")
-	first := strings.Repeat(`{"type":"message","text":"hello"}`+"\n", 300)
-	if err = os.WriteFile(session, []byte(first), 0600); err != nil {
+	if err = os.MkdirAll(paths.threads, 0700); err != nil {
 		t.Fatal(err)
 	}
-	send := func(sent map[string]runnerSentFile) (runnerNativeFile, map[string]runnerSentFile, error) {
-		file := runnerNativeFile{Agent: "claude", BackendID: "11111111-2222-3333-4444-555555555555"}
-		info, _ := os.Stat(session)
-		state, err := readNativeFile(session, info.Size(), sent, &file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		bundle := runnerBundle{ThreadID: "th-1", Files: []runnerNativeFile{file}}
-		if err = os.MkdirAll(paths.threads, 0700); err == nil {
-			err = storeNativeFiles(paths, &bundle)
-		}
-		return file, map[string]runnerSentFile{session: state}, err
-	}
-	file, sent, err := send(nil)
-	if err != nil || file.Base != 0 || file.Text != first {
-		t.Fatalf("first checkpoint must carry the whole file: base %d, %d bytes, %v", file.Base, file.size(), err)
-	}
-	appended := `{"type":"message","text":"more"}` + "\n"
-	handle, _ := os.OpenFile(session, os.O_APPEND|os.O_WRONLY, 0600)
-	_, _ = handle.WriteString(appended)
-	handle.Close()
-	file, sent, err = send(sent)
-	if err != nil || file.Base != int64(len(first)) || file.Text != appended {
-		t.Fatalf("delta = base %d %q, %v", file.Base, file.Text, err)
-	}
-	bundle := runnerBundle{ThreadID: "th-1", Files: []runnerNativeFile{{Agent: "claude", BackendID: file.BackendID}}}
-	loadNativeFiles(paths, &bundle)
-	if got := string(bundle.Files[0].bytes()); got != first+appended {
-		t.Fatalf("host copy has %d bytes, want %d", len(got), len(first+appended))
-	}
+	return &nativeFixture{t: t, paths: paths, session: filepath.Join(base, "session.jsonl"), sent: map[string]runnerSentFile{}}
+}
 
-	// The host's copy changed (another machine wrote it): the delta is refused.
-	stored := paths.storedNativePath("th-1", file)
-	if err = os.WriteFile(stored, []byte("different"), 0600); err != nil {
-		t.Fatal(err)
+func (f *nativeFixture) append(text string) {
+	handle, err := os.OpenFile(f.session, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		f.t.Fatal(err)
 	}
-	handle, _ = os.OpenFile(session, os.O_APPEND|os.O_WRONLY, 0600)
-	_, _ = handle.WriteString(appended)
+	_, _ = handle.WriteString(text)
 	handle.Close()
-	if _, _, err = send(sent); !errors.Is(err, errRunnerResend) {
-		t.Fatalf("mismatched host copy accepted a delta: %v", err)
+}
+
+// checkpoint sends the file as a device does, repairing as the host asks,
+// and returns the bytes sent in each attempt.
+func (f *nativeFixture) checkpoint(verify bool) []int {
+	var sizes []int
+	for attempt := 0; attempt < 3; attempt++ {
+		file := runnerNativeFile{Agent: "claude", BackendID: "11111111-2222-3333-4444-555555555555"}
+		info, _ := os.Stat(f.session)
+		state, err := readNativeFile(f.session, info.Size(), f.sent, verify, &file)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		sizes = append(sizes, file.size())
+		checkpoint := runnerCheckpoint{Threads: []runnerBundle{{ThreadID: "th-1", Files: []runnerNativeFile{file}}}}
+		err = checkNativeFiles(f.paths, checkpoint.Threads)
+		var resync *runnerResyncError
+		if errors.As(err, &resync) {
+			repairSent(f.sent, checkpoint, resync.files)
+			continue
+		}
+		if err == nil {
+			err = storeNativeFiles(f.paths, &checkpoint.Threads[0])
+		}
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		f.sent[f.session] = state
+		return sizes
 	}
-	// A rewritten local file is sent whole.
-	if err = os.WriteFile(session, []byte("rewritten\n"+first+appended), 0600); err != nil {
+	f.t.Fatalf("checkpoint did not converge: %v", sizes)
+	return nil
+}
+
+func (f *nativeFixture) stored() string {
+	data, _ := os.ReadFile(filepath.Join(f.paths.threads, "th-1.files", "claude-11111111-2222-3333-4444-555555555555"))
+	return string(data)
+}
+
+func (f *nativeFixture) expectHostCopy() {
+	local, _ := os.ReadFile(f.session)
+	if f.stored() != string(local) {
+		f.t.Fatalf("host copy has %d bytes, device %d", len(f.stored()), len(local))
+	}
+}
+
+func TestCheckpointSendsOnlyAppendedSessionBytes(t *testing.T) {
+	f := newNativeFixture(t)
+	line := `{"type":"message","text":"hello"}` + "\n"
+	f.append(strings.Repeat(line, 300))
+	if sizes := f.checkpoint(false); len(sizes) != 1 || sizes[0] != 300*len(line) {
+		t.Fatalf("first checkpoint must carry the whole file once: %v", sizes)
+	}
+	f.append(line)
+	if sizes := f.checkpoint(true); len(sizes) != 1 || sizes[0] != len(line) {
+		t.Fatalf("a verified delta: %v", sizes)
+	}
+	f.expectHostCopy()
+}
+
+func TestCheckpointRepairsFromWhatTheHostHas(t *testing.T) {
+	f := newNativeFixture(t)
+	line := `{"type":"message","text":"a line of the conversation"}` + "\n"
+	f.append(strings.Repeat(line, 200))
+	f.checkpoint(false)
+
+	// The host stored a checkpoint but its answer was lost: the device sends
+	// from its older offset, and continues from the host's end instead.
+	lost := f.sent[f.session]
+	f.append(line)
+	f.checkpoint(false)
+	f.sent[f.session] = lost
+	f.append(line)
+	if sizes := f.checkpoint(false); len(sizes) != 2 || sizes[1] != len(line) {
+		t.Fatalf("after a lost answer: %v", sizes)
+	}
+	f.expectHostCopy()
+
+	// The connection dropped in the middle of an append.
+	f.append(strings.Repeat(line, 3))
+	stored := f.stored()
+	if err := os.WriteFile(filepath.Join(f.paths.threads, "th-1.files", "claude-11111111-2222-3333-4444-555555555555"),
+		[]byte(stored+strings.Repeat(line, 3)[:len(line)+7]), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if file, _, err = send(sent); err != nil || file.Base != 0 {
-		t.Fatalf("rewritten file sent as a delta: base %d, %v", file.Base, err)
+	if sizes := f.checkpoint(false); len(sizes) != 2 || sizes[1] != 2*len(line)-7 {
+		t.Fatalf("after a cut-short append: %v", sizes)
 	}
+	f.expectHostCopy()
+
+	// Damage inside the host's copy is invisible at its end; the checksum at
+	// the end of a turn finds it and the whole file repairs it.
+	damaged := []byte(f.stored())
+	damaged[10] = 'X'
+	if err := os.WriteFile(filepath.Join(f.paths.threads, "th-1.files", "claude-11111111-2222-3333-4444-555555555555"), damaged, 0600); err != nil {
+		t.Fatal(err)
+	}
+	f.append(line)
+	if sizes := f.checkpoint(false); len(sizes) != 1 {
+		t.Fatalf("an unverified delta: %v", sizes)
+	}
+	f.append(line)
+	local, _ := os.ReadFile(f.session)
+	if sizes := f.checkpoint(true); len(sizes) != 2 || sizes[1] != len(local) {
+		t.Fatalf("damaged host copy: %v", sizes)
+	}
+	f.expectHostCopy()
+
+	// A copy written by another machine shares nothing: the whole file goes.
+	if err := os.WriteFile(filepath.Join(f.paths.threads, "th-1.files", "claude-11111111-2222-3333-4444-555555555555"), []byte("other\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	f.append(line)
+	local, _ = os.ReadFile(f.session)
+	if sizes := f.checkpoint(false); len(sizes) != 2 || sizes[1] != len(local) {
+		t.Fatalf("diverged host copy: %v", sizes)
+	}
+	f.expectHostCopy()
 }
 
 func TestCompressedCheckpointRoundTrip(t *testing.T) {
