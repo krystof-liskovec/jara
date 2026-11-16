@@ -123,4 +123,26 @@ kill -STOP $PROCS
 for _ in $(seq 60); do grep -q "scheduled while asleep" $R/fake.log && break; sleep 0.5; done
 kill -CONT $PROCS
 grep -q "scheduled while asleep" $R/fake.log || fail "the remote did not run the laptop's scheduled prompt"
+echo "== 8. the laptop's agent switches branch; the remote follows at the next checkpoint"
+chat "before the switch" /detach jara > /dev/null
+await "laptop runs the agent .* online" || fail "laptop not online"
+hub_branch() { git -C $R/hub/data/workspaces/$WS symbolic-ref --short HEAD; }
+git switch -qc feature; echo two > b.txt; git add b.txt; git commit -qm feature
+chat "on feature" /detach jara > $R/feature.out
+for _ in $(seq 20); do [ "$(hub_branch)" = feature ] && break; sleep 0.5; done
+[ "$(hub_branch)" = feature ] && [ -f $R/hub/data/workspaces/$WS/b.txt ] || { cat $R/feature.out; fail "remote did not follow the branch"; }
+
+echo "== 9. only the remote changed branch; the laptop follows it"
+pid=$(cat $JARA_DATA/chat/local-*.pid); kill -TERM "$pid"; sleep 3
+await "No device holds" || fail "laptop did not release"
+git -C $R/hub/data/workspaces/$WS switch -q main
+chat "back on main" /quit jara > $R/main.out
+[ "$(git symbolic-ref --short HEAD)" = main ] || { cat $R/main.out; fail "laptop did not follow the remote's branch"; }
+
+echo "== 10. the laptop switched branch; the remote follows and keeps its edits in a stash"
+await "No device holds" || fail "laptop did not hand over on /quit"
+git switch -q feature; echo remote-only > $R/hub/data/workspaces/$WS/c.txt
+chat "feature again" /quit jara > $R/back-feature.out
+[ "$(hub_branch)" = feature ] || { cat $R/back-feature.out; fail "remote did not follow the laptop's branch"; }
+git -C $R/hub/data/workspaces/$WS stash list | grep -q "jara: work on" || fail "remote edits were not stashed"
 echo PASS

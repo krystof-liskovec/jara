@@ -440,7 +440,7 @@ func Run(args []string) error {
 	if action == "sync" {
 		return syncWorkspace(r, b, root, direction, *force, *includeIgnored, *deleteMissing)
 	}
-	if isGit {
+	if isGit && !useLocal {
 		var info Workspace
 		if err = rpc(r, Request{Op: "info", ID: b.Workspace}, nil, &info); err != nil {
 			return err

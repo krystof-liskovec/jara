@@ -101,6 +101,22 @@ it, is set aside before catching up:
 Edits you made yourself on a device that was not running the agent merge like
 `jara sync pull`, which refuses conflicting changes.
 
+## Branches
+
+Both checkouts stay on one branch. When they differ, the one that switched
+since the device's last sync leads:
+
+- **The device leads** on its first sync, when you or its agent switched
+  branch there, and always while it runs the agent. The remote host switches
+  to the device's branch, creating it where the histories meet, and keeps its
+  own uncommitted changes in a Git stash (`jara: work on … set aside …`).
+- **The remote host leads** when only it switched, for example because its
+  agent changed branch while your laptop slept. The device switches to that
+  branch and brings its uncommitted changes along; Git refuses when they would
+  conflict.
+
+Commits on the branch left behind stay there.
+
 ## How conversations move
 
 A checkpoint contains Jara's record of each changed conversation (its
