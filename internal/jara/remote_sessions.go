@@ -162,14 +162,14 @@ func sessionUtilityCommand(command string, args []string) error {
 // connectCommand runs inside the environment, without client configuration or SSH.
 func runTmux(args ...string) error { cmd := tmux(args...); cmd.Stderr = os.Stderr; return cmd.Run() }
 
-func attach(s Session, takeover bool) error {
+func attach(s Session, takeover bool, remoteName string) error {
 	if s.ChatDaemon {
 		return runRemoteChatClient(Request{UserInterface: "jara", ID: s.Workspace, Conversation: s.Conversation})
 	}
 	if err := markSessionAttached(s.Name); err != nil {
 		return err
 	}
-	if err := configureTmuxStatus(s.Name); err != nil {
+	if err := configureTmuxStatus(s.Name, remoteName); err != nil {
 		return err
 	}
 	args := []string{"attach-session", "-t", s.Name}

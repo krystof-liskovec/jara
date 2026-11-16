@@ -5,14 +5,23 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // Style the session on every attachment so reconnecting also updates older
 // sessions. Match the pane's saved terminal background and use contrasting text.
-func configureTmuxStatus(session string) error {
+// remoteName is what the attaching client calls this host; sessions keep the
+// last one, so attaching over plain SSH shows the name used before.
+func configureTmuxStatus(session, remoteName string) error {
 	background, err := tmuxStatusBackground(session)
 	if err != nil {
 		return err
+	}
+	if remoteName = tmuxLabel(remoteName); remoteName != "" {
+		if err := runTmux("set-option", "-t", session, "@jara_remote_name", remoteName); err != nil {
+			return fmt.Errorf("set remote label: %w", err)
+		}
 	}
 	workspaceName := tmuxWorkspaceName(session)
 	if err := runTmux("set-option", "-t", session, "@jara_workspace_name", workspaceName); err != nil {
@@ -50,8 +59,8 @@ func configureTmuxStatus(session string) error {
 		{"status-position", "bottom"},
 		{"status-style", base},
 		{"status-justify", "left"},
-		{"status-left-length", "36"},
-		{"status-left", "#[fg=" + accent + ",bold] JARA #[default] #{=24:@jara_workspace_name}  "},
+		{"status-left-length", "56"},
+		{"status-left", "#[fg=" + accent + ",bold] JARA #[default] #{?@jara_remote_name,#{=16:@jara_remote_name} · ,}#{=24:@jara_workspace_name}  "},
 		{"status-right-length", "72"},
 		{"status-right", "#{?#{>=:#{client_width},80},%H:%M  ,}#(/usr/local/bin/jara _session-count)"},
 		{"window-status-format", ""},
@@ -130,4 +139,10 @@ func tmuxStatusBackground(session string) (terminalRGB, error) {
 		return terminalBackground()
 	}
 	return color, nil
+}
+
+// tmuxLabel makes text safe to show through a tmux format.
+func tmuxLabel(text string) string {
+	text = strings.Join(strings.Fields(textutil.SanitizeText(text)), " ")
+	return strings.ReplaceAll(text, "#", "＃")
 }
