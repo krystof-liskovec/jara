@@ -153,6 +153,11 @@ func remoteRPC(q Request) error {
 		return json.NewEncoder(os.Stdout).Encode(repositories)
 	case "runner-status", "runner-claim", "runner-release", "runner-checkpoint", "runner-export", "runner-tunnel", "runner-prefer":
 		return runnerRPC(q)
+	case "peer-key", "peer-host-keys", "peer-authorize", "peer-standbys":
+		return peerRPC(q, os.Stdin)
+	case "standby-prepare", "standby-git", "standby-checkpoint":
+		q.Peer = "you"
+		return standbyRPC(q, os.Stdin)
 	case "git-state", "git-bundle", "git-advance", "git-switch":
 		return syncGitRPC(q)
 	case "clone":

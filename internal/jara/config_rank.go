@@ -84,16 +84,23 @@ func (c *Config) appendRemote(name string) {
 func remoteOrderCommand(c *Config, names []string) error {
 	if len(names) == 0 {
 		for i, name := range c.rankedRemotes() {
-			role := "standby"
-			if i == 0 {
+			role := "not a standby"
+			switch {
+			case i == 0:
 				role = "primary, default"
+			case c.Remotes[name].Standby:
+				role = "standby"
 			}
 			fmt.Printf("%d. %s\t%s\t(%s)\n", i+1, name, c.Remotes[name].Host, role)
 		}
 		return nil
 	}
+	chained := len(c.standbyChain()) > 1
 	if err := c.rankRemotes(names); err != nil {
 		return err
 	}
-	return saveConfig(*c)
+	if err := saveConfig(*c); err != nil || !chained && len(c.standbyChain()) < 2 {
+		return err
+	}
+	return setupPeers(*c)
 }

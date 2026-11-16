@@ -1,6 +1,9 @@
 package jara
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 // runInternalCommand runs the hidden commands Jara invokes on itself, locally
 // or over SSH. It reports whether args named one.
@@ -21,6 +24,20 @@ func runInternalCommand(args []string) (bool, error) {
 			return true, err
 		}
 		return true, remoteRPC(q)
+	case "_peer", "_peer-keys":
+		if len(args) != 2 {
+			return true, fmt.Errorf("invalid internal invocation")
+		}
+		if args[0] == "_peer-keys" {
+			return true, runPeerKeys(args[1])
+		}
+		return true, runPeerCommand(args[1], os.Stdin)
+	case "_standby-forward":
+		var q Request
+		if len(args) != 2 || decode(args[1], &q) != nil {
+			return true, fmt.Errorf("invalid internal invocation")
+		}
+		return true, runStandbyForward(q.ID)
 	case "_client-binary":
 		return true, streamClientBinary()
 	case "_terminal":

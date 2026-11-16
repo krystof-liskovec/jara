@@ -104,6 +104,16 @@ func runnerCommand(c Config, args []string) error {
 		sort.Slice(waiting, func(i, j int) bool { return lease.preferenceRank(waiting[i]) < lease.preferenceRank(waiting[j]) })
 		fmt.Printf("Waiting to take it back when the remote host is idle: %s.\n", strings.Join(waiting, ", "))
 	}
+	for _, standby := range status.Standbys {
+		switch {
+		case standby.Error != "":
+			fmt.Printf("Standby %s: not up to date (%s).\n", standby.Name, standby.Error)
+		case standby.At == 0:
+			fmt.Printf("Standby %s: nothing forwarded yet.\n", standby.Name)
+		default:
+			fmt.Printf("Standby %s: up to date with checkpoint %d, forwarded %s.\n", standby.Name, standby.Seq, describeRunnerTime(standby.At))
+		}
+	}
 	if len(lease.Prefers) > 0 {
 		fmt.Printf("Preferred devices: %s.\n", strings.Join(lease.Prefers, ", "))
 	}

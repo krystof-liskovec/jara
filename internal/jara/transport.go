@@ -85,6 +85,7 @@ type Request struct {
 	Commits            []string `json:"commits,omitempty"`
 	Compress           bool     `json:"compress,omitempty"` // answer zstd-compressed
 	Devices            []string `json:"devices,omitempty"`
+	Peer               string   `json:"-"` // the host forwarding this request, set by its forced command
 	Subdir             string   `json:"subdir,omitempty"`
 	Resume             bool     `json:"resume,omitempty"`
 	ResumeLatest       bool     `json:"resume_latest,omitempty"`

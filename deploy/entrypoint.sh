@@ -97,7 +97,10 @@ if [ -n "$tmux_background" ]; then
   chmod 644 /run/jara/tmux-background
 fi
 printf 'GatewayPorts %s\nAllowUsers %s\n' "$gateway_ports" "$jara_ssh_user" > /run/jara/sshd-env.conf
-printf '%s' 'SetEnv PATH=/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin LANG=C.UTF-8 LC_CTYPE=C.UTF-8 GOTOOLCHAIN=local GOCACHE=/tmp/jara-cache/go-build GOMODCACHE=/tmp/jara-cache/go-mod NPM_CONFIG_CACHE=/tmp/jara-cache/npm' >> /run/jara/sshd-env.conf
+# Standby hosts: keys of the hosts ranked above this one, each forced to run
+# only Jara's standby operations, whatever the user's peer file says.
+printf 'AuthorizedKeysCommand /opt/jara/bin/jara _peer-keys %%h\nAuthorizedKeysCommandUser %s\n' "$jara_ssh_user" >> /run/jara/sshd-env.conf
+printf '%s' 'SetEnv JARA_PEER_KEYS_COMMAND=1 PATH=/home/agent/.local/share/mise/shims:/usr/local/share/mise/shims:/opt/jara/bin:/opt/jara/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin LANG=C.UTF-8 LC_CTYPE=C.UTF-8 GOTOOLCHAIN=local GOCACHE=/tmp/jara-cache/go-build GOMODCACHE=/tmp/jara-cache/go-mod NPM_CONFIG_CACHE=/tmp/jara-cache/npm' >> /run/jara/sshd-env.conf
 : > /run/jara/docker.env
 if [ "${JARA_DOCKER:-0}" = 1 ]; then
   if [ ! -S /run/jara-docker/docker.sock ]; then

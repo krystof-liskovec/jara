@@ -98,8 +98,36 @@ to another device. When windows on several devices wait for the remote host,
 waiting device, or after 20 seconds without it the next one.
 
 Remote hosts are ranked (`jara remote order`; new ones rank last). The first is
-the default and primary host. Lower-ranked hosts do not take part in failover
-yet.
+the default and primary host.
+
+## Standby hosts
+
+`jara remote standby NAME` makes a lower-ranked remote a standby. After every
+checkpoint, the primary forwards the workspace to its standbys in the
+background, so your device sends each checkpoint only once:
+
+```text
+laptop ──checkpoint──▶ primary ──commits, files, conversations──▶ standby
+```
+
+- The standby keeps a mirror under the same workspace ID: commits as Git
+  bundles, then files like `jara sync push`, then conversations as verified
+  deltas of their session files. `jara runner status` shows how current each
+  standby is.
+- Your client connects the hosts. Each host has a peer key; a standby accepts
+  the keys of the hosts ranked above it, and each such key may only run
+  `jara _peer NAME`, which allows the workspace transfer and standby
+  operations and nothing else. The primary pins each standby's SSH host key.
+- In the container deployment sshd reads peer keys through
+  `AuthorizedKeysCommand` (`jara _peer-keys`), which forces that command onto
+  every key, so the agent user cannot add an unrestricted key. Other hosts get
+  a managed block in `~/.ssh/authorized_keys` with the same options.
+- Hosts reach a standby at the address your SSH configuration resolves its name
+  to. When you reach it through an alias they cannot resolve, a jump host or a
+  tunnel, set theirs: `jara remote standby backup --address backup.lan:2222`.
+- While you run an agent in the workspace on a standby yourself, forwarding to
+  it waits instead of overwriting the mirror.
+- Standbys do not continue conversations by themselves yet.
 
 Work a device did after its last checkpoint, before another machine replaced
 it, is set aside before catching up:
