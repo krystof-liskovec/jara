@@ -167,8 +167,8 @@ func TestOpenLinksExistingCheckoutAndRemembersAssociation(t *testing.T) {
 	list, _ := json.Marshal([]Workspace{workspace})
 	info, _ := json.Marshal(workspace)
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
-		"*" + token(Request{Op: "workspace-list"}) + "*) printf '%s' " + quote(string(list)) + ";;\n" +
-		"*" + token(Request{Op: "info", ID: workspace.ID}) + "*) printf '%s' " + quote(string(info)) + ";;\n" +
+		"*" + rpcToken(Request{Op: "workspace-list"}) + "*) printf '%s' " + quote(string(list)) + ";;\n" +
+		"*" + rpcToken(Request{Op: "info", ID: workspace.ID}) + "*) printf '%s' " + quote(string(info)) + ";;\n" +
 		"*_open*) exit 0;;\n*) echo 'unexpected RPC: workspace should be reused' >&2; exit 1;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0755); err != nil {
 		t.Fatal(err)

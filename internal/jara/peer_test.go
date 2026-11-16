@@ -17,7 +17,7 @@ func TestPeerKeyMayOnlyRunStandbyOperations(t *testing.T) {
 		"'jara' '_open' '" + token(Request{ID: "w-1"}) + "'":                        false,
 	} {
 		t.Setenv("SSH_ORIGINAL_COMMAND", command)
-		err := runPeerCommand("primary", strings.NewReader(""))
+		err := runPeerCommand("primary", nil)
 		refused := err != nil && (strings.Contains(err.Error(), "may not run") || strings.Contains(err.Error(), "may only run"))
 		if refused == allowed {
 			t.Errorf("%.40s…: allowed %v, err %v", command, allowed, err)

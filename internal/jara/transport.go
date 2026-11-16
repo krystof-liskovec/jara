@@ -115,17 +115,28 @@ type Request struct {
 	Workspace  string `json:"workspace,omitempty"`
 }
 
+// rpcToken is how rpc sends a request: asking for a compressed answer (see
+// serveCompressedRPC).
+func rpcToken(q Request) string {
+	q.Compress = true
+	return token(q)
+}
+
 func rpc(r Remote, q Request, input io.Reader, v any) error {
-	cmd := sshCommand(r, false, shellArgs("jara", "_rpc", token(q)))
-	cmd.Stdin = input
+	cmd := sshCommand(r, false, shellArgs("jara", "_rpc", rpcToken(q)))
+	cmd.Stdin = compressRequestInput(r, input)
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("remote %s: %w: %s", q.Op, err, strings.TrimSpace(stderr.String()))
 	}
+	answer, err := decompressAnswer(r, out.Bytes())
+	if err != nil {
+		return fmt.Errorf("remote %s: unreadable compressed answer: %w", q.Op, err)
+	}
 	if v != nil {
-		if err := json.Unmarshal(out.Bytes(), v); err != nil {
+		if err := json.Unmarshal(answer, v); err != nil {
 			return fmt.Errorf("invalid Jara response (check remote shell startup output): %w", err)
 		}
 	}

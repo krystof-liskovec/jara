@@ -55,8 +55,8 @@ func installReconcileSSH(t *testing.T, remote Snapshot, exists map[string]bool, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifestToken := token(Request{Op: "manifest", ID: "workspace"})
-	existsToken := token(Request{Op: "exists", ID: "workspace"})
+	manifestToken := rpcToken(Request{Op: "manifest", ID: "workspace"})
+	existsToken := rpcToken(Request{Op: "exists", ID: "workspace"})
 	script := "#!/bin/sh\ncase \"$*\" in\n" +
 		"*" + manifestToken + "*) printf '%s' " + quote(string(manifestJSON)) + "; printf 'manifest\\n' >>" + quote(logPath) + ";;\n" +
 		"*" + existsToken + "*) cat >/dev/null; printf '%s' " + quote(string(existsJSON)) + "; printf 'exists\\n' >>" + quote(logPath) + ";;\n" +
@@ -70,7 +70,7 @@ func installUnavailableReconcileSSH(t *testing.T, logPath string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	manifestToken := token(Request{Op: "manifest", ID: "workspace"})
+	manifestToken := rpcToken(Request{Op: "manifest", ID: "workspace"})
 	script := "#!/bin/sh\ncase \"$*\" in\n*" + manifestToken + "*) echo 'manifest unavailable' >&2; printf 'manifest\\n' >>" + quote(logPath) + "; exit 1;;\n*) printf '%s\\n' \"$*\" >>" + quote(logPath) + "; exit 1;;\nesac\n"
 	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0755); err != nil {
 		t.Fatal(err)
