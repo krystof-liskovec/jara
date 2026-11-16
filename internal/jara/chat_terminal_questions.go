@@ -7,9 +7,9 @@ import (
 
 // chatQuestionMenu tracks the arrow-key choice for the question the agent is
 // waiting on. Options come first, then "Type your own answer" when the
-// question allows it, then Submit for a multi-select question. Tab starts a
-// note: what is typed then goes with the chosen option instead of replacing
-// it, as in Claude Code's own picker.
+// question allows it, then Submit for a multi-select question. N, pressed
+// with the input box empty, starts a note: what is typed then goes with the
+// chosen option instead of replacing it, as in Claude Code's own picker.
 type chatQuestionMenu struct {
 	key      string // request and question the cursor and checks belong to
 	cursor   int
@@ -80,17 +80,17 @@ func (t *chatTerminal) questionChoices() ([]chatCompletionChoice, bool) {
 	if heading == "" {
 		heading = "Question"
 	}
-	hint := "↑↓ choose · Enter select · Tab add a note"
+	hint := "↑↓ choose · Enter select · n add a note"
 	if question.MultiSelect {
-		hint = "↑↓ choose · Enter or Space check · Tab add a note"
+		hint = "↑↓ choose · Enter or Space check · n add a note"
 	}
 	switch {
 	case menu.required:
 		hint = "Check at least one option first"
 	case menu.noting && question.MultiSelect:
-		hint = "Type a note · it goes with Submit · Tab or Esc stops"
+		hint = "Type a note · it goes with Submit · Esc stops"
 	case menu.noting:
-		hint = "Type a note · Enter sends it with the option · Tab or Esc stops"
+		hint = "Type a note · Enter sends it with the option · Esc stops"
 	}
 	choices := []chatCompletionChoice{{Value: heading, Description: hint}}
 	for i, option := range question.Options {
@@ -138,8 +138,8 @@ func (t *chatTerminal) handleQuestionKey(input chatEditorInput) (bool, error) {
 		note, typed = typed, ""
 	}
 	switch {
-	case input.Key == chatEditorTab && options > 0:
-		menu.noting = !menu.noting
+	case input.Key == chatEditorText && (input.Text == "n" || input.Text == "N") && text == "" && !menu.noting && options > 0:
+		menu.noting = true
 	case input.Key == chatEditorEscape && menu.noting:
 		menu.noting = false
 	case input.Key == chatEditorUp && !strings.Contains(text, "\n"):

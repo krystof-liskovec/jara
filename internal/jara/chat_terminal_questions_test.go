@@ -105,17 +105,17 @@ func TestChatTerminalQuestionNoteGoesWithTheOption(t *testing.T) {
 	term, wire := newTestChatTerminal(t)
 	askChatTerminalQuestion(t, term, `[{"id":"db","question":"Which database?","isOther":true,"options":[{"label":"Postgres"},{"label":"SQLite"}]},`+
 		`{"id":"x","question":"Which extras?","multiSelect":true,"options":[{"label":"Cache"},{"label":"Search"}]}]`)
-	if hint := term.suggestions()[0].Description; !strings.Contains(hint, "Tab add a note") {
+	if hint := term.suggestions()[0].Description; !strings.Contains(hint, "n add a note") {
 		t.Fatalf("hint %q", hint)
 	}
-	// Tab starts a note; Enter sends the option with it, not the text alone.
-	typeChatKeys(t, term, "\x1b[B\tmust run on a phone\r")
+	// N starts a note; Enter sends the option with it, not the text alone.
+	typeChatKeys(t, term, "\x1b[Bnmust run on a phone\r")
 	request := term.u.questionRequests[0]
 	if got := request.answers["db"]; len(got) != 2 || got[0] != "SQLite" || got[1] != "user_note: must run on a phone" {
 		t.Fatalf("answer with note %q", got)
 	}
 	// Multi-select: check, write a note, Submit.
-	typeChatKeys(t, term, " \tonly if cheap")
+	typeChatKeys(t, term, " nonly if cheap")
 	if hint := term.suggestions()[0].Description; !strings.Contains(hint, "goes with Submit") {
 		t.Fatalf("note hint %q", hint)
 	}
@@ -129,7 +129,7 @@ func TestChatTerminalQuestionNoteCanBeAbandoned(t *testing.T) {
 	term, wire := newTestChatTerminal(t)
 	askChatTerminalQuestion(t, term, `[{"id":"db","question":"Which database?","isOther":true,"options":[{"label":"Postgres"}]}]`)
 	// Esc stops the note: the text is the user's own answer again.
-	typeChatKeys(t, term, "\tDuckDB")
+	typeChatKeys(t, term, "nDuckDB")
 	if _, err := term.handleKey(chatTerminalKeyEvent{input: &chatEditorInput{Key: chatEditorEscape}}); err != nil {
 		t.Fatal(err)
 	}
