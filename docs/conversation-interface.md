@@ -279,9 +279,9 @@ Prompts typed while a window reconnects wait in that window until it is back.
   request has an explicit answer. In the full-screen view the menu above the
   input box answers the current question: ↑↓ choose, Enter selects, and in a
   multi-select question Enter or Space checks and Submit sends. Text typed and
-  sent with Enter is your own answer, added to any checked options; after `n`
-  in an empty input box it is a note sent with the chosen option instead
-  (Claude Code receives it as the question's note). Escape stops the note.
+  sent with Enter is your own answer, added to any checked options. `n` in an
+  empty input box, once you chose an option with the keys, starts a note sent
+  with that option instead (Claude Code gets it as the note). Escape stops it.
 - `/quit` stops an idle persistent session. During an active turn it closes the
   UI and leaves the agent running until that turn finishes. Use `/stop` to stop
   immediately and release its workspace lock.
