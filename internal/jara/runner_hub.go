@@ -3,7 +3,6 @@ package jara
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -42,6 +41,17 @@ func runnerRPC(q Request) error {
 			return err
 		}
 		return out.Encode(runnerStatus{Lease: lease, Online: lease.online()})
+	case "runner-prefer":
+		for _, device := range q.Devices {
+			if device == "" || deviceNameRE.MatchString(device) {
+				return fmt.Errorf("invalid device name %q", device)
+			}
+		}
+		_, err = updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
+			lease.Prefers = q.Devices
+			return nil
+		})
+		return err
 	case "runner-claim":
 		claim, err := claimRunner(q, paths)
 		if err != nil {
@@ -53,10 +63,18 @@ func runnerRPC(q Request) error {
 		if err != nil {
 			return err
 		}
+		if q.Compress {
+			data, err := compressedJSON(checkpoint)
+			if err != nil {
+				return err
+			}
+			_, err = os.Stdout.Write(data)
+			return err
+		}
 		return out.Encode(checkpoint)
 	case "runner-checkpoint":
 		var checkpoint runnerCheckpoint
-		if err = json.NewDecoder(io.LimitReader(os.Stdin, maxTransfer*2)).Decode(&checkpoint); err != nil {
+		if err = decodeMaybeCompressed(os.Stdin, maxTransfer*2, &checkpoint); err != nil {
 			return fmt.Errorf("read checkpoint: %w", err)
 		}
 		lease, err := updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
@@ -110,6 +128,9 @@ func storeRunnerCheckpoint(paths runnerPaths, lease *runnerLease, checkpoint run
 			return fmt.Errorf("invalid conversation ID in checkpoint")
 		}
 		bundle.Writer = writer
+		if err := storeNativeFiles(paths, &bundle); err != nil {
+			return err
+		}
 		if err := fsutil.WriteJSON(paths.thread(bundle.ThreadID), bundle); err != nil {
 			return err
 		}
@@ -155,6 +176,7 @@ func exportRunnerCheckpoint(paths runnerPaths, id string, since int64) (runnerCh
 		if err = json.Unmarshal(data, &bundle); err != nil {
 			return runnerCheckpoint{}, err
 		}
+		loadNativeFiles(paths, &bundle)
 		checkpoint.Threads = append(checkpoint.Threads, bundle)
 	}
 	if data, err := os.ReadFile(paths.thread(".schedules")); err == nil {
@@ -176,7 +198,7 @@ func checkpointHubConversations(id, root string, paths runnerPaths, lease *runne
 			current = state.Conversation
 		}
 	}
-	checkpoint, versions, err := collectCheckpoint(root, runnerHub, current, lease.HubVersions)
+	checkpoint, versions, err := collectCheckpoint(root, runnerHub, current, lease.HubVersions, nil)
 	if err != nil {
 		return err
 	}

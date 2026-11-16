@@ -121,26 +121,43 @@ func (lr *localRunner) checkpoint(state chatDaemonState) error {
 	if err := syncWorkspace(lr.remote, lr.binding, lr.request.Root, "push", true, false, true); err != nil {
 		return fmt.Errorf("copy files to the remote: %w", err)
 	}
-	checkpoint, versions, err := collectCheckpoint(lr.request.Root, lr.request.Runner, state.Conversation, marker.Versions)
-	if err != nil {
-		return err
-	}
-	checkpoint.Schedules = pendingSchedules(lr.paths.schedules)
-	checkpoint.Crunch = activeCrunch(lr.paths.crunch)
-	data, err := json.Marshal(checkpoint)
-	if err != nil {
-		return err
-	}
+	// Session files go as the bytes appended since the host's copy; when the
+	// host's copy differs, once more in full.
 	var answer struct {
 		Seq int64 `json:"seq"`
 	}
-	if err = rpc(lr.remote, lr.wire("runner-checkpoint"), bytes.NewReader(data), &answer); err != nil {
+	var versions map[string]string
+	sent := &runnerSentState{Prev: marker.Sent}
+	for attempt := 0; ; attempt++ {
+		sent.Next = map[string]runnerSentFile{}
+		var checkpoint runnerCheckpoint
+		var err error
+		if checkpoint, versions, err = collectCheckpoint(lr.request.Root, lr.request.Runner, state.Conversation, marker.Versions, sent); err != nil {
+			return err
+		}
+		checkpoint.Schedules = pendingSchedules(lr.paths.schedules)
+		checkpoint.Crunch = activeCrunch(lr.paths.crunch)
+		err = rpcCompressed(lr.remote, lr.wire("runner-checkpoint"), checkpoint, &answer)
+		if err == nil {
+			break
+		}
 		if strings.Contains(err.Error(), runnerLostMessage) {
 			lr.markLost()
 		}
-		return err
+		if attempt > 0 || !strings.Contains(err.Error(), runnerResendMessage) {
+			return err
+		}
+		sent.Prev = nil
 	}
-	return updateLocalRunnerMarker(lr.request.ID, func(m *localRunnerMarker) { m.Seq, m.Versions, m.Branch = answer.Seq, versions, branch })
+	return updateLocalRunnerMarker(lr.request.ID, func(m *localRunnerMarker) {
+		m.Seq, m.Versions, m.Branch = answer.Seq, versions, branch
+		if m.Sent == nil || sent.Prev == nil {
+			m.Sent = map[string]runnerSentFile{}
+		}
+		for path, file := range sent.Next {
+			m.Sent[path] = file
+		}
+	})
 }
 
 // release answers a jara/release request once this session is idle.

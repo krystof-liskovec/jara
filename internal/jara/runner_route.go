@@ -112,8 +112,17 @@ func hubRunnerDaemon(q Request, server *exec.Cmd, schedules *chatScheduleManager
 	}
 	server.Env = append(os.Environ(), agentrouter.PortableThreadsEnv+"=1")
 	hooks := chatDaemonRunnerHooks{handBack: func() bool {
-		lease, _, err := loadRunnerLease(paths, q.ID)
-		return err == nil && lease.Want != ""
+		if lease, _, err := loadRunnerLease(paths, q.ID); err != nil || len(lease.Wants) == 0 {
+			return false
+		}
+		// The first hand-back of a round starts the preferred device's grace.
+		lease, err := updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
+			if lease.HandBackAt == 0 {
+				lease.HandBackAt = time.Now().Unix()
+			}
+			return nil
+		})
+		return err == nil && len(lease.Wants) > 0
 	}}
 	if q.Headless && q.Conversation != "" {
 		hooks.bootstrap = q.Conversation

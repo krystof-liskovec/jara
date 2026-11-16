@@ -82,7 +82,7 @@ func workspaceThreadVersions(root string) map[string]string {
 // collectCheckpoint exports the conversations whose version differs from
 // known, and returns every current version. current is exported even when
 // Jara has no record of it yet (a Codex conversation started before).
-func collectCheckpoint(root, writer, current string, known map[string]string) (runnerCheckpoint, map[string]string, error) {
+func collectCheckpoint(root, writer, current string, known map[string]string, sent *runnerSentState) (runnerCheckpoint, map[string]string, error) {
 	rollouts := portable.IndexCodexRollouts()
 	checkpoint := runnerCheckpoint{Current: current}
 	versions := map[string]string{}
@@ -95,12 +95,12 @@ func collectCheckpoint(root, writer, current string, known map[string]string) (r
 		if known[thread.ID] == version {
 			continue
 		}
-		bundle, err := exportThread(&thread, root, writer, rollouts)
+		bundle, err := exportThread(&thread, root, writer, rollouts, sent)
 		if err != nil {
 			return runnerCheckpoint{}, nil, err
 		}
 		for _, file := range bundle.Files {
-			total += len(file.Data)
+			total += file.size()
 		}
 		if total > maxTransfer {
 			return runnerCheckpoint{}, nil, fmt.Errorf("conversation files exceed %d MiB", maxTransfer>>20)

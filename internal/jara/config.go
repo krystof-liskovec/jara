@@ -53,6 +53,7 @@ type Config struct {
 	Agent           string                    `json:"agent,omitempty"`
 	WorkspaceAgents map[string]string         `json:"workspace_agents,omitempty"`
 	Remotes         map[string]Remote         `json:"remotes"`
+	Order           []string                  `json:"order,omitempty"` // remote ranking; see rankedRemotes
 	Bindings        map[string]Binding        `json:"bindings"`
 	Associations    map[string]Binding        `json:"associations"`
 	HostDeployments map[string]HostDeployment `json:"host_deployments,omitempty"`

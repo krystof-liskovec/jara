@@ -17,7 +17,8 @@ import (
 //   - An offline device is replaced; the claimant continues from its last
 //     checkpoint.
 //   - The host's own session is stopped when idle. When it is busy and the
-//     claim may wait, the host hands back after its turn (lease.Want).
+//     claim may wait, the host hands back after its turn (lease.Wants). When
+//     several devices wait, the most-preferred one gets it (lease.Prefers).
 //
 // A claim that has to wait returns Wait; the claimant watches the current
 // runner's live session meanwhile.
@@ -46,6 +47,12 @@ func claimRunner(q Request, paths runnerPaths) (runnerClaim, error) {
 	}
 	var claim runnerClaim
 	_, err = updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
+		if lease.Owner == "" && q.Passive {
+			if preferred := lease.yieldsTo(q.Runner); preferred != "" {
+				claim = runnerClaim{Wait: true, Runner: runnerHub}
+				return nil
+			}
+		}
 		if lease.Owner != "" && lease.Owner != q.Runner {
 			if lease.online() && !q.Force {
 				claim = runnerClaim{Wait: true, Runner: lease.Owner}
@@ -57,7 +64,10 @@ func claimRunner(q Request, paths runnerPaths) (runnerClaim, error) {
 			if !q.Wait {
 				return fmt.Errorf("the remote host is running this workspace's agent: %w", stopErr)
 			}
-			lease.Want = q.Runner
+			lease.startWaitRound()
+			if _, waiting := lease.Wants[q.Runner]; !waiting {
+				lease.Wants[q.Runner] = time.Now().Unix()
+			}
 			claim = runnerClaim{Wait: true, Runner: runnerHub}
 			return nil
 		}
@@ -68,7 +78,7 @@ func claimRunner(q Request, paths runnerPaths) (runnerClaim, error) {
 		}
 		now := time.Now().Unix()
 		lease.Owner, lease.Epoch, lease.ClaimedAt, lease.LastSeen, lease.LastRunner = q.Runner, lease.Epoch+1, now, now, q.Runner
-		lease.Want, lease.Link, lease.Busy, lease.Pending = "", "", false, false
+		lease.Wants, lease.HandBackAt, lease.Link, lease.Busy, lease.Pending = nil, 0, "", false, false
 		claim = runnerClaim{Epoch: lease.Epoch, Seq: lease.Seq, Writer: lease.Writer, Conversation: lease.Conversation,
 			Socket: paths.socket(lease.Epoch), Root: workspace.Path}
 		return nil

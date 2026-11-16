@@ -18,7 +18,19 @@ type runnerNativeFile struct {
 	BackendID string `json:"backend_id"`
 	CWD       string `json:"cwd,omitempty"`  // Claude Code's working directory
 	Path      string `json:"path,omitempty"` // Codex rollout path under CODEX_HOME
-	Data      []byte `json:"data"`
+	// The contents: Text when UTF-8, otherwise Data. With Base > 0 they are
+	// the bytes after offset Base of a file whose bytes before Base end with
+	// the runnerTailSize bytes hashed in Tail.
+	Text string `json:"text,omitempty"`
+	Data []byte `json:"data,omitempty"`
+	Base int64  `json:"base,omitempty"`
+	Tail string `json:"tail,omitempty"`
+}
+
+// runnerSentState tracks which session file contents the host stores: Prev
+// before this checkpoint, Next once the host accepts it. Paths are local.
+type runnerSentState struct {
+	Prev, Next map[string]runnerSentFile
 }
 
 // runnerBundle is a conversation checkpoint: Jara's own transcript plus the
@@ -44,11 +56,12 @@ func exportConversation(threadID, root, writer string) (runnerBundle, error) {
 		thread = &agentrouter.Thread{ID: threadID, CWD: root, Created: time.Now().Unix(), Updated: time.Now().Unix(),
 			Segments: []agentrouter.ThreadSegment{{Agent: protocol.AgentCodex, BackendID: threadID, StartTurn: 1}}}
 	}
-	return exportThread(thread, root, writer, portable.IndexCodexRollouts())
+	return exportThread(thread, root, writer, portable.IndexCodexRollouts(), nil)
 }
 
-// exportThread reads a conversation's record and native session files.
-func exportThread(thread *agentrouter.Thread, root, writer string, rollouts map[string]string) (runnerBundle, error) {
+// exportThread reads a conversation's record and native session files; with
+// sent, only what the host lacks of each file.
+func exportThread(thread *agentrouter.Thread, root, writer string, rollouts map[string]string, sent *runnerSentState) (runnerBundle, error) {
 	thread.Portable = true
 	record, err := json.Marshal(thread)
 	if err != nil {
@@ -81,8 +94,16 @@ func exportThread(thread *agentrouter.Thread, root, writer string, rollouts map[
 		if statErr != nil || !info.Mode().IsRegular() || info.Size() > portable.MaxNativeFile {
 			continue
 		}
-		if file.Data, err = os.ReadFile(path); err != nil {
+		var prev map[string]runnerSentFile
+		if sent != nil {
+			prev = sent.Prev
+		}
+		state, readErr := readNativeFile(path, info.Size(), prev, &file)
+		if readErr != nil {
 			continue
+		}
+		if sent != nil {
+			sent.Next[path] = state
 		}
 		bundle.Files = append(bundle.Files, file)
 	}
@@ -108,7 +129,10 @@ func importConversation(bundle runnerBundle, root string) (bool, error) {
 		if !portable.ValidBackendID(file.BackendID) {
 			continue
 		}
-		data := portable.RewritePath(file.Data, bundle.Root, root)
+		if file.Base != 0 {
+			return false, fmt.Errorf("checkpoint carries a partial conversation file")
+		}
+		data := portable.RewritePath(file.bytes(), bundle.Root, root)
 		var dest string
 		switch file.Agent {
 		case protocol.AgentClaude:

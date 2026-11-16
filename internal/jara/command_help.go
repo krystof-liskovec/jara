@@ -253,7 +253,7 @@ var commandHelp = map[string]helpEntry{
 		examples: []string{"jara ui"},
 	},
 	"remote": {
-		usage:   "jara remote add|list|use|remove ...",
+		usage:   "jara remote add|list|use|order|remove ...",
 		summary: "Manage named SSH connections.",
 		examples: []string{
 			"jara remote add jellyfish --host jellyfish --port 822 --user agent",
@@ -275,8 +275,8 @@ var commandHelp = map[string]helpEntry{
 			"jara remote add work --host server.example --identity ~/.ssh/id_ed25519_jara",
 		},
 	},
-	"remote list":   {usage: "jara remote list", summary: "List configured remotes; * marks the default.", examples: []string{"jara remote list"}},
-	"remote use":    {usage: "jara remote use NAME", summary: "Set the default remote.", examples: []string{"jara remote use jellyfish"}},
+	"remote list":   {usage: "jara remote list", summary: "List configured remotes by rank; * marks the default.", examples: []string{"jara remote list"}},
+	"remote use":    {usage: "jara remote use NAME", summary: "Make NAME the default (top-ranked) remote.", examples: []string{"jara remote use jellyfish"}},
 	"remote remove": {usage: "jara remote remove NAME", summary: "Forget a manually configured remote.", examples: []string{"jara remote remove old-server"}},
 	"workspace": {
 		usage:   "jara workspace list|delete ID [OPTIONS]",

@@ -159,7 +159,7 @@ See [phone setup, keys and direct workspace commands](docs/plain-ssh.md).
 ```sh
 jara remote add work --host example.org --port 2222 --user agent --identity /path/to/key
 jara remote list
-jara remote use work
+jara remote use work   # or rank several: jara remote order work backup
 jara doctor
 jara auth codex
 ```
