@@ -21,7 +21,9 @@ type runnerCheckpoint struct {
 	Seq       int64          `json:"seq,omitempty"` // set by the host on export
 	Current   string         `json:"current,omitempty"`
 	Threads   []runnerBundle `json:"threads,omitempty"`
-	Schedules []chatSchedule `json:"schedules,omitempty"`
+	Schedules []chatSchedule `json:"schedules,omitempty"` // queued and scheduled prompts
+	// Crunch is the active /crunch or /goalcrunch task, if any.
+	Crunch json.RawMessage `json:"crunch,omitempty"`
 }
 
 // workspaceThreads lists Jara's conversations that ran inside root.
@@ -175,4 +177,34 @@ func replaceSchedules(path string, incoming []chatSchedule) error {
 		return nil
 	}
 	return fsutil.WriteJSON(path, kept)
+}
+
+// activeCrunch reads a session's /crunch task while it is still active.
+func activeCrunch(path string) json.RawMessage {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var job chatCrunchJob
+	if json.Unmarshal(data, &job) != nil || !crunchJobActive(job.Status) {
+		return nil
+	}
+	return data
+}
+
+// installCrunch makes task the /crunch task of a session that is not
+// running; a running task resumes from the saved conversation when the
+// session starts. Without a task, a stale one here is removed.
+func installCrunch(path string, task json.RawMessage) error {
+	if len(task) == 0 {
+		if activeCrunch(path) != nil {
+			return os.Remove(path)
+		}
+		return nil
+	}
+	var job chatCrunchJob
+	if err := json.Unmarshal(task, &job); err != nil {
+		return fmt.Errorf("read moved crunch task: %w", err)
+	}
+	return fsutil.WriteJSON(path, job)
 }

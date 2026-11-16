@@ -111,4 +111,16 @@ grep -q "runs on this device (desktop)" $R/desktop.out || { cat $R/desktop.out; 
 grep -q laptop-edit $R/repo2/a.txt || fail "desktop checkout missing laptop edit"
 [ "$(ls $D/data/agent-threads | wc -l)" -ge 2 ] || fail "desktop did not receive every conversation"
 tail -1 $R/fake.log | grep -q "desktop turn" || fail "desktop turn did not run"
+
+echo "== 7. waiting work moves: the laptop sleeps with a scheduled prompt"
+await "No device holds" || fail "desktop did not hand over on /quit"
+chat "/schedule in 20s scheduled while asleep" /detach jara > $R/schedule.out
+grep -qi "scheduled" $R/schedule.out || { cat $R/schedule.out; fail "prompt was not scheduled"; }
+await "laptop runs the agent .* online" || fail "laptop not online"
+sleep 2 # a heartbeat reports the waiting prompt
+PROCS="$(laptop_procs)"
+kill -STOP $PROCS
+for _ in $(seq 60); do grep -q "scheduled while asleep" $R/fake.log && break; sleep 0.5; done
+kill -CONT $PROCS
+grep -q "scheduled while asleep" $R/fake.log || fail "the remote did not run the laptop's scheduled prompt"
 echo PASS

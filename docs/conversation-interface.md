@@ -161,9 +161,11 @@ While a turn is running, type a follow-up and press Tab to queue it. Jara sends
 queued prompts one at a time after the current turn. Use `/queue` to inspect the
 queue, which is also shown above the composer. Use `/queue edit N` to load a
 queued prompt into the composer, then press Enter to save the edit or Escape to
-cancel it. `/queue run` starts one while idle, and `/queue clear` removes queued
-prompts for this conversation. The queue is held by the attached interface and
-is cleared when that interface exits.
+cancel it, and `/queue clear` removes queued prompts for this conversation. In a
+persistent session the session keeps the queue: queued prompts run one at a time
+whenever the conversation is idle, also after the window closes, every attached
+window shows them, and they move with the conversation to another machine.
+Prompts typed while a window reconnects wait in that window until it is back.
 
 - `/compose` starts a multiline message; `/send` submits it and `/discard`
   clears it. Blank lines and indentation are preserved. `/help`, `/status`,

@@ -19,12 +19,12 @@ import (
 // device runs its agent, renews the device's lease over a link that also
 // carries the tunnel to the live session, and hands the workspace over.
 type localRunner struct {
-	remote    Remote
-	binding   Binding
-	request   Request
-	schedules string                 // this session's scheduled prompts
-	status    func() runnerHeartbeat // what the session is doing
-	released  bool
+	remote   Remote
+	binding  Binding
+	request  Request
+	paths    chatDaemonPaths        // this session's queue, schedules and crunch task
+	status   func() runnerHeartbeat // what the session is doing
+	released bool
 
 	checkpointMu sync.Mutex // one checkpoint at a time
 	pendingMu    sync.Mutex
@@ -42,9 +42,9 @@ type localRunner struct {
 	done     chan struct{}
 }
 
-func newLocalRunner(remote Remote, q Request, schedules string, status func() runnerHeartbeat) *localRunner {
+func newLocalRunner(remote Remote, q Request, paths chatDaemonPaths, status func() runnerHeartbeat) *localRunner {
 	return &localRunner{remote: remote, binding: Binding{Remote: q.RemoteName, Workspace: q.Workspace}, request: q,
-		schedules: schedules, status: status, lost: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{})}
+		paths: paths, status: status, lost: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{})}
 }
 
 func (lr *localRunner) hooks() chatDaemonRunnerHooks {
@@ -117,7 +117,8 @@ func (lr *localRunner) checkpoint(state chatDaemonState) error {
 	if err != nil {
 		return err
 	}
-	checkpoint.Schedules = pendingSchedules(lr.schedules)
+	checkpoint.Schedules = pendingSchedules(lr.paths.schedules)
+	checkpoint.Crunch = activeCrunch(lr.paths.crunch)
 	data, err := json.Marshal(checkpoint)
 	if err != nil {
 		return err

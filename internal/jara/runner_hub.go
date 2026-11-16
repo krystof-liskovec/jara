@@ -118,6 +118,13 @@ func storeRunnerCheckpoint(paths runnerPaths, lease *runnerLease, checkpoint run
 	if err := fsutil.WriteJSON(paths.thread(".schedules"), checkpoint.Schedules); err != nil {
 		return err
 	}
+	crunch := checkpoint.Crunch
+	if len(crunch) == 0 {
+		crunch = json.RawMessage("null")
+	}
+	if err := os.WriteFile(paths.thread(".crunch"), crunch, 0600); err != nil {
+		return err
+	}
 	lease.Writer, lease.CheckpointAt = writer, time.Now().Unix()
 	if checkpoint.Current != "" {
 		lease.Conversation = checkpoint.Current
@@ -153,6 +160,9 @@ func exportRunnerCheckpoint(paths runnerPaths, id string, since int64) (runnerCh
 	if data, err := os.ReadFile(paths.thread(".schedules")); err == nil {
 		_ = json.Unmarshal(data, &checkpoint.Schedules)
 	}
+	if data, err := os.ReadFile(paths.thread(".crunch")); err == nil && string(data) != "null" {
+		checkpoint.Crunch = data
+	}
 	return checkpoint, nil
 }
 
@@ -172,9 +182,10 @@ func checkpointHubConversations(id, root string, paths runnerPaths, lease *runne
 	}
 	if daemon.schedules != "" {
 		checkpoint.Schedules = pendingSchedules(daemon.schedules)
+		checkpoint.Crunch = activeCrunch(daemon.crunch)
 	}
 	lease.HubVersions = versions
-	if len(checkpoint.Threads) == 0 && len(checkpoint.Schedules) == 0 && (current == "" || current == lease.Conversation) {
+	if len(checkpoint.Threads) == 0 && len(checkpoint.Schedules) == 0 && len(checkpoint.Crunch) == 0 && (current == "" || current == lease.Conversation) {
 		return nil // nothing changed here since the last checkpoint
 	}
 	return storeRunnerCheckpoint(paths, lease, checkpoint, runnerHub)
@@ -203,6 +214,9 @@ func importHubCheckpoint(id string, paths runnerPaths, lease *runnerLease) error
 	}
 	if daemon, pathErr := chatDaemonPathSet(id); pathErr == nil && chatDaemonPID(daemon) == 0 {
 		if err = replaceSchedules(daemon.schedules, checkpoint.Schedules); err != nil {
+			return err
+		}
+		if err = installCrunch(daemon.crunch, checkpoint.Crunch); err != nil {
 			return err
 		}
 	}
