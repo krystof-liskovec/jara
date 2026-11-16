@@ -62,7 +62,7 @@ jara auth codex --remote work
 jara auth claude --remote work   # optional: paste a token from `claude setup-token`
 ```
 
-Configure commit name/email separately with [Git identity settings](docs/git-identity.md). Experimental: `jara --local` runs the agent on your machine while the host keeps a shared copy; see [local runner](docs/local-runner.md).
+Configure commit name/email separately with [Git identity settings](docs/git-identity.md). Experimental: the Jara interface runs the agent on your machine while the host keeps a shared copy; see [agents on your device](docs/local-runner.md).
 
 From a Git repository, run `jara --remote work` to reuse a checkout or clone it.
 For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in

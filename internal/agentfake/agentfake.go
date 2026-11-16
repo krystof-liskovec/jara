@@ -191,7 +191,11 @@ func fakeCodex() {
 			reply(map[string]any{"data": []any{map[string]any{"id": "gpt-x", "model": "gpt-x", "displayName": "GPT X"}}, "nextCursor": nil})
 		case "thread/start":
 			threads++
-			reply(map[string]any{"thread": map[string]any{"id": fmt.Sprintf("codex-thread-%d", threads), "cwd": params["cwd"], "turns": []any{}}, "model": "gpt-x"})
+			id := fmt.Sprintf("codex-thread-%d", threads)
+			if os.Getenv("JARA_FAKE_UNIQUE_THREADS") == "1" { // unique across processes, like real Codex
+				id = fmt.Sprintf("codex-thread-%d-%d", os.Getpid(), threads)
+			}
+			reply(map[string]any{"thread": map[string]any{"id": id, "cwd": params["cwd"], "turns": []any{}}, "model": "gpt-x"})
 		case "thread/resume":
 			reply(map[string]any{"thread": map[string]any{"id": params["threadId"], "turns": []any{}}, "model": "gpt-x"})
 		case "thread/fork":
@@ -227,6 +231,10 @@ func fakeCodex() {
 			}
 			thread := params["threadId"]
 			reply(map[string]any{"turn": map[string]any{"id": "ct"}})
+			if strings.Contains(text, "[slow]") { // a long turn, for runner hand-over tests
+				_ = out.Encode(map[string]any{"method": "turn/started", "params": map[string]any{"threadId": thread, "turn": map[string]any{"id": "ct"}}})
+				time.Sleep(20 * time.Second)
+			}
 			for _, n := range []map[string]any{
 				{"method": "turn/started", "params": map[string]any{"threadId": thread, "turn": map[string]any{"id": "ct"}}},
 				{"method": "item/completed", "params": map[string]any{"threadId": thread, "item": map[string]any{"id": "m", "type": "agentMessage", "text": "codex: " + LastLine(text)}}},

@@ -94,14 +94,19 @@ type Request struct {
 	CodexArgs          []string `json:"codex_args,omitempty"`
 	AgentArgs          []string `json:"agent_args,omitempty"` // Claude Code arguments for the Jara UI
 	Reconnect          bool     `json:"reconnect,omitempty"`  // the client reconnects if the session stops
-	// Local runner fields: the device running the agent, its lease epoch, the
-	// local checkout, and the remote that keeps the shared copy.
-	Runner         string `json:"runner,omitempty"`
-	Epoch          int64  `json:"epoch,omitempty"`
-	RunnerTakeover bool   `json:"runner_takeover,omitempty"` // continue here although the device is offline
-	Root           string `json:"root,omitempty"`
-	RemoteName     string `json:"remote_name,omitempty"`
-	Workspace      string `json:"workspace,omitempty"`
+	// Local runner fields: the device running the agent, its lease epoch and
+	// link, the local checkout, and the remote that keeps the shared copy.
+	Runner     string `json:"runner,omitempty"`
+	Epoch      int64  `json:"epoch,omitempty"`
+	Link       string `json:"link,omitempty"`
+	Since      int64  `json:"since,omitempty"`   // export checkpoints after this one
+	Wait       bool   `json:"wait,omitempty"`    // a busy runner may hand over after its turn
+	Passive    bool   `json:"passive,omitempty"` // a reconnecting window: never displace another device
+	Headless   bool   `json:"headless,omitempty"`
+	Continue   string `json:"continue,omitempty"` // prompt that continues an interrupted turn
+	Root       string `json:"root,omitempty"`
+	RemoteName string `json:"remote_name,omitempty"`
+	Workspace  string `json:"workspace,omitempty"`
 }
 
 func rpc(r Remote, q Request, input io.Reader, v any) error {

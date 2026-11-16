@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"krystof.liskovec/jara/internal/agentrouter"
@@ -43,19 +44,24 @@ func exportConversation(threadID, root, writer string) (runnerBundle, error) {
 		thread = &agentrouter.Thread{ID: threadID, CWD: root, Created: time.Now().Unix(), Updated: time.Now().Unix(),
 			Segments: []agentrouter.ThreadSegment{{Agent: protocol.AgentCodex, BackendID: threadID, StartTurn: 1}}}
 	}
+	return exportThread(thread, root, writer, portable.IndexCodexRollouts())
+}
+
+// exportThread reads a conversation's record and native session files.
+func exportThread(thread *agentrouter.Thread, root, writer string, rollouts map[string]string) (runnerBundle, error) {
 	thread.Portable = true
 	record, err := json.Marshal(thread)
 	if err != nil {
 		return runnerBundle{}, err
 	}
-	bundle := runnerBundle{ThreadID: threadID, Root: root, Thread: record, Writer: writer, At: time.Now().Unix()}
+	bundle := runnerBundle{ThreadID: thread.ID, Root: root, Thread: record, Writer: writer, At: time.Now().Unix()}
 	seen := map[string]bool{}
-	var total int
 	for _, segment := range thread.Segments {
-		if seen[segment.Agent+"/"+segment.BackendID] || !portable.ValidBackendID(segment.BackendID) {
+		key := segment.Agent + "/" + segment.BackendID
+		if seen[key] || !portable.ValidBackendID(segment.BackendID) {
 			continue
 		}
-		seen[segment.Agent+"/"+segment.BackendID] = true
+		seen[key] = true
 		file := runnerNativeFile{Agent: segment.Agent, BackendID: segment.BackendID}
 		var path string
 		switch segment.Agent {
@@ -65,9 +71,11 @@ func exportConversation(threadID, root, writer string) (runnerBundle, error) {
 			}
 			file.CWD, path = thread.CWD, portable.ClaudeSessionPath(thread.CWD, segment.BackendID)
 		default:
-			if path, file.Path, err = portable.FindCodexRollout(segment.BackendID); err != nil {
+			rel, ok := rollouts[segment.BackendID]
+			if !ok {
 				continue // imported as a briefing instead
 			}
+			file.Path, path = rel, filepath.Join(portable.CodexHome(), filepath.FromSlash(rel))
 		}
 		info, statErr := os.Stat(path)
 		if statErr != nil || !info.Mode().IsRegular() || info.Size() > portable.MaxNativeFile {
@@ -75,9 +83,6 @@ func exportConversation(threadID, root, writer string) (runnerBundle, error) {
 		}
 		if file.Data, err = os.ReadFile(path); err != nil {
 			continue
-		}
-		if total += len(file.Data); total > maxTransfer {
-			return runnerBundle{}, fmt.Errorf("conversation files exceed %d MiB", maxTransfer>>20)
 		}
 		bundle.Files = append(bundle.Files, file)
 	}

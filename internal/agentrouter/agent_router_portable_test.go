@@ -58,7 +58,14 @@ func TestMovedCodexThreadRebriefs(t *testing.T) {
 	if resumed := h.Response(h.Request("thread/resume", map[string]any{"threadId": "codex-moved"})); resumed["error"] != nil {
 		t.Fatalf("resume: %v", resumed)
 	}
-	routedTurn(h, "codex-moved", textInput("next"))
+	seen := routedTurn(h, "codex-moved", textInput("next"))
+	for _, m := range seen {
+		if method, _ := m["method"].(string); method == "turn/started" || method == "turn/completed" {
+			if thread := m["params"].(map[string]any)["threadId"]; thread != "codex-moved" {
+				t.Fatalf("%s reports thread %v, not the conversation", method, thread)
+			}
+		}
+	}
 	turns := agentfake.ReadLog(t, "codex-turn")
 	if last := turns[len(turns)-1]; strings.HasPrefix(last, "codex-moved|") || !strings.Contains(last, "moved to another machine") || !strings.Contains(last, "User: earlier") {
 		t.Fatalf("moved Codex turn: %q", turns)

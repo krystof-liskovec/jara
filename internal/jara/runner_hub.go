@@ -1,33 +1,33 @@
 package jara
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"time"
 
 	"krystof.liskovec/jara/internal/fsutil"
+	"krystof.liskovec/jara/internal/portable"
 )
 
-// runnerClaim answers a device that now runs a workspace's agent.
+// runnerClaim answers a device asking to run a workspace's agent. Wait means
+// the current runner is busy and hands the workspace over when its turn ends.
 type runnerClaim struct {
-	Epoch        int64  `json:"epoch"`
-	Seq          int64  `json:"seq"`
+	Wait         bool   `json:"wait,omitempty"`
+	Runner       string `json:"runner,omitempty"` // the runner being waited for
+	Epoch        int64  `json:"epoch,omitempty"`
+	Seq          int64  `json:"seq,omitempty"`
 	Writer       string `json:"writer,omitempty"`
 	Conversation string `json:"conversation,omitempty"`
-	Socket       string `json:"socket"`
-	Root         string `json:"root"`
+	Socket       string `json:"socket,omitempty"`
+	Root         string `json:"root,omitempty"`
 }
 
 type runnerStatus struct {
 	Lease  runnerLease `json:"lease"`
 	Online bool        `json:"online"`
 }
-
-const runnerReleaseTimeout = 90 * time.Second
 
 func runnerRPC(q Request) error {
 	paths, err := runnerPathSet(q.ID)
@@ -41,12 +41,7 @@ func runnerRPC(q Request) error {
 		if err != nil {
 			return err
 		}
-		status := runnerStatus{Lease: lease}
-		if conn, dialErr := dialRunner(paths, lease); dialErr == nil {
-			conn.Close()
-			status.Online = true
-		}
-		return out.Encode(status)
+		return out.Encode(runnerStatus{Lease: lease, Online: lease.online()})
 	case "runner-claim":
 		claim, err := claimRunner(q, paths)
 		if err != nil {
@@ -54,245 +49,164 @@ func runnerRPC(q Request) error {
 		}
 		return out.Encode(claim)
 	case "runner-export":
-		var bundle runnerBundle
-		data, err := os.ReadFile(paths.bundle)
+		checkpoint, err := exportRunnerCheckpoint(paths, q.ID, q.Since)
 		if err != nil {
-			return fmt.Errorf("this workspace has no conversation checkpoint yet")
-		}
-		if err = json.Unmarshal(data, &bundle); err != nil {
 			return err
 		}
-		return out.Encode(bundle)
-	}
-	unlock, err := lockRunner(paths)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	lease, _, err := loadRunnerLease(paths, q.ID)
-	if err != nil {
-		return err
-	}
-	if !lease.holds(q.Runner, q.Epoch) {
-		return errRunnerLost
-	}
-	lease.LastSeen = time.Now().Unix()
-	switch q.Op {
-	case "runner-release":
-		lease.Owner = ""
-		return saveRunnerLease(paths, lease)
-	case "runner-tunnel":
-		// Only this lease's device uses this socket, so an existing one is left
-		// from its earlier, dropped connection. sshd does not replace it.
-		socket := paths.socket(lease.Epoch)
-		_ = os.Remove(socket)
-		if err = saveRunnerLease(paths, lease); err != nil {
-			return err
-		}
-		return out.Encode(map[string]string{"socket": socket})
+		return out.Encode(checkpoint)
 	case "runner-checkpoint":
-		var bundle runnerBundle
-		if err = json.NewDecoder(io.LimitReader(os.Stdin, maxTransfer*2)).Decode(&bundle); err != nil {
+		var checkpoint runnerCheckpoint
+		if err = json.NewDecoder(io.LimitReader(os.Stdin, maxTransfer*2)).Decode(&checkpoint); err != nil {
 			return fmt.Errorf("read checkpoint: %w", err)
 		}
-		if err = storeRunnerCheckpoint(paths, &lease, bundle, q.Runner); err != nil {
+		lease, err := updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
+			if !lease.holds(q.Runner, q.Epoch) {
+				return errRunnerLost
+			}
+			lease.LastSeen = time.Now().Unix()
+			return storeRunnerCheckpoint(paths, lease, checkpoint, q.Runner)
+		})
+		if err != nil {
 			return err
 		}
 		return out.Encode(map[string]int64{"seq": lease.Seq})
+	case "runner-release", "runner-tunnel":
+		var socket string
+		_, err = updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
+			if !lease.holds(q.Runner, q.Epoch) {
+				return errRunnerLost
+			}
+			lease.LastSeen = time.Now().Unix()
+			if q.Op == "runner-release" {
+				lease.Owner, lease.Link, lease.Busy, lease.Pending = "", "", false, false
+				return nil
+			}
+			// Only this lease's device uses this socket, so an existing one is
+			// left from its earlier, dropped connection. sshd may not replace it.
+			socket = paths.socket(lease.Epoch)
+			_ = os.Remove(socket)
+			return nil
+		})
+		if err != nil || q.Op == "runner-release" {
+			return err
+		}
+		return out.Encode(map[string]string{"socket": socket})
 	}
 	return fmt.Errorf("unknown RPC operation %s", q.Op)
 }
 
-func storeRunnerCheckpoint(paths runnerPaths, lease *runnerLease, bundle runnerBundle, writer string) error {
-	bundle.Writer = writer
-	if err := fsutil.WriteJSON(paths.bundle, bundle); err != nil {
+// storeRunnerCheckpoint saves conversations and scheduled prompts written by
+// writer as the next checkpoint. The caller holds the lease lock.
+func storeRunnerCheckpoint(paths runnerPaths, lease *runnerLease, checkpoint runnerCheckpoint, writer string) error {
+	if err := os.MkdirAll(paths.threads, 0700); err != nil {
 		return err
 	}
 	lease.Seq++
-	lease.Writer, lease.CheckpointAt, lease.Conversation = writer, time.Now().Unix(), bundle.ThreadID
+	if lease.Threads == nil {
+		lease.Threads = map[string]int64{}
+	}
+	for _, bundle := range checkpoint.Threads {
+		if !portable.ValidBackendID(bundle.ThreadID) {
+			return fmt.Errorf("invalid conversation ID in checkpoint")
+		}
+		bundle.Writer = writer
+		if err := fsutil.WriteJSON(paths.thread(bundle.ThreadID), bundle); err != nil {
+			return err
+		}
+		lease.Threads[bundle.ThreadID] = lease.Seq
+	}
+	if err := fsutil.WriteJSON(paths.thread(".schedules"), checkpoint.Schedules); err != nil {
+		return err
+	}
+	lease.Writer, lease.CheckpointAt = writer, time.Now().Unix()
+	if checkpoint.Current != "" {
+		lease.Conversation = checkpoint.Current
+	}
 	if writer == runnerHub {
 		lease.HubSeq = lease.Seq
 	}
-	return saveRunnerLease(paths, *lease)
+	return nil
 }
 
-// claimRunner gives the workspace to device q.Runner. A live device is asked
-// to release it after its final checkpoint; an unreachable one is replaced
-// only with q.Force. The host's own idle session is stopped and checkpointed.
-func claimRunner(q Request, paths runnerPaths) (runnerClaim, error) {
-	if q.Runner == "" || q.Runner == runnerHub {
-		return runnerClaim{}, fmt.Errorf("invalid runner name")
-	}
-	workspace, err := workspaceInfo(q.ID)
+// exportRunnerCheckpoint returns the conversations changed after checkpoint
+// since, with the pending scheduled prompts of the latest checkpoint.
+func exportRunnerCheckpoint(paths runnerPaths, id string, since int64) (runnerCheckpoint, error) {
+	lease, _, err := loadRunnerLease(paths, id)
 	if err != nil {
-		return runnerClaim{}, err
+		return runnerCheckpoint{}, err
 	}
-	unlock, err := lockRunner(paths)
-	if err != nil {
-		return runnerClaim{}, err
-	}
-	defer func() { unlock() }()
-	lease, _, err := loadRunnerLease(paths, q.ID)
-	if err != nil {
-		return runnerClaim{}, err
-	}
-	if lease.Owner != "" && lease.Owner != q.Runner {
-		if conn, dialErr := dialRunner(paths, lease); dialErr == nil {
-			previous := lease
-			releaseErr := requestRunnerRelease(conn)
-			unlock()
-			if releaseErr == nil {
-				lease = awaitRunnerRelease(paths, q.ID, previous)
-			}
-			if unlock, err = lockRunner(paths); err != nil {
-				unlock = func() {}
-				return runnerClaim{}, err
-			}
-			if lease, _, err = loadRunnerLease(paths, q.ID); err != nil {
-				return runnerClaim{}, err
-			}
-			if lease.Owner != "" && lease.Owner != q.Runner {
-				return runnerClaim{}, fmt.Errorf("%s is still running this conversation (a turn or scheduled work is in progress); try again when it is idle", lease.Owner)
-			}
-		} else if !q.Force {
-			return runnerClaim{}, offlineRunnerError(lease)
-		} else {
-			fmt.Fprintf(os.Stderr, "Taking over from %s at its checkpoint from %s.\n", lease.Owner, describeRunnerTime(lease.CheckpointAt))
+	checkpoint := runnerCheckpoint{Seq: lease.Seq, Current: lease.Conversation}
+	for thread, seq := range lease.Threads {
+		if seq <= since {
+			continue
 		}
-	}
-	if err = releaseIdleChatDaemon(q.ID); err != nil {
-		return runnerClaim{}, fmt.Errorf("the remote host is running this workspace's agent: %w", err)
-	}
-	if lease.LastRunner == runnerHub || lease.LastRunner == "" {
-		if err = checkpointHubConversation(q.ID, workspace.Path, paths, &lease); err != nil {
-			fmt.Fprintln(os.Stderr, "Could not checkpoint the remote host's conversation:", err)
+		data, err := os.ReadFile(paths.thread(thread))
+		if err != nil {
+			return runnerCheckpoint{}, err
 		}
+		var bundle runnerBundle
+		if err = json.Unmarshal(data, &bundle); err != nil {
+			return runnerCheckpoint{}, err
+		}
+		checkpoint.Threads = append(checkpoint.Threads, bundle)
 	}
-	now := time.Now().Unix()
-	lease.Owner, lease.Epoch, lease.ClaimedAt, lease.LastSeen, lease.LastRunner = q.Runner, lease.Epoch+1, now, now, q.Runner
-	if err = saveRunnerLease(paths, lease); err != nil {
-		return runnerClaim{}, err
+	if data, err := os.ReadFile(paths.thread(".schedules")); err == nil {
+		_ = json.Unmarshal(data, &checkpoint.Schedules)
 	}
-	return runnerClaim{Epoch: lease.Epoch, Seq: lease.Seq, Writer: lease.Writer, Conversation: lease.Conversation,
-		Socket: paths.socket(lease.Epoch), Root: workspace.Path}, nil
+	return checkpoint, nil
 }
 
-// requestRunnerRelease asks a device's session, through its tunnel, to save
-// a final checkpoint and give up the lease. A busy session ignores it.
-func requestRunnerRelease(conn net.Conn) error {
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	if _, err := bufio.NewReader(conn).ReadBytes('\n'); err != nil {
+// checkpointHubConversations saves the host's changed conversations so a
+// device can continue them. The caller holds the lease lock.
+func checkpointHubConversations(id, root string, paths runnerPaths, lease *runnerLease) error {
+	current := lease.Conversation
+	daemon, err := chatDaemonPathSet(id)
+	if err == nil {
+		if state, ok, _ := readSavedChatDaemonState(id, daemon); ok && state.Conversation != "" {
+			current = state.Conversation
+		}
+	}
+	checkpoint, versions, err := collectCheckpoint(root, runnerHub, current, lease.HubVersions)
+	if err != nil {
 		return err
 	}
-	return json.NewEncoder(conn).Encode(map[string]string{"method": "jara/release"})
+	if daemon.schedules != "" {
+		checkpoint.Schedules = pendingSchedules(daemon.schedules)
+	}
+	lease.HubVersions = versions
+	if len(checkpoint.Threads) == 0 && len(checkpoint.Schedules) == 0 && (current == "" || current == lease.Conversation) {
+		return nil // nothing changed here since the last checkpoint
+	}
+	return storeRunnerCheckpoint(paths, lease, checkpoint, runnerHub)
 }
 
-func awaitRunnerRelease(paths runnerPaths, id string, previous runnerLease) runnerLease {
-	deadline := time.Now().Add(runnerReleaseTimeout)
-	for time.Now().Before(deadline) {
-		lease, _, err := loadRunnerLease(paths, id)
-		if err == nil && (lease.Owner != previous.Owner || lease.Epoch != previous.Epoch) {
-			return lease
-		}
-		if conn, err := dialRunner(paths, previous); err != nil {
-			break // the session ended without releasing
-		} else {
-			conn.Close()
-		}
-		time.Sleep(250 * time.Millisecond)
-	}
-	lease, _, _ := loadRunnerLease(paths, id)
-	return lease
-}
-
-// checkpointHubConversation saves the host's current conversation so a device
-// can continue it.
-func checkpointHubConversation(id, root string, paths runnerPaths, lease *runnerLease) error {
-	thread := lease.Conversation
-	if daemon, err := chatDaemonPathSet(id); err == nil {
-		if state, ok, _ := readSavedChatDaemonState(id, daemon); ok && state.Conversation != "" {
-			thread = state.Conversation
-		}
-	}
-	if thread == "" {
+// importHubCheckpoint installs conversations that devices checkpointed since
+// the host last ran the workspace. The caller holds the lease lock.
+func importHubCheckpoint(id string, paths runnerPaths, lease *runnerLease) error {
+	if lease.Seq <= lease.HubSeq {
 		return nil
 	}
-	bundle, err := exportConversation(thread, root, runnerHub)
-	if err != nil {
-		return err
-	}
-	return storeRunnerCheckpoint(paths, lease, bundle, runnerHub)
-}
-
-// hubRunnerRoute prepares a session request on the remote host. It returns a
-// connection to the device running the workspace, or nil when the host should
-// run the agent itself, first importing a newer device checkpoint.
-func hubRunnerRoute(q *Request) (net.Conn, error) {
-	paths, err := runnerPathSet(q.ID)
-	if err != nil {
-		return nil, err
-	}
-	if lease, exists, err := loadRunnerLease(paths, q.ID); err != nil || !exists {
-		return nil, err
-	} else if lease.Owner != "" {
-		if conn, dialErr := dialRunner(paths, lease); dialErr == nil {
-			return conn, nil
-		}
-		if !q.RunnerTakeover {
-			return nil, offlineRunnerError(lease)
-		}
-	}
-	unlock, err := lockRunner(paths)
-	if err != nil {
-		return nil, err
-	}
-	defer unlock()
-	lease, _, err := loadRunnerLease(paths, q.ID)
-	if err != nil {
-		return nil, err
-	}
-	if lease.Owner != "" {
-		if conn, dialErr := dialRunner(paths, lease); dialErr == nil {
-			return conn, nil
-		}
-		if !q.RunnerTakeover {
-			return nil, offlineRunnerError(lease)
-		}
-		fmt.Fprintf(os.Stderr, "Taking over from %s at its checkpoint from %s.\n", lease.Owner, describeRunnerTime(lease.CheckpointAt))
-		lease.Owner, lease.Epoch = "", lease.Epoch+1
-	}
-	if lease.Seq > lease.HubSeq {
-		if err = importHubCheckpoint(q.ID, paths); err != nil {
-			fmt.Fprintln(os.Stderr, "Could not restore the conversation checkpoint:", err)
-		} else {
-			lease.HubSeq = lease.Seq
-			if q.Conversation == "" && !q.New {
-				q.Conversation = lease.Conversation
-				q.Resume, q.ResumeLatest = false, false
-			}
-		}
-	}
-	lease.LastRunner = runnerHub
-	return nil, saveRunnerLease(paths, lease)
-}
-
-func importHubCheckpoint(id string, paths runnerPaths) error {
 	workspace, err := workspaceInfo(id)
 	if err != nil {
 		return err
 	}
-	data, err := os.ReadFile(paths.bundle)
+	checkpoint, err := exportRunnerCheckpoint(paths, id, lease.HubSeq)
 	if err != nil {
 		return err
 	}
-	var bundle runnerBundle
-	if err = json.Unmarshal(data, &bundle); err != nil {
+	briefed, err := importCheckpoint(checkpoint, workspace.Path)
+	if err != nil {
 		return err
 	}
-	native, err := importConversation(bundle, workspace.Path)
-	if err == nil && !native {
-		fmt.Fprintln(os.Stderr, "The agent's own session could not be restored; the conversation continues from Jara's transcript.")
+	if len(briefed) > 0 {
+		fmt.Fprintf(os.Stderr, "%d conversation(s) continue from Jara's transcript; their agent sessions could not be restored here.\n", len(briefed))
 	}
-	return err
+	if daemon, pathErr := chatDaemonPathSet(id); pathErr == nil && chatDaemonPID(daemon) == 0 {
+		if err = replaceSchedules(daemon.schedules, checkpoint.Schedules); err != nil {
+			return err
+		}
+	}
+	lease.HubSeq = lease.Seq
+	lease.HubVersions = workspaceThreadVersions(workspace.Path)
+	return nil
 }

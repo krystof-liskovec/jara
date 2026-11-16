@@ -2,39 +2,49 @@ package jara
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 // localRunner keeps the remote host's copy of a workspace current while this
-// device runs its agent, and holds the tunnel through which other devices
-// reach the live session.
+// device runs its agent, renews the device's lease over a link that also
+// carries the tunnel to the live session, and hands the workspace over.
 type localRunner struct {
-	remote   Remote
-	binding  Binding
-	request  Request
-	released bool
+	remote    Remote
+	binding   Binding
+	request   Request
+	schedules string                 // this session's scheduled prompts
+	status    func() runnerHeartbeat // what the session is doing
+	released  bool
 
 	checkpointMu sync.Mutex // one checkpoint at a time
 	pendingMu    sync.Mutex
 	pending      *chatDaemonState // newest state waiting for a checkpoint
 	running      bool
 
+	linkMu  sync.Mutex
+	link    io.Writer // heartbeats to the current link, if connected
+	linkErr error
+
 	lostOnce sync.Once
 	lost     chan struct{}
 	stop     chan struct{}
 	stopOnce sync.Once
-	tunnel   chan struct{}
+	done     chan struct{}
 }
 
-func newLocalRunner(remote Remote, q Request) *localRunner {
+func newLocalRunner(remote Remote, q Request, schedules string, status func() runnerHeartbeat) *localRunner {
 	return &localRunner{remote: remote, binding: Binding{Remote: q.RemoteName, Workspace: q.Workspace}, request: q,
-		lost: make(chan struct{}), stop: make(chan struct{}), tunnel: make(chan struct{})}
+		schedules: schedules, status: status, lost: make(chan struct{}), stop: make(chan struct{}), done: make(chan struct{})}
 }
 
 func (lr *localRunner) hooks() chatDaemonRunnerHooks {
@@ -50,6 +60,7 @@ func (lr *localRunner) isLost() bool {
 	}
 }
 
+// markLost stops this session: another machine continues the conversation.
 func (lr *localRunner) markLost() {
 	lr.lostOnce.Do(func() {
 		close(lr.lost)
@@ -61,8 +72,8 @@ func (lr *localRunner) wire(op string) Request {
 	return Request{Op: op, ID: lr.binding.Workspace, Runner: lr.request.Runner, Epoch: lr.request.Epoch}
 }
 
-// checkpointLater saves a finished turn in the background. Turns that end
-// while a checkpoint runs are coalesced into one more checkpoint.
+// checkpointLater saves the session in the background. Requests made while a
+// checkpoint runs are coalesced into one more checkpoint.
 func (lr *localRunner) checkpointLater(state chatDaemonState) {
 	lr.pendingMu.Lock()
 	lr.pending = &state
@@ -91,7 +102,7 @@ func (lr *localRunner) checkpointLater(state chatDaemonState) {
 }
 
 // checkpoint mirrors the checkout (commits, edits and deletions) to the remote
-// host, then stores the conversation there.
+// host, then stores the conversations that changed and pending schedules.
 func (lr *localRunner) checkpoint(state chatDaemonState) error {
 	lr.checkpointMu.Lock()
 	defer lr.checkpointMu.Unlock()
@@ -101,14 +112,13 @@ func (lr *localRunner) checkpoint(state chatDaemonState) error {
 	if err := syncWorkspace(lr.remote, lr.binding, lr.request.Root, "push", true, false, true); err != nil {
 		return fmt.Errorf("copy files to the remote: %w", err)
 	}
-	if state.Conversation == "" {
-		return nil
-	}
-	bundle, err := exportConversation(state.Conversation, lr.request.Root, lr.request.Runner)
+	marker := loadLocalRunnerMarker(lr.request.ID)
+	checkpoint, versions, err := collectCheckpoint(lr.request.Root, lr.request.Runner, state.Conversation, marker.Versions)
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(bundle)
+	checkpoint.Schedules = pendingSchedules(lr.schedules)
+	data, err := json.Marshal(checkpoint)
 	if err != nil {
 		return err
 	}
@@ -121,10 +131,10 @@ func (lr *localRunner) checkpoint(state chatDaemonState) error {
 		}
 		return err
 	}
-	return updateLocalRunnerMarker(lr.request.ID, func(m *localRunnerMarker) { m.Seq = answer.Seq })
+	return updateLocalRunnerMarker(lr.request.ID, func(m *localRunnerMarker) { m.Seq, m.Versions = answer.Seq, versions })
 }
 
-// release answers a jara/release request from another device's claim.
+// release answers a jara/release request once this session is idle.
 func (lr *localRunner) release(state chatDaemonState) bool {
 	if err := lr.handOver(state); err != nil {
 		fmt.Fprintln(os.Stderr, "Could not hand the workspace over:", err)
@@ -148,24 +158,53 @@ func (lr *localRunner) handOver(state chatDaemonState) error {
 		return err
 	}
 	lr.released = true
-	fmt.Fprintln(os.Stderr, "Handed the workspace over to the remote host.")
+	fmt.Fprintln(os.Stderr, "Handed the workspace over.")
 	return nil
 }
 
-func (lr *localRunner) stopTunnel() {
+// goingToSleep runs just before the device suspends. Idle sessions stay
+// here; a running turn or scheduled work is checkpointed as far as the short
+// sleep delay allows, and the host continues it.
+func (lr *localRunner) goingToSleep(state chatDaemonState, budget time.Duration) {
+	beat := lr.status()
+	if !beat.Busy && !beat.Pending {
+		return
+	}
+	done := make(chan struct{})
+	go func() { _ = lr.checkpoint(state); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(budget):
+	}
+	beat.Sleep = true
+	lr.sendBeat(beat)
+	lr.markLost()
+}
+
+func (lr *localRunner) sendBeat(beat runnerHeartbeat) {
+	line, _ := json.Marshal(beat)
+	lr.linkMu.Lock()
+	defer lr.linkMu.Unlock()
+	if lr.link != nil {
+		_, lr.linkErr = lr.link.Write(append(line, '\n'))
+	}
+}
+
+func (lr *localRunner) stopLink() {
 	lr.stopOnce.Do(func() { close(lr.stop) })
 	select {
-	case <-lr.tunnel:
+	case <-lr.done:
 	case <-time.After(5 * time.Second):
 	}
 }
 
-// tunnelLoop forwards a socket on the remote host to this device's session,
-// reconnecting after network changes. A refused tunnel means another device
-// took over, which stops this session.
-func (lr *localRunner) tunnelLoop(local string) {
-	defer close(lr.tunnel)
-	backoff := 2 * time.Second
+// linkLoop keeps one SSH connection to the remote host: it forwards a socket
+// there to this device's session and runs `jara _runner-link`, which renews
+// the lease with each heartbeat. It reconnects after network changes; a
+// refused link means another machine took over.
+func (lr *localRunner) linkLoop(local string) {
+	defer close(lr.done)
+	backoff := time.Second
 	for {
 		var answer struct {
 			Socket string `json:"socket"`
@@ -177,31 +216,90 @@ func (lr *localRunner) tunnelLoop(local string) {
 		}
 		if err == nil {
 			started := time.Now()
-			args := append(sshArgs(lr.remote, false), "-N", "-o", "ExitOnForwardFailure=yes",
-				"-R", answer.Socket+":"+local, "--", lr.remote.Host)
-			cmd := exec.Command("ssh", args...)
-			cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-			if err = cmd.Start(); err == nil {
-				done := make(chan error, 1)
-				go func() { done <- cmd.Wait() }()
-				select {
-				case <-lr.stop:
-					_ = cmd.Process.Kill()
-					<-done
-					return
-				case err = <-done:
-				}
-				if time.Since(started) > time.Minute {
-					backoff = 2 * time.Second
-				}
+			err = lr.runLink(answer.Socket, local)
+			if lr.isLost() {
+				return
+			}
+			if time.Since(started) > time.Minute {
+				backoff = time.Second
 			}
 		}
-		fmt.Fprintf(os.Stderr, "Tunnel to the remote host closed (%v); retrying in %s.\n", err, backoff)
+		fmt.Fprintf(os.Stderr, "Link to the remote host closed (%v); retrying in %s.\n", err, backoff)
 		select {
 		case <-lr.stop:
 			return
 		case <-time.After(backoff):
 		}
-		backoff = min(backoff*2, time.Minute)
+		backoff = min(backoff*2, 30*time.Second)
+	}
+}
+
+func (lr *localRunner) runLink(socket, local string) error {
+	nonce := make([]byte, 8)
+	_, _ = rand.Read(nonce)
+	wire := lr.wire("")
+	wire.Link = hex.EncodeToString(nonce)
+	args := append(sshArgs(lr.remote, false), "-o", "ExitOnForwardFailure=yes", "-R", socket+":"+local,
+		"--", lr.remote.Host, shellArgs("jara", "_runner-link", token(wire)))
+	cmd := exec.Command("ssh", args...)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	var stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = io.Discard, &stderr
+	if err = cmd.Start(); err != nil {
+		return err
+	}
+	lr.linkMu.Lock()
+	lr.link, lr.linkErr = stdin, nil
+	lr.linkMu.Unlock()
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	ticker := time.NewTicker(runnerHeartbeatInterval())
+	defer ticker.Stop()
+	lr.sendBeat(lr.status())
+	for {
+		select {
+		case <-ticker.C:
+			lr.sendBeat(lr.status())
+		case <-lr.stop:
+			stdin.Close()
+			_ = cmd.Process.Kill()
+			<-exited
+			return nil
+		case err = <-exited:
+			lr.linkMu.Lock()
+			lr.link = nil
+			lr.linkMu.Unlock()
+			if strings.Contains(stderr.String(), runnerLostMessage) {
+				lr.markLost()
+			}
+			return fmt.Errorf("%v %s", err, strings.TrimSpace(stderr.String()))
+		}
+	}
+}
+
+// midTurnCheckpoints saves long turns periodically, so a device that
+// disappears without warning loses little work. JARA_RUNNER_CHECKPOINT
+// (seconds) changes the interval.
+func (lr *localRunner) midTurnCheckpoints(state func() chatDaemonState) {
+	interval := 20 * time.Second
+	if seconds, err := strconv.Atoi(os.Getenv("JARA_RUNNER_CHECKPOINT")); err == nil && seconds > 0 {
+		interval = time.Duration(seconds) * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-lr.stop:
+			return
+		case <-lr.lost:
+			return
+		case <-ticker.C:
+			if current := state(); current.ActiveTurn {
+				lr.checkpointLater(current)
+			}
+		}
 	}
 }

@@ -26,7 +26,6 @@ func connectCommand(args []string) error {
 	fresh := f.Bool("new", false, "start another Codex terminal")
 	worktree := f.Bool("worktree", false, "start a new terminal in a Git worktree")
 	takeover := f.Bool("takeover", false, "detach other clients when attaching")
-	takeOver := f.Bool("take-over", false, "continue here from the last checkpoint although the device running the agent is offline")
 	last := f.Bool("last", false, "attach to the most recently used running session")
 	if err := f.Parse(args); err != nil {
 		return err
@@ -55,7 +54,7 @@ func connectCommand(args []string) error {
 	}
 	explicit := false
 	f.Visit(func(set *flag.Flag) { explicit = explicit || set.Name == "agent" })
-	return remoteOpen(Request{UserInterface: *chatInterface, Runtime: runtime, AgentExplicit: explicit, ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, RunnerTakeover: *takeOver, CodexArgs: append(codexArgs, tail...)})
+	return remoteOpen(Request{UserInterface: *chatInterface, Runtime: runtime, AgentExplicit: explicit, ID: id, Resume: *resume, New: *fresh || *worktree, Worktree: *worktree, Takeover: *takeover, CodexArgs: append(codexArgs, tail...)})
 }
 
 func remoteOpen(q Request) error {

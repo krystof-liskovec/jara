@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"krystof.liskovec/jara/internal/agentrouter"
 	"krystof.liskovec/jara/internal/fsutil"
@@ -109,7 +110,7 @@ func makeRunnerWorkspace(t *testing.T, id string) string {
 	return path
 }
 
-func TestRunnerLeaseClaimTakeoverAndEpochs(t *testing.T) {
+func TestRunnerLeaseWaitsForOnlineAndReplacesOfflineDevices(t *testing.T) {
 	runnerTestHomes(t)
 	makeRunnerWorkspace(t, "ws1")
 	paths, err := runnerPathSet("ws1")
@@ -117,32 +118,76 @@ func TestRunnerLeaseClaimTakeoverAndEpochs(t *testing.T) {
 		t.Fatal(err)
 	}
 	first, err := claimRunner(Request{ID: "ws1", Runner: "laptop"}, paths)
-	if err != nil || first.Epoch != 1 {
+	if err != nil || first.Epoch != 1 || first.Wait {
 		t.Fatalf("first claim = %+v %v", first, err)
 	}
-	// The laptop is offline (no tunnel socket): a phone needs --take-over.
-	if _, err = claimRunner(Request{ID: "ws1", Runner: "desktop"}, paths); err == nil || !strings.Contains(err.Error(), "--take-over") {
-		t.Fatalf("claim of an offline device's workspace = %v", err)
+	// The laptop renewed its lease just now: others wait, and a window that
+	// reconnects by itself never displaces it.
+	for _, q := range []Request{{ID: "ws1", Runner: "desktop", Wait: true}, {ID: "ws1", Runner: "desktop", Wait: true, Passive: true}} {
+		if claim, err := claimRunner(q, paths); err != nil || !claim.Wait || claim.Runner != "laptop" {
+			t.Fatalf("claim of an online device's workspace (%+v) = %+v %v", q, claim, err)
+		}
 	}
-	q := Request{ID: "ws1"}
-	if _, err = hubRunnerRoute(&q); err == nil || !strings.Contains(err.Error(), "not reachable") {
-		t.Fatalf("remote session while laptop owns the workspace = %v", err)
+	if _, err = claimRunner(Request{ID: "ws1", Runner: "desktop"}, paths); err == nil {
+		t.Fatal("a claim that may not wait took an online device's workspace")
 	}
-	lease, _, _ := loadRunnerLease(paths, "ws1")
-	lease.Writer, lease.Conversation = "laptop", "thread-1"
-	if err = storeRunnerCheckpoint(paths, &lease, runnerBundle{ThreadID: "thread-1"}, "laptop"); err != nil {
+	// An idle device that went offline keeps the workspace until someone
+	// connects elsewhere.
+	lease, _ := updateRunnerLease(paths, "ws1", func(lease *runnerLease) error {
+		lease.LastSeen = time.Now().Add(-time.Hour).Unix()
+		return storeRunnerCheckpoint(paths, lease, runnerCheckpoint{Current: "thread-1"}, "laptop")
+	})
+	if err = continueOnHub("ws1", "went offline", func(runnerLease) bool { return true }); err != nil {
 		t.Fatal(err)
 	}
-	q = Request{ID: "ws1", RunnerTakeover: true}
+	if current, _, _ := loadRunnerLease(paths, "ws1"); current.Owner != "laptop" || current.Epoch != lease.Epoch {
+		t.Fatalf("idle offline device was replaced: %+v", current)
+	}
+	q := Request{ID: "ws1"}
 	if conn, err := hubRunnerRoute(&q); conn != nil || err != nil {
-		t.Fatalf("forced takeover = %v %v", conn, err)
+		t.Fatalf("connecting on the host = %v %v", conn, err)
 	}
 	lease, _, _ = loadRunnerLease(paths, "ws1")
-	if lease.Owner != "" || lease.Epoch != 2 || lease.LastRunner != runnerHub {
-		t.Fatalf("lease after takeover = %+v", lease)
+	if lease.Owner != "" || lease.Epoch != 2 || lease.LastRunner != runnerHub || lease.HubSeq != lease.Seq {
+		t.Fatalf("lease after replacing the offline device = %+v", lease)
 	}
 	if lease.holds("laptop", first.Epoch) {
 		t.Fatal("the replaced device still holds the lease")
+	}
+}
+
+func TestRunnerCheckpointExportsChangesSince(t *testing.T) {
+	runnerTestHomes(t)
+	paths, err := runnerPathSet("ws3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := func(id string) runnerBundle { return runnerBundle{ThreadID: id, Thread: json.RawMessage(`{}`)} }
+	job := chatSchedule{ID: "sc-1", ThreadID: "a", Prompt: "later", Status: "pending", RunAt: time.Now().Add(time.Hour)}
+	lease := runnerLease{Workspace: "ws3"}
+	if err = storeRunnerCheckpoint(paths, &lease, runnerCheckpoint{Current: "a", Threads: []runnerBundle{bundle("a"), bundle("b")}}, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+	seen := lease.Seq
+	if err = storeRunnerCheckpoint(paths, &lease, runnerCheckpoint{Current: "b", Threads: []runnerBundle{bundle("b")}, Schedules: []chatSchedule{job}}, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+	if err = saveRunnerLease(paths, lease); err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := exportRunnerCheckpoint(paths, "ws3", seen)
+	if err != nil || checkpoint.Seq != 2 || checkpoint.Current != "b" || len(checkpoint.Threads) != 1 || checkpoint.Threads[0].ThreadID != "b" {
+		t.Fatalf("export since %d = %+v %v", seen, checkpoint, err)
+	}
+	if len(checkpoint.Schedules) != 1 || checkpoint.Schedules[0].ID != "sc-1" {
+		t.Fatalf("pending schedules = %+v", checkpoint.Schedules)
+	}
+	if all, _ := exportRunnerCheckpoint(paths, "ws3", 0); len(all.Threads) != 2 {
+		t.Fatalf("full export has %d conversations", len(all.Threads))
+	}
+	schedules := filepath.Join(t.TempDir(), "schedules.json")
+	if err = replaceSchedules(schedules, checkpoint.Schedules); err != nil || len(pendingSchedules(schedules)) != 1 {
+		t.Fatalf("schedules round trip: %v %v", pendingSchedules(schedules), err)
 	}
 }
 

@@ -49,10 +49,13 @@ func runnerCommand(c Config, args []string) error {
 	case status.Online:
 		fmt.Printf("%s runs the agent of %s and is online; other devices attach to its live session through %s.\n", lease.Owner, workspace, remoteName)
 	default:
-		fmt.Printf("%s runs the agent of %s but is offline; continue elsewhere with --take-over.\n", lease.Owner, workspace)
+		fmt.Printf("%s runs the agent of %s but is offline; the remote host continues its work, or the next device that opens it.\n", lease.Owner, workspace)
 	}
 	if lease.Seq > 0 {
 		fmt.Printf("Last checkpoint: %s by %s (conversation %s).\n", time.Unix(lease.CheckpointAt, 0).Format(time.DateTime), lease.Writer, lease.Conversation)
+	}
+	if lease.Want != "" {
+		fmt.Printf("%s is waiting to take it back when the current turn ends.\n", lease.Want)
 	}
 	if lease.LastRunner != "" {
 		fmt.Printf("Last runner: %s.\n", lease.LastRunner)

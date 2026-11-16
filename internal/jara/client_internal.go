@@ -62,6 +62,24 @@ func runInternalCommand(args []string) (bool, error) {
 			return true, err
 		}
 		return true, runChatDaemon(q)
+	case "_runner-link":
+		if len(args) != 2 {
+			return true, fmt.Errorf("invalid runner link invocation")
+		}
+		var q Request
+		if err := decode(args[1], &q); err != nil {
+			return true, err
+		}
+		return true, runRunnerLink(q)
+	case "_runner-watch":
+		if len(args) != 2 {
+			return true, fmt.Errorf("invalid runner watch invocation")
+		}
+		var q Request
+		if err := decode(args[1], &q); err != nil {
+			return true, err
+		}
+		return true, runRunnerWatch(q)
 	case "_runner-daemon":
 		if len(args) != 2 {
 			return true, fmt.Errorf("invalid local runner invocation")

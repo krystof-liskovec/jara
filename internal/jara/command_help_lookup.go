@@ -10,7 +10,7 @@ var boolHelpOptions = map[string]bool{
 	"clone": true, "copy": true, "worktree": true, "takeover": true,
 	"force": true, "include-ignored": true, "delete": true, "resume": true,
 	"new": true, "latest": true, "resume-latest": true, "check": true, "native": true, "vim": true, "nvim": true,
-	"docker": true, "token-stdin": true, "volumes": true, "local": true, "take-over": true,
+	"docker": true, "token-stdin": true, "volumes": true, "local": true, "take-over": true, "run-remote": true,
 }
 
 func showCommandHelp(args []string) bool {

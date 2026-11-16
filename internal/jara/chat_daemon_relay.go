@@ -28,6 +28,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 	clients := newChatDaemonClientHub(requests)
 	router := newChatDaemonClientRouter()
 	preserveDetachedIdle := false
+	releaseWanted := false // a device asked for the workspace while a turn ran
 	serverDone := make(chan error, 1)
 	clientClosed := make(chan chatDaemonClientClosed, 32)
 	accepted := make(chan net.Conn, 16)
@@ -40,6 +41,11 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 	signal.Notify(signals, chatDaemonTerminationSignals()...)
 	defer signal.Stop(signals)
 	stopAccept := make(chan struct{})
+	if runner.bootstrap != "" {
+		// No window opened this session: initialize the agent and load the
+		// conversation so scheduled and continued turns can start.
+		bootstrapChatDaemon(input, runner.bootstrap, &state, pending)
+	}
 
 	writeState := func() {
 		stateWriteMu.Lock()
@@ -187,15 +193,7 @@ running:
 				}
 			}
 			if event.release && runner.release != nil {
-				stateMu.Lock()
-				snapshot := state
-				stateMu.Unlock()
-				if !snapshot.ActiveTurn && !schedules.hasPending() && !crunch.hasPending() && runner.release(snapshot) {
-					// Attached clients reconnect, through the remote host, to the next runner.
-					reconnect = true
-					shutdown.Store(true)
-					break running
-				}
+				releaseWanted = true // handed over on the next tick when idle
 			}
 			if event.stop {
 				_ = schedules.cancelPending()
@@ -220,6 +218,22 @@ running:
 				break running
 			}
 		case <-scheduleTicker.C:
+			stateMu.Lock()
+			snapshot := state
+			stateMu.Unlock()
+			// Hand the workspace to the device that asked for it once the
+			// running turn is done; attached clients reconnect to it.
+			if !snapshot.ActiveTurn && !schedules.running() && !crunch.hasPending() {
+				// One attempt per request: a failed release (it could not save
+				// its checkpoint) leaves the claimant waiting, not a busy loop.
+				release := releaseWanted && runner.release(snapshot)
+				releaseWanted = false
+				if release || runner.handBack != nil && runner.handBack() {
+					reconnect = true
+					shutdown.Store(true)
+					break running
+				}
+			}
 			isScheduleBusy := func() bool {
 				stateMu.Lock()
 				busy := state.ActiveTurn || !state.ThreadLoaded
@@ -254,7 +268,10 @@ running:
 			}
 			break running
 		case <-runner.lost:
-			fmt.Fprintln(os.Stderr, "Another device continued this conversation; stopping the local agent.")
+			// Attached windows reconnect and follow the conversation to the
+			// machine that continues it.
+			fmt.Fprintln(os.Stderr, "The conversation continues on another machine; stopping the local agent.")
+			reconnect = true
 			shutdown.Store(true)
 			break running
 		case <-signals:
@@ -305,5 +322,29 @@ drained:
 type chatDaemonRunnerHooks struct {
 	turnEnded func(chatDaemonState)      // a turn completed; checkpoint it
 	release   func(chatDaemonState) bool // final checkpoint and lease release
-	lost      <-chan struct{}            // closed when another device took over
+	lost      <-chan struct{}            // closed when another machine took over
+	handBack  func() bool                // the host: a device waits for the workspace
+	bootstrap string                     // conversation to load without a window
+}
+
+// bootstrapChatDaemon starts a session no window has opened yet. Responses
+// to these requests update the daemon state like a window's would.
+func bootstrapChatDaemon(input io.Writer, thread string, state *chatDaemonState, pending map[string]string) {
+	resume := map[string]any{"threadId": thread, "approvalsReviewer": protocol.AutoReviewer}
+	if state.CWD != "" {
+		resume["cwd"] = state.CWD
+	}
+	requests := []map[string]any{
+		{"id": "jara-bootstrap-initialize", "method": "initialize", "params": chatInitializeParams()},
+		{"method": "initialized"},
+		{"id": "jara-bootstrap-resume", "method": "thread/resume", "params": resume},
+	}
+	pending[`"jara-bootstrap-initialize"`] = "initialize"
+	pending[`"jara-bootstrap-resume"`] = "thread/resume"
+	for _, request := range requests {
+		if line, err := json.Marshal(request); err == nil {
+			_, _ = input.Write(append(line, '\n'))
+		}
+	}
+	state.Initialized = true
 }

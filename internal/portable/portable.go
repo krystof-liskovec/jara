@@ -72,36 +72,27 @@ func ClaudeSessionExists(cwd, id string) bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// FindCodexRollout returns the rollout file of Codex thread id and its path
-// relative to CodexHome, searching active sessions before archived ones.
-func FindCodexRollout(id string) (string, string, error) {
-	if !ValidBackendID(id) {
-		return "", "", fs.ErrNotExist
-	}
+// IndexCodexRollouts maps thread IDs to rollout paths relative to CodexHome
+// in one directory walk. Rollout names end in "-<thread UUID>.jsonl".
+func IndexCodexRollouts() map[string]string {
 	home := CodexHome()
-	suffix := "-" + id + ".jsonl"
-	for _, dir := range []string{"sessions", "archived_sessions"} {
-		var found string
-		root := filepath.Join(home, dir)
-		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-			if err != nil || found != "" {
+	index := map[string]string{}
+	for _, dir := range []string{"archived_sessions", "sessions"} { // active wins
+		_ = filepath.WalkDir(filepath.Join(home, dir), func(path string, entry fs.DirEntry, err error) error {
+			if err != nil || entry.IsDir() {
 				return nil
 			}
-			if !entry.IsDir() && strings.HasSuffix(entry.Name(), suffix) {
-				found = path
-				return filepath.SkipAll
+			name, ok := strings.CutSuffix(entry.Name(), ".jsonl")
+			if !ok || !strings.HasPrefix(name, "rollout-") || len(name) < 36 {
+				return nil
+			}
+			if rel, relErr := filepath.Rel(home, path); relErr == nil {
+				index[name[len(name)-36:]] = filepath.ToSlash(rel)
 			}
 			return nil
 		})
-		if found != "" {
-			rel, err := filepath.Rel(home, found)
-			if err != nil {
-				return "", "", err
-			}
-			return found, filepath.ToSlash(rel), nil
-		}
 	}
-	return "", "", fs.ErrNotExist
+	return index
 }
 
 // CodexRolloutDestination validates a rollout path relative to CodexHome and
