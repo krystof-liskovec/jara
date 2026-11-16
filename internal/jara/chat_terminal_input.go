@@ -167,7 +167,11 @@ func (t *chatTerminal) queueOnTab(input chatEditorInput) bool {
 	if err := u.queuePrompt(u.thread, editor.Text()); err != nil {
 		t.transcript.append("system", err.Error()+"\n")
 	} else {
-		t.transcript.append("system", fmt.Sprintf("Queued prompt %d. It will run after the current turn.\n", len(u.queuedPrompts)))
+		message := fmt.Sprintf("Queued prompt %d. It will run after the current turn.\n", len(u.queuedPrompts))
+		if u.persistentSession {
+			message = "Queued the prompt. It runs after the current turn, also if this window closes.\n"
+		}
+		t.transcript.append("system", message)
 		editor.SetText("")
 	}
 	return true

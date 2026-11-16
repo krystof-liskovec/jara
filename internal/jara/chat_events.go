@@ -77,6 +77,8 @@ func (u *chatUI) event(m appMessage) error {
 		if p.ThreadID == "" || p.ThreadID == u.thread {
 			u.printRole("progress", "Conversation context compacted.\n")
 		}
+	case "jara/queue/updated":
+		u.acceptQueueUpdate(m.Params)
 	case "jara/session/ended":
 		var ended struct {
 			Reconnect bool `json:"reconnect"`

@@ -4,7 +4,8 @@ In the Jara conversation interface, `jara` runs the agent on the machine you
 are sitting at: against your local checkout, with your local Codex and Claude
 Code CLIs and sign-in. The remote host keeps the shared copy. After every turn,
 and every 20 seconds during long turns, it receives the checkout's commits and
-edits, every conversation of the workspace, and pending scheduled prompts.
+edits, every conversation of the workspace, and the work waiting in the session:
+queued and scheduled prompts and an active `/crunch` or `/goalcrunch` task.
 
 Any device can watch a running conversation live or continue it. When your
 laptop goes to sleep in the middle of a turn, the remote host continues the
@@ -53,7 +54,7 @@ increases whenever the runner changes, and the latest **checkpoint**.
   way.
 - **Catch up.** If the newest checkpoint came from another machine, the device
   pulls the files and installs every conversation that changed since it last
-  saw them, along with pending scheduled prompts.
+  saw them, along with queued and scheduled prompts and any `/crunch` task.
 - **Run.** The session runs as a background `jara _runner-daemon`. `/detach`
   leaves it running; `/quit` while idle ends it and hands the workspace over.
 - **Link.** One SSH connection per device carries a reverse Unix-socket forward
@@ -65,14 +66,17 @@ increases whenever the runner changes, and the latest **checkpoint**.
 ## Sleep, network loss and coming back
 
 - **Going to sleep with Linux and systemd.** Jara holds a logind delay lock.
-  Just before suspend, if a turn is running or scheduled work is waiting, it
+  Just before suspend, if a turn is running or work is waiting (queued or
+  scheduled prompts, a `/crunch` task), it
   saves a checkpoint (within about three seconds) and tells the remote host,
   which continues at once.
 - **Disappearing without warning** (macOS sleep, network loss, a crash). When
   the heartbeats stop for 30 seconds, a watcher on the remote host takes over
-  if a turn was running or work was scheduled. The interrupted turn continues
+  if a turn was running or work was waiting, and starts the session without a
+  window. The interrupted turn continues
   with a note that the device went offline, from the last checkpoint: at most
-  about 20 seconds of work is redone.
+  about 20 seconds of work is redone. Queued prompts follow it, and a `/crunch`
+  task resumes from the saved conversation.
 - **An idle device that sleeps** keeps the workspace. If you open the
   conversation elsewhere meanwhile, that machine takes over.
 - **Waking up.** The device learns that another machine took over. Its session
@@ -125,8 +129,6 @@ including Codex-only ones, so the fallback always has something to replay.
 - While a device holds the workspace, the remote host's checkout is a mirror.
   Edits made there directly, for example over plain SSH, are overwritten by the
   next checkpoint.
-- A window queue (prompts waiting in the composer) and `/crunch` tasks stay
-  with the session that held them; scheduled prompts move.
 - Handing back to a waking device ends other windows attached to the remote
   host's session, such as a phone; reconnect them to follow the conversation.
 - Each checkpoint opens several SSH connections, so connection multiplexing

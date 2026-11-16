@@ -98,7 +98,7 @@ func runLocalRunnerDaemon(q Request) error {
 		saved := current()
 		return runnerHeartbeat{Busy: saved.ActiveTurn, Pending: schedules.hasPending() || crunch.hasPending(), Conversation: saved.Conversation}
 	}
-	runner := newLocalRunner(remote, q, paths.schedules, status)
+	runner := newLocalRunner(remote, q, paths, status)
 	go runner.linkLoop(paths.socket)
 	go runner.midTurnCheckpoints(current)
 	go watchSleep(runner.stop, func() { runner.goingToSleep(current(), sleepBudget) })

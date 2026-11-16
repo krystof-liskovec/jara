@@ -246,6 +246,9 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
 		if err = replaceSchedules(paths.schedules, checkpoint.Schedules); err != nil {
 			return err
 		}
+		if err = installCrunch(paths.crunch, checkpoint.Crunch); err != nil {
+			return err
+		}
 	}
 	if q.Conversation == "" && !q.New {
 		q.Conversation, q.Resume, q.ResumeLatest = checkpoint.Current, false, false

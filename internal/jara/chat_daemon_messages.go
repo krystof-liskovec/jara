@@ -106,7 +106,7 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 				}
 				continue
 			}
-			if chatScheduleRequest(message.Method) {
+			if chatScheduleRequest(message.Method) || chatQueueRequest(message.Method) {
 				if len(message.ID) > 0 {
 					stateMu.Lock()
 					threadID := state.Conversation
