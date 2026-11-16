@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -22,6 +23,8 @@ type runnerClaim struct {
 	Conversation string `json:"conversation,omitempty"`
 	Socket       string `json:"socket,omitempty"`
 	Root         string `json:"root,omitempty"`
+	// Changed lists the conversations checkpointed after the claim's Since.
+	Changed []string `json:"changed,omitempty"`
 }
 
 // runnerCheckpointAnswer is the host's answer to a checkpoint: its number, or
@@ -81,7 +84,13 @@ func runnerRPC(q Request) error {
 		}
 		return out.Encode(claim)
 	case "runner-export":
-		checkpoint, err := exportRunnerCheckpoint(paths, q.ID, q.Since)
+		var request runnerExportRequest
+		if q.Compress {
+			if err = decodeMaybeCompressed(os.Stdin, maxTransfer, &request); err != nil && !errors.Is(err, io.EOF) {
+				return fmt.Errorf("read export request: %w", err)
+			}
+		}
+		checkpoint, err := exportRunnerCheckpoint(paths, q.ID, q.Since, request.Haves)
 		if err != nil {
 			return err
 		}
@@ -192,7 +201,7 @@ func storeRunnerCheckpoint(paths runnerPaths, lease *runnerLease, checkpoint run
 
 // exportRunnerCheckpoint returns the conversations changed after checkpoint
 // since, with the pending scheduled prompts of the latest checkpoint.
-func exportRunnerCheckpoint(paths runnerPaths, id string, since int64) (runnerCheckpoint, error) {
+func exportRunnerCheckpoint(paths runnerPaths, id string, since int64, haves []runnerHave) (runnerCheckpoint, error) {
 	lease, _, err := loadRunnerLease(paths, id)
 	if err != nil {
 		return runnerCheckpoint{}, err
@@ -210,7 +219,7 @@ func exportRunnerCheckpoint(paths runnerPaths, id string, since int64) (runnerCh
 		if err = json.Unmarshal(data, &bundle); err != nil {
 			return runnerCheckpoint{}, err
 		}
-		loadNativeFiles(paths, &bundle)
+		loadNativeFiles(paths, &bundle, haves)
 		checkpoint.Threads = append(checkpoint.Threads, bundle)
 	}
 	if data, err := os.ReadFile(paths.thread(".schedules")); err == nil {
@@ -261,7 +270,7 @@ func importHubCheckpoint(id string, paths runnerPaths, lease *runnerLease) error
 	if err != nil {
 		return err
 	}
-	checkpoint, err := exportRunnerCheckpoint(paths, id, lease.HubSeq)
+	checkpoint, err := exportRunnerCheckpoint(paths, id, lease.HubSeq, nil)
 	if err != nil {
 		return err
 	}

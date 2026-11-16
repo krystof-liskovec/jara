@@ -175,14 +175,14 @@ func TestRunnerCheckpointExportsChangesSince(t *testing.T) {
 	if err = saveRunnerLease(paths, lease); err != nil {
 		t.Fatal(err)
 	}
-	checkpoint, err := exportRunnerCheckpoint(paths, "ws3", seen)
+	checkpoint, err := exportRunnerCheckpoint(paths, "ws3", seen, nil)
 	if err != nil || checkpoint.Seq != 2 || checkpoint.Current != "b" || len(checkpoint.Threads) != 1 || checkpoint.Threads[0].ThreadID != "b" {
 		t.Fatalf("export since %d = %+v %v", seen, checkpoint, err)
 	}
 	if len(checkpoint.Schedules) != 1 || checkpoint.Schedules[0].ID != "sc-1" {
 		t.Fatalf("pending schedules = %+v", checkpoint.Schedules)
 	}
-	if all, _ := exportRunnerCheckpoint(paths, "ws3", 0); len(all.Threads) != 2 {
+	if all, _ := exportRunnerCheckpoint(paths, "ws3", 0, nil); len(all.Threads) != 2 {
 		t.Fatalf("full export has %d conversations", len(all.Threads))
 	}
 	schedules := filepath.Join(t.TempDir(), "schedules.json")

@@ -1,8 +1,10 @@
 package jara
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -74,8 +76,13 @@ func fileTail(path string, size int64) (string, error) {
 	if _, err = file.ReadAt(data, start); err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:16]), nil
+	return tailHash(data), nil
+}
+
+// tailHash hashes the runnerTailSize bytes at the end of data.
+func tailHash(data []byte) string {
+	sum := sha256.Sum256(data[max(0, len(data)-runnerTailSize):])
+	return hex.EncodeToString(sum[:16])
 }
 
 // hashFilePrefix feeds the first size bytes of path into h.
@@ -167,26 +174,85 @@ func storableNative(file runnerNativeFile) bool {
 	return (file.Agent == protocol.AgentClaude || file.Agent == protocol.AgentCodex) && portable.ValidBackendID(file.BackendID)
 }
 
+// storedCopy is the host's copy of a session file as a sender sees it. A
+// copy stored from another checkout has that checkout's path inside; a delta
+// from this sender continues the copy converted to the sender's path.
+type storedCopy struct {
+	path      string
+	size      int64
+	exists    bool
+	converted []byte // the converted copy, when conversion changed it
+}
+
+// openStoredCopy reads the copy at path, stored from storedRoot, for a sender
+// whose checkout is at root.
+func openStoredCopy(path, storedRoot, root string) storedCopy {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return storedCopy{path: path}
+	}
+	stored := storedCopy{path: path, size: info.Size(), exists: true}
+	if storedRoot != "" && root != "" && storedRoot != root {
+		if data, readErr := os.ReadFile(path); readErr == nil {
+			if converted := portable.RewritePath(data, storedRoot, root); !bytes.Equal(converted, data) {
+				stored.converted, stored.size = converted, int64(len(converted))
+			}
+		}
+	}
+	return stored
+}
+
+func (c storedCopy) tail(size int64) (string, error) {
+	if c.converted != nil {
+		return tailHash(c.converted[:size]), nil
+	}
+	return fileTail(c.path, size)
+}
+
+func (c storedCopy) hashPrefix(h hash.Hash, size int64) error {
+	if c.converted != nil {
+		h.Write(c.converted[:size])
+		return nil
+	}
+	return hashFilePrefix(h, c.path, size)
+}
+
+// storedBundleRoot is the checkout a stored conversation was checkpointed
+// from, or "" when none is stored.
+func storedBundleRoot(paths runnerPaths, thread string) string {
+	var stored struct {
+		Root string `json:"root"`
+	}
+	if data, err := os.ReadFile(paths.thread(thread)); err == nil {
+		_ = json.Unmarshal(data, &stored)
+	}
+	return stored.Root
+}
+
 // checkNativeFiles verifies that every session file of a checkpoint applies
 // to the host's copies, so a checkpoint is stored completely or not at all.
 func checkNativeFiles(paths runnerPaths, bundles []runnerBundle) error {
 	var resync []runnerResync
 	for _, bundle := range bundles {
+		storedRoot := storedBundleRoot(paths, bundle.ThreadID)
 		for _, file := range bundle.Files {
 			if !storableNative(file) {
 				continue
 			}
-			dest := paths.storedNativePath(bundle.ThreadID, file)
-			continues, sumMatches := checkStoredNative(dest, file)
+			stored := storedCopy{}
+			if file.Base > 0 {
+				stored = openStoredCopy(paths.storedNativePath(bundle.ThreadID, file), storedRoot, bundle.Root)
+			}
+			continues, sumMatches := checkStoredNative(stored, file)
 			if continues && sumMatches {
 				continue
 			}
 			have := runnerResync{ThreadID: bundle.ThreadID, Agent: file.Agent, BackendID: file.BackendID}
 			// A copy that ends right but hashes wrong is damaged inside: only
 			// the whole file repairs it.
-			if info, err := os.Stat(dest); !continues && err == nil && info.Mode().IsRegular() {
-				have.Size = info.Size()
-				have.Tail, _ = fileTail(dest, have.Size)
+			if !continues && stored.exists {
+				have.Size = stored.size
+				have.Tail, _ = stored.tail(stored.size)
 			}
 			resync = append(resync, have)
 		}
@@ -197,15 +263,14 @@ func checkNativeFiles(paths runnerPaths, bundles []runnerBundle) error {
 	return nil
 }
 
-// checkStoredNative reports whether file continues the host's copy at dest,
-// and whether the result matches the file's checksum, if it has one.
-func checkStoredNative(dest string, file runnerNativeFile) (continues, sumMatches bool) {
+// checkStoredNative reports whether file continues the host's copy, and
+// whether the result matches the file's checksum, if it has one.
+func checkStoredNative(stored storedCopy, file runnerNativeFile) (continues, sumMatches bool) {
 	if file.Base > 0 {
-		info, err := os.Stat(dest)
-		if err != nil || info.Size() != file.Base {
+		if !stored.exists || stored.size != file.Base {
 			return false, true
 		}
-		if tail, err := fileTail(dest, file.Base); err != nil || tail != file.Tail {
+		if tail, err := stored.tail(file.Base); err != nil || tail != file.Tail {
 			return false, true
 		}
 	}
@@ -213,7 +278,7 @@ func checkStoredNative(dest string, file runnerNativeFile) (continues, sumMatche
 		return true, true
 	}
 	h := sha256.New()
-	if file.Base > 0 && hashFilePrefix(h, dest, file.Base) != nil {
+	if file.Base > 0 && stored.hashPrefix(h, file.Base) != nil {
 		return true, false
 	}
 	h.Write(file.bytes())
@@ -221,8 +286,11 @@ func checkStoredNative(dest string, file runnerNativeFile) (continues, sumMatche
 }
 
 // storeNativeFiles writes a checked conversation's session files beside its
-// record, appending deltas, and leaves the bundle without file contents.
+// record, appending deltas, and leaves the bundle without file contents. The
+// caller stores the record afterwards, so the old record still names the
+// checkout the copies were stored from.
 func storeNativeFiles(paths runnerPaths, bundle *runnerBundle) error {
+	storedRoot := storedBundleRoot(paths, bundle.ThreadID)
 	kept := bundle.Files[:0]
 	for _, file := range bundle.Files {
 		if !storableNative(file) {
@@ -232,7 +300,7 @@ func storeNativeFiles(paths runnerPaths, bundle *runnerBundle) error {
 		if err := os.MkdirAll(filepath.Dir(dest), 0700); err != nil {
 			return err
 		}
-		if err := writeStoredNative(dest, file); err != nil {
+		if err := writeStoredNative(dest, storedRoot, bundle.Root, file); err != nil {
 			return err
 		}
 		file.Data, file.Text, file.Base, file.Tail, file.Sum = nil, "", 0, "", ""
@@ -242,33 +310,45 @@ func storeNativeFiles(paths runnerPaths, bundle *runnerBundle) error {
 	return nil
 }
 
-func writeStoredNative(dest string, file runnerNativeFile) error {
+func writeStoredNative(dest, storedRoot, root string, file runnerNativeFile) error {
 	data := file.bytes()
-	if file.Base == 0 {
-		temp := dest + ".tmp"
-		if err := os.WriteFile(temp, data, 0600); err != nil {
-			return err
+	if file.Base > 0 {
+		stored := openStoredCopy(dest, storedRoot, root)
+		if stored.converted == nil {
+			handle, err := os.OpenFile(dest, os.O_WRONLY|os.O_APPEND, 0600)
+			if err != nil {
+				return err
+			}
+			if _, err = handle.Write(data); err != nil {
+				handle.Close()
+				return err
+			}
+			return handle.Close()
 		}
-		return os.Rename(temp, dest)
+		// Stored from another checkout: keep it in this sender's form, which
+		// the delta continues.
+		data = append(stored.converted[:file.Base:file.Base], data...)
 	}
-	handle, err := os.OpenFile(dest, os.O_WRONLY|os.O_APPEND, 0600)
-	if err != nil {
+	temp := dest + ".tmp"
+	if err := os.WriteFile(temp, data, 0600); err != nil {
 		return err
 	}
-	if _, err = handle.Write(data); err != nil {
-		handle.Close()
-		return err
-	}
-	return handle.Close()
+	return os.Rename(temp, dest)
 }
 
-// loadNativeFiles fills a stored bundle's session files back in. Bundles
-// stored before files were kept separately carry their contents inline.
-func loadNativeFiles(paths runnerPaths, bundle *runnerBundle) {
+// loadNativeFiles fills a stored bundle's session files back in, as deltas
+// against what the receiver has where it can. Bundles stored before files
+// were kept separately carry their contents inline.
+func loadNativeFiles(paths runnerPaths, bundle *runnerBundle, haves []runnerHave) {
 	kept := bundle.Files[:0]
 	for _, file := range bundle.Files {
 		if file.size() == 0 {
-			data, err := os.ReadFile(paths.storedNativePath(bundle.ThreadID, file))
+			path := paths.storedNativePath(bundle.ThreadID, file)
+			if storedDelta(path, haves, bundle.ThreadID, bundle.Root, &file) {
+				kept = append(kept, file)
+				continue
+			}
+			data, err := os.ReadFile(path)
 			if err != nil {
 				continue
 			}

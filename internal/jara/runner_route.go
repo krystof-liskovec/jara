@@ -91,11 +91,19 @@ func continueOnHub(id, reason string, applies func(runnerLease) bool) error {
 		q.Continue = fmt.Sprintf("[Jara: %s %s while you were working on the latest request. "+
 			"The working tree holds the changes up to its last checkpoint. Check where the work stands, then continue the unfinished task.]", device, reason)
 	}
-	conn, _, err := ensureChatDaemon(q)
-	if err != nil {
-		return fmt.Errorf("continue on the remote host: %w", err)
+	// The lease already moved here, so nothing else would start the work:
+	// retry a session that fails to start.
+	for attempt := 1; ; attempt++ {
+		conn, _, startErr := ensureChatDaemon(q)
+		if startErr == nil {
+			return conn.Close()
+		}
+		fmt.Fprintf(os.Stderr, "Continuing on the remote host failed (attempt %d): %v\n", attempt, startErr)
+		if attempt == 3 {
+			return fmt.Errorf("continue on the remote host: %w", startErr)
+		}
+		time.Sleep(time.Duration(attempt) * 2 * time.Second)
 	}
-	return conn.Close()
 }
 
 // hubRunnerDaemon prepares the host's session of a workspace that devices
