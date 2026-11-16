@@ -37,8 +37,12 @@ type runnerLease struct {
 	// scheduled work is waiting. Either makes the host continue for it.
 	Busy    bool `json:"busy,omitempty"`
 	Pending bool `json:"pending,omitempty"`
-	// Want names a device waiting for the current runner to become idle.
-	Want string `json:"want,omitempty"`
+	// Wants records devices whose open window waits for the host to become
+	// idle (device → since when). HandBackAt is when the host last handed
+	// back to them; Prefers ranks devices for that hand-back.
+	Wants      map[string]int64 `json:"wants,omitempty"`
+	HandBackAt int64            `json:"hand_back_at,omitempty"`
+	Prefers    []string         `json:"prefers,omitempty"`
 	// LastRunner is the device or runnerHub that ran the agent most recently.
 	LastRunner string `json:"last_runner,omitempty"`
 	// Seq numbers checkpoints; Writer wrote checkpoint Seq. Conversation is
@@ -198,4 +202,51 @@ func describeRunnerTime(unix int64) string {
 		return "never"
 	}
 	return time.Since(time.Unix(unix, 0)).Round(time.Second).String() + " ago"
+}
+
+// runnerHandBackGrace is how long after a hand-back a more-preferred waiting
+// device has to reconnect before less-preferred ones may claim.
+const runnerHandBackGrace = 20 * time.Second
+
+// startWaitRound forgets devices that did not come back for an earlier
+// hand-back (their window closed) before another device starts waiting.
+func (lease *runnerLease) startWaitRound() {
+	if lease.HandBackAt != 0 && time.Since(time.Unix(lease.HandBackAt, 0)) > runnerHandBackGrace {
+		for device, since := range lease.Wants {
+			if since <= lease.HandBackAt {
+				delete(lease.Wants, device)
+			}
+		}
+		lease.HandBackAt = 0
+	}
+	if lease.Wants == nil {
+		lease.Wants = map[string]int64{}
+	}
+}
+
+// preferenceRank orders devices by Prefers; unlisted devices come last.
+func (lease runnerLease) preferenceRank(device string) int {
+	for i, preferred := range lease.Prefers {
+		if preferred == device {
+			return i
+		}
+	}
+	return len(lease.Prefers)
+}
+
+// yieldsTo names a more-preferred device that also waited for the host's
+// hand-back and may still be reconnecting, or "" when device may claim now.
+// Only devices whose window waited count: the host never starts an agent on
+// a device.
+func (lease runnerLease) yieldsTo(device string) string {
+	if lease.HandBackAt == 0 || time.Since(time.Unix(lease.HandBackAt, 0)) > runnerHandBackGrace {
+		return ""
+	}
+	best, rank := "", lease.preferenceRank(device)
+	for waiting := range lease.Wants {
+		if candidate := lease.preferenceRank(waiting); waiting != device && candidate < rank {
+			best, rank = waiting, candidate
+		}
+	}
+	return best
 }

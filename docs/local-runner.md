@@ -27,6 +27,8 @@ JARA_RUN_REMOTE=1 jara      # the same, for every session in this shell
 jara new                    # a new conversation, running here
 jara runner status          # where the agent runs, online or not, last checkpoint
 jara --take-over            # take over although the other device still looks online
+jara runner prefer laptop desktop  # who gets a conversation back first
+jara remote order jellyfish backup # rank remote hosts; the first is the default
 ```
 
 `JARA_DEVICE` overrides the device name used in leases (the host name by
@@ -89,6 +91,16 @@ A window that reconnects by itself only takes the conversation back from the
 remote host, never from another device you moved to. Open it again with `jara`
 to move it explicitly.
 
+Only remote hosts run agents unattended. A device runs one only for a session
+started on it; the remote host never starts one there, and failover never goes
+to another device. When windows on several devices wait for the remote host,
+`jara runner prefer` decides who gets the conversation back: the most-preferred
+waiting device, or after 20 seconds without it the next one.
+
+Remote hosts are ranked (`jara remote order`; new ones rank last). The first is
+the default and primary host. Lower-ranked hosts do not take part in failover
+yet.
+
 Work a device did after its last checkpoint, before another machine replaced
 it, is set aside before catching up:
 
@@ -148,7 +160,10 @@ including Codex-only ones, so the fallback always has something to replay.
 - Handing back to a waking device ends other windows attached to the remote
   host's session, such as a phone; reconnect them to follow the conversation.
 - Each checkpoint opens several SSH connections, so connection multiplexing
-  (`ControlMaster`) in your SSH config makes them faster.
+  (`ControlMaster`) in your SSH config makes them faster. Checkpoints send
+  only the bytes appended to each agent session file since the host's copy,
+  zstd-compressed; other SSH traffic of sync and checkpoints is compressed by
+  SSH. A changed or rewritten session file is sent whole once.
 - The device uses its own `PATH`, toolchains, agent configuration and
   credentials, without the container's isolation: the agent's own sandbox
   settings apply.

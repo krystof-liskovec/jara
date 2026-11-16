@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 )
 
@@ -174,14 +173,11 @@ func forgetRemoteConfig(c *Config, name string, preserveWorkspaces bool) {
 		}
 	}
 	if c.Default == name {
+		// The next remote in rank becomes the default.
 		c.Default = ""
-		var names []string
-		for remote := range c.Remotes {
-			names = append(names, remote)
-		}
-		sort.Strings(names)
-		if len(names) > 0 {
-			c.Default = names[0]
+		if ranked := c.rankedRemotes(); len(ranked) > 0 {
+			c.Default = ranked[0]
 		}
 	}
+	c.Order = c.rankedRemotes()
 }

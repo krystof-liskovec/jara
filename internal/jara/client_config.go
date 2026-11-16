@@ -5,23 +5,19 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"sort"
 
 	"krystof.liskovec/jara/internal/protocol"
 )
 
 func remoteCommand(c *Config, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("use remote add, list, or use")
+		return fmt.Errorf("use remote add, list, use, order, or remove")
 	}
 	switch args[0] {
+	case "order":
+		return remoteOrderCommand(c, args[1:])
 	case "list":
-		names := make([]string, 0, len(c.Remotes))
-		for n := range c.Remotes {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		for _, n := range names {
+		for _, n := range c.rankedRemotes() {
 			mark := " "
 			if n == c.Default {
 				mark = "*"
@@ -36,7 +32,9 @@ func remoteCommand(c *Config, args []string) error {
 		if _, ok := c.Remotes[args[1]]; !ok {
 			return fmt.Errorf("unknown remote")
 		}
-		c.Default = args[1]
+		if err := c.rankRemotes([]string{args[1]}); err != nil {
+			return err
+		}
 		return saveConfig(*c)
 	case "remove":
 		if len(args) != 2 || !nameRE.MatchString(args[1]) {
@@ -77,6 +75,7 @@ func remoteCommand(c *Config, args []string) error {
 			return err
 		}
 		c.Remotes[args[1]] = r
+		c.appendRemote(args[1])
 		if c.Default == "" {
 			c.Default = args[1]
 		}

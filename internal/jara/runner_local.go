@@ -29,6 +29,8 @@ type localRunnerMarker struct {
 	Lost      bool              `json:"lost,omitempty"`
 	// Branch is the branch both checkouts shared at the last sync.
 	Branch string `json:"branch,omitempty"`
+	// Sent is what the host stores of each local session file.
+	Sent map[string]runnerSentFile `json:"sent,omitempty"`
 }
 
 var deviceNameRE = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -246,7 +248,7 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
 		return fmt.Errorf("bring this checkout up to date: %w", err)
 	}
 	var checkpoint runnerCheckpoint
-	if err = rpc(o.remote, Request{Op: "runner-export", ID: o.binding.Workspace, Since: since}, nil, &checkpoint); err != nil {
+	if err = rpcCompressed(o.remote, Request{Op: "runner-export", ID: o.binding.Workspace, Since: since, Compress: true}, nil, &checkpoint); err != nil {
 		return err
 	}
 	briefed, err := importCheckpoint(checkpoint, o.root)
@@ -267,7 +269,9 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
 	if q.Conversation == "" && !q.New {
 		q.Conversation, q.Resume, q.ResumeLatest = checkpoint.Current, false, false
 	}
-	return updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) { m.Versions = workspaceThreadVersions(o.root) })
+	// Imported session files are rewritten for this checkout, so the host's
+	// copies no longer match them byte for byte.
+	return updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) { m.Versions, m.Sent = workspaceThreadVersions(o.root), nil })
 }
 
 // defaultLocalRunner reports whether conversations run on this device unless

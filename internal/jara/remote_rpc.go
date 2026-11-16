@@ -151,7 +151,7 @@ func remoteRPC(q Request) error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(repositories)
-	case "runner-status", "runner-claim", "runner-release", "runner-checkpoint", "runner-export", "runner-tunnel":
+	case "runner-status", "runner-claim", "runner-release", "runner-checkpoint", "runner-export", "runner-tunnel", "runner-prefer":
 		return runnerRPC(q)
 	case "git-state", "git-bundle", "git-advance", "git-switch":
 		return syncGitRPC(q)

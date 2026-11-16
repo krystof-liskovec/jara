@@ -13,10 +13,21 @@ func init() {
 		commandHelp[key] = entry
 	}
 	addHelpExamples("root", "jara --run-remote", "jara runner status")
+	commandHelp["remote order"] = helpEntry{
+		usage:    "jara remote order [NAME...]",
+		summary:  "Show or set the ranking of remote hosts; the first is the default and primary host. Unlisted remotes keep their order after the named ones.",
+		examples: []string{"jara remote order", "jara remote order jellyfish backup"},
+	}
 	commandHelp["runner"] = helpEntry{
-		usage:    "jara runner status [WORKSPACE_ID] [--remote NAME]",
-		summary:  "Show which machine runs a workspace's agent, whether it is online, and its last checkpoint.",
-		options:  []string{"--remote NAME       Select the Jara host."},
-		examples: []string{"jara runner status", "jara runner status w-0123456789abcdef --remote work"},
+		usage: "jara runner status|prefer ...",
+		summary: "Show which machine runs a workspace's agent, whether it is online, and its last checkpoint; " +
+			"or rank the devices that get a conversation back from the remote host when several windows wait for it.",
+		commands: []string{
+			"status [WORKSPACE_ID]\tWhere the agent runs, waiting devices, preferences.",
+			"prefer [DEVICE...|--none]\tRank devices for hand-back; the remote host never starts an agent on a device.",
+		},
+		options: []string{"--remote NAME       Select the Jara host.", "--workspace ID      prefer: the workspace (default: this folder's)."},
+		examples: []string{"jara runner status", "jara runner status w-0123456789abcdef --remote work",
+			"jara runner prefer laptop desktop", "jara runner prefer --none"},
 	}
 }

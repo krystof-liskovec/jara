@@ -37,7 +37,9 @@ func sshArgs(r Remote, tty bool) []string {
 	if tty {
 		a = append(a, "-o", "LogLevel=ERROR", "-tt")
 	} else {
-		a = append(a, "-T")
+		// Sync and checkpoints move text that compresses well; devices may be
+		// on slow or metered connections.
+		a = append(a, "-T", "-o", "Compression=yes")
 	}
 	if r.Port != 0 {
 		a = append(a, "-p", strconv.Itoa(r.Port))
@@ -81,6 +83,8 @@ type Request struct {
 	Commit             string   `json:"commit,omitempty"`
 	Base               string   `json:"base,omitempty"` // commit the endpoint is expected to have checked out
 	Commits            []string `json:"commits,omitempty"`
+	Compress           bool     `json:"compress,omitempty"` // answer zstd-compressed
+	Devices            []string `json:"devices,omitempty"`
 	Subdir             string   `json:"subdir,omitempty"`
 	Resume             bool     `json:"resume,omitempty"`
 	ResumeLatest       bool     `json:"resume_latest,omitempty"`
