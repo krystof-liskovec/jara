@@ -23,7 +23,7 @@ func runInternalCommand(args []string) (bool, error) {
 		if err := decode(args[1], &q); err != nil {
 			return true, err
 		}
-		return true, remoteRPC(q)
+		return true, serveCompressedRPC(os.Stdin, q, func() error { return remoteRPC(q) })
 	case "_peer", "_peer-keys":
 		if len(args) != 2 {
 			return true, fmt.Errorf("invalid internal invocation")

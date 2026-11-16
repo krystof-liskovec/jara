@@ -190,8 +190,8 @@ including Codex-only ones, so the fallback always has something to replay.
 - Each checkpoint opens several SSH connections, so connection multiplexing
   (`ControlMaster`) in your SSH config makes them faster. Checkpoints send
   only the bytes appended to each agent session file since the host's copy,
-  zstd-compressed; other SSH traffic of sync and checkpoints is compressed by
-  SSH. The remote host checks that each delta continues its copy, and at the
+  zstd-compressed, like every other Jara request and answer (file sync
+  included) between Jara versions that support it. The remote host checks that each delta continues its copy, and at the
   end of every turn a SHA-256 of each changed file. A copy that does not match
   is repaired: after a dropped connection, from where the copy ends; only a
   copy that really differs gets the whole file.

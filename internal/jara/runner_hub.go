@@ -94,15 +94,7 @@ func runnerRPC(q Request) error {
 		if err != nil {
 			return err
 		}
-		if q.Compress {
-			data, err := compressedJSON(checkpoint)
-			if err != nil {
-				return err
-			}
-			_, err = os.Stdout.Write(data)
-			return err
-		}
-		return out.Encode(checkpoint)
+		return out.Encode(checkpoint) // compressed by serveCompressedRPC
 	case "runner-checkpoint":
 		var checkpoint runnerCheckpoint
 		if err = decodeMaybeCompressed(os.Stdin, maxTransfer*2, &checkpoint); err != nil {

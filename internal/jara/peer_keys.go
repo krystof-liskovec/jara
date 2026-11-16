@@ -258,7 +258,7 @@ var peerCommandRE = regexp.MustCompile(`^'?jara'? '?_rpc'? '?([A-Za-z0-9_-]+)'?$
 
 // runPeerCommand is the forced command of a peer's key: it runs the RPC the
 // peer asked for when it is one of peerRPCs.
-func runPeerCommand(peer string, stdin io.Reader) error {
+func runPeerCommand(peer string, stdin *os.File) error {
 	if !nameRE.MatchString(peer) {
 		return fmt.Errorf("invalid peer")
 	}
@@ -274,8 +274,10 @@ func runPeerCommand(peer string, stdin io.Reader) error {
 		return fmt.Errorf("peer %s may not run %q", peer, q.Op)
 	}
 	q.Peer = peer
-	if strings.HasPrefix(q.Op, "standby-") {
-		return standbyRPC(q, bufio.NewReader(stdin))
-	}
-	return remoteRPC(q)
+	return serveCompressedRPC(stdin, q, func() error {
+		if strings.HasPrefix(q.Op, "standby-") {
+			return standbyRPC(q, bufio.NewReader(os.Stdin))
+		}
+		return remoteRPC(q)
+	})
 }
