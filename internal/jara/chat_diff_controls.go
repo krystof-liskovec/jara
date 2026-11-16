@@ -24,7 +24,7 @@ func chatDiffPaneSuffix(d *chatDiffState, width, height int) string {
 	suffix := ""
 	if body := len(chatDiffLines(d, width)) - 1; body > height-1 && height > 1 {
 		maxScroll := body - (height - 1)
-		suffix = fmt.Sprintf(" %d/%d", min(max(0, d.scroll), maxScroll)+1, maxScroll+1)
+		suffix = fmt.Sprintf(" %d/%d", maxScroll-min(max(0, d.scroll), maxScroll)+1, maxScroll+1)
 	}
 	if len(d.visible()) > 0 {
 		suffix += "  " + chatDiffAskButton
@@ -71,7 +71,9 @@ func (d *chatDiffState) fullScreen() bool {
 func chatDiffQuestion(d *chatDiffState) string {
 	var names []string
 	seen := map[string]bool{}
-	for _, change := range d.visible() {
+	changes := d.visible()
+	for i := len(changes) - 1; i >= 0; i-- {
+		change := changes[i]
 		path := textutil.SanitizeText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath))
 		if path == "" || seen[path] {
 			continue

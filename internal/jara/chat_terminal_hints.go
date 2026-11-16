@@ -17,11 +17,14 @@ func chatTerminalHints(u *chatUI, editor *chatEditor, queueEditor *chatQueueEdit
 	if u.agentTurnActive() || (u.busy && !u.persistentSession) {
 		interruptHint = "Ctrl+C cancel turn"
 	}
-	tabHint := "Tab accept"
-	if u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" && len(suggestions) == 0 {
-		tabHint = "Tab queue"
+	// Only hints for what applies right now; the always-available keys
+	// (send, newline, scroll, select, Ctrl+C) stay out of the footer.
+	hints := []string{}
+	if len(suggestions) > 0 {
+		hints = append(hints, "Tab accept")
+	} else if u.agentTurnActive() && u.threadReady && strings.TrimSpace(editor.Text()) != "" {
+		hints = append(hints, "Tab queue")
 	}
-	hints := []string{"Shift+drag select", tabHint, "PgUp/Dn/wheel", "Shift+Enter", "Enter send", interruptHint}
 	if paneShown {
 		hints = append(hints, "F4 hide changes", "Alt+PgUp/Dn changes")
 	} else if len(u.diff.visible()) > 0 {
@@ -31,9 +34,7 @@ func chatTerminalHints(u *chatUI, editor *chatEditor, queueEditor *chatQueueEdit
 	queueEditNumber := 0
 	if queueEditor.active() {
 		_, queueEditNumber, _, _ = u.queuedPromptByID(queueEditor.id)
-		hints = []string{"Shift+drag select", "Enter save edit", "Esc cancel", "PgUp/Dn/wheel"}
-	} else if len(queueLines) > 0 {
-		hints = append(hints, "/queue edit N")
+		hints = []string{"Enter save edit", "Esc cancel"}
 	}
 	if sessionPicker {
 		hints = []string{"↑↓ choose", "Enter open", "Esc close", interruptHint}
@@ -52,7 +53,7 @@ func handleChatPaneKey(d *chatDiffState, event chatTerminalKeyEvent, output *os.
 		d.toggle(width, height)
 		return
 	}
-	d.scroll = max(0, d.scroll+event.paneScroll)
+	d.scroll = max(0, d.scroll-event.paneScroll) // the offset counts up from the newest change
 }
 
 // chatAnimationFrame returns the current animation frame, or -1 when nothing

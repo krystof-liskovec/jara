@@ -8,7 +8,8 @@ import (
 )
 
 // tap runs the control under a click or tap: the model, reasoning and
-// auto-mode labels, menu entries, the approval buttons, and the changed-files label.
+// auto-mode labels, menu entries, the approval buttons, the changed-files
+// label, and tool call rows.
 func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 	action := t.targets.target(row, column)
 	if action == "" {
@@ -38,8 +39,31 @@ func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 	case strings.HasPrefix(action, "suggestion:"):
 		index, _ := strconv.Atoi(strings.TrimPrefix(action, "suggestion:"))
 		return t.tapSuggestion(index)
+	case strings.HasPrefix(action, "tool:"):
+		t.toggleToolCall(strings.TrimPrefix(action, "tool:"))
 	}
 	return false, nil
+}
+
+// toggleToolCall opens or closes a tool call's output. The clicked row stays
+// where it was on screen when it can; the output opens below it.
+func (t *chatTerminal) toggleToolCall(key string) {
+	out := t.transcript
+	if t.u.viewedAgent() != nil && t.agents.view != nil {
+		out = t.agents.view
+	}
+	rows := t.targets.TranscriptRows
+	if out.width == 0 || rows == 0 {
+		out.toggleTool(key)
+		return
+	}
+	before := len(out.transcriptLines(out.width))
+	if !out.toggleTool(key) {
+		return
+	}
+	// Keep the first visible row; the scroll offset counts up from the end.
+	start := max(0, before-rows-t.scrollOffset)
+	t.scroll(max(0, len(out.transcriptLines(out.width))-rows-start))
 }
 
 // chatApprovalKey answers a pending approval with Enter or a single y or n
@@ -115,9 +139,9 @@ func (t *chatTerminal) handleFullScreenDiffKey(event chatTerminalKeyEvent) bool 
 	t.dirty = true
 	switch {
 	case event.scrollRows != 0:
-		d.scroll = max(0, d.scroll-event.scrollRows)
+		d.scroll = max(0, d.scroll+event.scrollRows)
 	case event.scroll != 0:
-		d.scroll = max(0, d.scroll-event.scroll*max(1, d.screenHeight/2))
+		d.scroll = max(0, d.scroll+event.scroll*max(1, d.screenHeight/2))
 	case event.returnToLive:
 		d.scroll = 0
 	case event.paneScroll != 0, event.diffPane, event.tap != nil, event.interrupt:

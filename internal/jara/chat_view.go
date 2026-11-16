@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -50,10 +51,12 @@ type chatFrame struct {
 	Lines                []string
 	CursorRow, CursorCol int
 	Targets              []chatTapTarget // tappable regions, for phones
+	TranscriptRows       int             // rows the conversation fills
 }
 
 type chatViewLine struct {
 	text, kind, role string
+	action           string           // what a click or tap on the row does
 	spans            []chatSyntaxSpan // highlighted code starting at codeStart
 	codeStart        int
 }
@@ -144,6 +147,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		transcript = collapseChatBlankLines(transcript)
 	}
 	visibleTranscript, clippedAbove, clippedBelow := chatTranscriptWindow(transcript, transcriptRows, model.ScrollOffset)
+	frame.TranscriptRows = transcriptRows
 
 	row := 0
 	for i := 0; i < transcriptRows; i++ {
@@ -152,6 +156,9 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 			line = visibleTranscript[i]
 		}
 		frame.Lines[row] = paintChatTranscriptLine(" ", line, width, palette, color)
+		if line.action != "" {
+			frame.Targets = append(frame.Targets, chatTapTarget{row: row, from: 0, to: width, action: line.action})
+		}
 		row++
 	}
 	row += separatorRows
@@ -285,21 +292,13 @@ func centerChatViewText(text string, width int) string {
 }
 
 func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool) string {
-	hints := model.Hints
-	if len(hints) == 0 {
-		hints = []string{"↑↓ choose", "Tab complete", "Enter send", "Ctrl+C quit"}
-	}
+	hints := slices.Clip(model.Hints)
+	picker := strings.Contains(strings.Join(hints, " "), "Esc close")
 	if clippedAbove || clippedBelow {
 		if model.QueueEditing {
-			hints = []string{"Shift+drag select", "PgUp/Dn/wheel", "Enter save", "Esc cancel"}
-		} else if strings.Contains(strings.Join(hints, " "), "Esc close") {
+			hints = []string{"Enter save", "Esc cancel"}
+		} else if picker {
 			hints = []string{"↑↓ choose", "Enter open", "Esc close"}
-		} else {
-			interrupt := "Ctrl+C quit"
-			if strings.Contains(strings.Join(hints, " "), "cancel") {
-				interrupt = "Ctrl+C cancel"
-			}
-			hints = []string{"Shift+drag select", "PgUp/Dn/wheel history", "Shift+Enter", "Enter send", interrupt}
 		}
 		markers := []string{}
 		if clippedAbove {
@@ -310,7 +309,7 @@ func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool)
 		}
 		hints = append(hints, strings.Join(markers, " "))
 	}
-	if len(model.QueuedPrompts) > 0 && !model.QueueEditing && !strings.Contains(strings.Join(hints, " "), "Esc close") {
+	if len(model.QueuedPrompts) > 0 && !model.QueueEditing && !picker {
 		hints = append(hints, "/queue edit N")
 	}
 	if width < chatNarrowColumns {

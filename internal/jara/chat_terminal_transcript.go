@@ -21,6 +21,9 @@ type chatTerminalOutput struct {
 	agent     string
 	viewDirty bool
 	viewLines []chatViewLine
+
+	expanded map[string]bool // tool calls opened with a click; kept across ClearChat
+	toolSeq  int             // names tool calls that came without an ID
 }
 
 type chatTerminalEntry struct {
@@ -32,7 +35,8 @@ type chatTerminalEntry struct {
 	lines   []chatViewLine
 	pending strings.Builder
 	hasLine bool
-	inCode  string // open code fence info, "" outside code
+	inCode  string        // open code fence info, "" outside code
+	tool    *chatToolCall // set when the entry is one tool call
 }
 
 func (o *chatTerminalOutput) Write(data []byte) (int, error) {
@@ -66,16 +70,23 @@ func (o *chatTerminalOutput) appendAt(role, text string, at time.Time) {
 	if text == "" {
 		return
 	}
-	if len(text) > chatTranscriptLimit {
-		text, _ = truncateChatGraphemes(text, chatTranscriptLimit)
-		o.trimmed = true
-	}
 	var entry *chatTerminalEntry
-	if count := len(o.entries); count > 0 && o.entries[count-1].role == role && o.entries[count-1].agent == o.agent {
+	if count := len(o.entries); count > 0 && o.entries[count-1].role == role && o.entries[count-1].agent == o.agent && o.entries[count-1].tool == nil {
 		entry = o.entries[count-1]
 	} else {
 		entry = &chatTerminalEntry{role: role, agent: o.agent, at: at}
 		o.entries = append(o.entries, entry)
+	}
+	o.appendTo(entry, text)
+}
+
+func (o *chatTerminalOutput) appendTo(entry *chatTerminalEntry, text string) {
+	if text == "" {
+		return
+	}
+	if len(text) > chatTranscriptLimit {
+		text, _ = truncateChatGraphemes(text, chatTranscriptLimit)
+		o.trimmed = true
 	}
 	entry.text.WriteString(text)
 	entry.bytes += len(text)
@@ -107,7 +118,7 @@ func (e *chatTerminalEntry) appendVisual(text string, width int) {
 		}
 		e.pending.WriteString(text[:newline])
 		e.hasLine = true
-		lines, inCode := expandChatTranscriptLine(e.pending.String(), width, e.role, e.inCode)
+		lines, inCode := e.expandLine(e.pending.String(), width)
 		e.lines = append(e.lines, lines...)
 		e.inCode = inCode
 		e.pending.Reset()
@@ -123,6 +134,28 @@ func (e *chatTerminalEntry) reflow(width int) {
 	e.hasLine = false
 	e.inCode = ""
 	e.appendVisual(text, width)
+}
+
+// bodyLines renders an entry's text without blank rows at its start or end:
+// the gap between messages already spaces them, and a reply that opens with
+// a paragraph break would otherwise start with empty rows.
+func (e *chatTerminalEntry) bodyLines(width int) []chatViewLine {
+	rows := e.lines
+	if e.hasLine {
+		pending, _ := e.expandLine(e.pending.String(), width)
+		rows = append(rows[:len(rows):len(rows)], pending...)
+	}
+	for len(rows) > 0 && chatBlankRow(rows[0]) {
+		rows = rows[1:]
+	}
+	for len(rows) > 0 && chatBlankRow(rows[len(rows)-1]) {
+		rows = rows[:len(rows)-1]
+	}
+	return rows
+}
+
+func chatBlankRow(line chatViewLine) bool {
+	return line.kind == "body" && strings.TrimSpace(line.text) == ""
 }
 
 func (o *chatTerminalOutput) enforceLimit() {
@@ -175,14 +208,17 @@ func (o *chatTerminalOutput) transcriptLines(width int) []chatViewLine {
 		if chatViewNeedsMessageGap(previousRole, entry.role) {
 			lines = append(lines, chatViewLine{kind: "message-gap"})
 		}
-		header := expandChatTranscript([]chatViewMessage{{Role: entry.role, At: entry.at, Agent: entry.agent}}, width)
-		lines = append(lines, header...)
-		lines = append(lines, entry.lines...)
-		if entry.hasLine {
-			pending, _ := expandChatTranscriptLine(entry.pending.String(), width, entry.role, entry.inCode)
-			lines = append(lines, pending...)
+		// Tool calls in a row share one header.
+		if entry.role != "tool" || previousRole != "tool" {
+			header := expandChatTranscript([]chatViewMessage{{Role: entry.role, At: entry.at, Agent: entry.agent}}, width)
+			lines = append(lines, header...)
 		}
 		previousRole = entry.role
+		if entry.tool != nil {
+			lines = append(lines, o.toolLines(entry, width)...)
+			continue
+		}
+		lines = append(lines, entry.bodyLines(width)...)
 	}
 	o.viewLines = lines
 	o.viewDirty = false

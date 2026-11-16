@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func newTestChatTerminal(t *testing.T) (*chatTerminal, *bytes.Buffer) {
@@ -105,5 +106,54 @@ func rawChatRequests(wire *bytes.Buffer) []rawChatRequest {
 			return requests
 		}
 		requests = append(requests, request)
+	}
+}
+
+func TestChatFooterLeavesOutAlwaysAvailableKeys(t *testing.T) {
+	term, _ := newTestChatTerminal(t)
+	footer := func() string {
+		frame := term.frame(120, 30, time.Now())
+		return frame.Lines[len(frame.Lines)-1]
+	}
+	removed := []string{"Shift+drag", "PgUp/Dn/wheel", "Shift+Enter", "Enter send", "Ctrl+C", "Tab accept"}
+	for _, hint := range removed {
+		if strings.Contains(footer(), hint) {
+			t.Fatalf("idle footer shows %q: %q", hint, footer())
+		}
+	}
+	for range 40 {
+		term.transcript.WriteChatRole("assistant", "line\n")
+	}
+	if got := footer(); !strings.Contains(got, "↑ older") {
+		t.Fatalf("a long transcript still marks older lines: %q", got)
+	}
+	for _, hint := range removed {
+		if strings.Contains(footer(), hint) {
+			t.Fatalf("scrolled footer shows %q: %q", hint, footer())
+		}
+	}
+}
+
+func TestMessagesHaveNoBlankRowsAtTheirEdges(t *testing.T) {
+	out := &chatTerminalOutput{}
+	out.SetChatAgent("Claude Code")
+	out.WriteChatRole("user", "fix it\n")
+	out.WriteChatRole("assistant", "Looking.")
+	out.StartChatTool("c1", "$ ls", "", true, time.Now())
+	// Claude Code separates text blocks with a paragraph break, which lands
+	// at the start of the reply after a tool call.
+	out.WriteChatRole("assistant", "\n\nNow the edits.\n\nSecond paragraph.\n")
+	var rows []string
+	for _, line := range out.transcriptLines(80) {
+		rows = append(rows, strings.TrimRight(line.text, " "))
+	}
+	got := strings.Join(rows, "\n")
+	for _, want := range []string{"fix it\n\n✦ Claude Code", "Looking.\n\n⌁ Tool", "  $ ls\n\n✦ Claude Code", "\n  Now the edits.\n\n  Second paragraph."} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("transcript lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.HasSuffix(got, "\n") {
+		t.Fatalf("a trailing blank row after the last message:\n%s", got)
 	}
 }

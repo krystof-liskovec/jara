@@ -116,14 +116,26 @@ func TestViewedSubagentIsReadAndRendered(t *testing.T) {
 	}
 	out := &chatTerminalOutput{}
 	renderChatAgentTranscript(out, agent)
-	var text strings.Builder
-	for _, line := range out.transcriptLines(80) {
-		text.WriteString(line.text + "\n")
-	}
-	for _, want := range []string{"check the tests", "$ go test ./...", "ok", "All tests pass."} {
-		if !strings.Contains(text.String(), want) {
-			t.Fatalf("rendered transcript lacks %q:\n%s", want, text.String())
+	rendered := func() string {
+		var text strings.Builder
+		for _, line := range out.transcriptLines(80) {
+			text.WriteString(line.text + "\n")
 		}
+		return text.String()
+	}
+	for _, want := range []string{"check the tests", "▸ $ go test ./... · 1 line", "All tests pass."} {
+		if !strings.Contains(rendered(), want) {
+			t.Fatalf("rendered transcript lacks %q:\n%s", want, rendered())
+		}
+	}
+	// The command's output opens with a click and stays open when the
+	// transcript is read again.
+	if strings.Contains(rendered(), "    ok") || !out.toggleTool("c") {
+		t.Fatalf("command output shows before it is opened:\n%s", rendered())
+	}
+	renderChatAgentTranscript(out, agent)
+	if !strings.Contains(rendered(), "▾ $ go test ./...") || !strings.Contains(rendered(), "    ok") {
+		t.Fatalf("opened command lacks its output:\n%s", rendered())
 	}
 }
 

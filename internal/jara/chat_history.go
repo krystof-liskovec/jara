@@ -43,7 +43,7 @@ func (u *chatUI) renderChatHistory(turns []protocol.HistoryTurn) {
 			case "plan":
 				u.printRoleAt("assistant", "Plan:\n"+item.Text+"\n", at)
 			case "fileChange":
-				u.printRoleAt("tool", formatChatFileChangeList(item.Status, item.Changes), at)
+				u.startFileChangeCall(item, "", at)
 				u.diff.record(item.Changes, false)
 			case "reasoning":
 				if !chatUIIsInteractive(u) {

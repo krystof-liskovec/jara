@@ -49,7 +49,7 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 		bg, fg = palette.canvas, menuSelectionText(palette.canvas)
 	case "role-subagent":
 		bg, fg = palette.canvas, palette.accent
-	case "role-tool", "role-system":
+	case "role-tool", "role-system", "tool-call":
 		bg, fg = palette.canvas, palette.muted
 	case "body":
 		switch role {

@@ -11,7 +11,9 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// The diff pane shows recent file changes, newest first. On wide terminals
+// The diff pane shows recent file changes, newest last: like the
+// conversation, new changes are added at the bottom and the pane follows
+// them unless it was scrolled back. On wide terminals
 // it sits beside the conversation and opens with the first change. Smaller
 // terminals, such as phones, would squeeze the conversation, so there it
 // never opens by itself: F4 or /diff shows it over the whole screen. F4,
@@ -28,10 +30,11 @@ const (
 )
 
 type chatDiffState struct {
-	changes []protocol.FileChange
+	changes []protocol.FileChange // the agent's edits, oldest first
 	arrived time.Time
+	fresh   int // changes at the end of the list that just arrived and wipe in
 	mode    int
-	scroll  int
+	scroll  int // rows up from the newest change; 0 follows new changes
 	// The interactive terminal's size, recorded on each draw; zero in plain
 	// output, where /diff lists the changes instead.
 	screenWidth, screenHeight int
@@ -51,17 +54,39 @@ func (d *chatDiffState) recordFileChanges(raw json.RawMessage, live bool) {
 }
 
 func (d *chatDiffState) record(changes []protocol.FileChange, live bool) {
-	// Newer edits go first; files within one edit keep the agent's order.
-	d.changes = append(append([]protocol.FileChange{}, changes...), d.changes...)
-	if len(d.changes) > chatDiffPaneKeepFiles {
-		d.changes = d.changes[:chatDiffPaneKeepFiles]
+	// Newer edits go last; files within one edit keep the agent's order.
+	if d.git.available {
+		// The pane shows Git's changes, which update on their own.
+		d.changes = chatKeepNewestChanges(append(d.changes, changes...))
+		return
 	}
-	d.scroll = 0
-	if live {
-		d.arrived = time.Now()
-	} else {
-		d.arrived = time.Time{}
+	d.holdPlace(func() {
+		d.changes = chatKeepNewestChanges(append(d.changes, changes...))
+		d.arrived, d.fresh = time.Time{}, 0
+		if live {
+			d.arrived, d.fresh = time.Now(), min(len(changes), len(d.changes))
+		}
+	})
+}
+
+func chatKeepNewestChanges(changes []protocol.FileChange) []protocol.FileChange {
+	if over := len(changes) - chatDiffPaneKeepFiles; over > 0 {
+		return append([]protocol.FileChange(nil), changes[over:]...)
 	}
+	return changes
+}
+
+// holdPlace applies update to the pane's changes. A pane scrolled back stays
+// still while changes are added below it; one following the newest changes
+// keeps following them.
+func (d *chatDiffState) holdPlace(update func()) {
+	if d.scroll == 0 {
+		update()
+		return
+	}
+	before := len(chatDiffLines(d, 0))
+	update()
+	d.scroll = max(0, d.scroll+len(chatDiffLines(d, 0))-before)
 }
 
 func (d *chatDiffState) toggle(width, height int) {
@@ -139,6 +164,7 @@ func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
 	if len(changes) == 0 {
 		return append(lines, chatDiffLine{kind: "pane-blank"}, chatDiffLine{text: "  " + empty[0], kind: "pane-empty"}, chatDiffLine{text: "  " + empty[1], kind: "pane-empty"})
 	}
+	freshFrom := len(changes) - d.fresh
 	for index, change := range changes {
 		path := strings.Join(strings.Fields(chatText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath, "Unknown file"))), " ")
 		a, r := chatFileChangeCounts(change.Diff)
@@ -147,7 +173,7 @@ func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
 			header += " · " + kind
 		}
 		header += fmt.Sprintf("  +%d −%d", a, r)
-		lines = append(lines, chatDiffLine{kind: "pane-blank"}, chatDiffLine{text: header, kind: "pane-file", fresh: index == 0})
+		lines = append(lines, chatDiffLine{kind: "pane-blank"}, chatDiffLine{text: header, kind: "pane-file", fresh: index >= freshFrom})
 		shown := 0
 		for _, raw := range strings.Split(strings.TrimRight(chatText(change.Diff), "\n"), "\n") {
 			if raw == "" || strings.HasPrefix(raw, "diff --git") || strings.HasPrefix(raw, "index ") || strings.HasPrefix(raw, "--- ") || strings.HasPrefix(raw, "+++ ") {
@@ -176,23 +202,31 @@ func chatDiffLines(d *chatDiffState, width int) []chatDiffLine {
 }
 
 // renderChatDiffPane paints height rows of the pane, applying the reveal
-// wipe and the highlight on the newest file while motion is enabled.
+// wipe and the highlight on the files that just arrived while motion is
+// enabled. Rows already shown stay put; only the new ones wipe in.
 func renderChatDiffPane(d *chatDiffState, width, height int, now time.Time, motion bool, palette menuPalette, color bool) []string {
 	lines := chatDiffLines(d, width)
 	body := lines[1:]
 	maxScroll := max(0, len(body)-(height-1))
 	d.scroll = min(max(0, d.scroll), maxScroll)
-	revealed := len(body)
+	start := maxScroll - d.scroll
+	revealed, freshStart := len(body), len(body)
 	elapsed := now.Sub(d.arrived)
 	if motion && !d.arrived.IsZero() && elapsed < chatFlashLength {
 		revealed = int(elapsed / chatRevealPerRow)
+		for index, line := range body {
+			if line.fresh {
+				freshStart = max(0, index-1) // from the blank row above the file
+				break
+			}
+		}
 	}
 	out := make([]string, height)
 	out[0] = paintChatDiffLine(lines[0], width, 0, palette, color)
 	for row := 1; row < height; row++ {
-		index := d.scroll + row - 1
+		index := start + row - 1
 		line := chatDiffLine{kind: "pane-blank"}
-		if index < len(body) && index-d.scroll < revealed {
+		if index < len(body) && (index < freshStart || index-max(freshStart, start) < revealed) {
 			line = body[index]
 		}
 		flash := 0.0

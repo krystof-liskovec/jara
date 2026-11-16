@@ -151,9 +151,13 @@ func TestChangesCoverSmallScreensOnlyWhenAsked(t *testing.T) {
 	if !strings.Contains(frame.Lines[0], "✕") || frame.target(0, 58) != "diff-close" {
 		t.Fatalf("close button %q targets %+v", frame.Lines[0], frame.Targets)
 	}
-	typeChatKeys(t, term, "\x1b[6~") // PageDown scrolls the changes
+	typeChatKeys(t, term, "\x1b[5~") // PageUp scrolls back from the newest changes
 	if term.u.diff.scroll == 0 || !term.u.diff.fullScreen() {
-		t.Fatalf("PageDown: scroll %d, full screen %v", term.u.diff.scroll, term.u.diff.fullScreen())
+		t.Fatalf("PageUp: scroll %d, full screen %v", term.u.diff.scroll, term.u.diff.fullScreen())
+	}
+	typeChatKeys(t, term, "\x1b[6~")
+	if term.u.diff.scroll != 0 {
+		t.Fatalf("PageDown returns to the newest changes: scroll %d", term.u.diff.scroll)
 	}
 	typeChatKeys(t, term, "x") // typing returns to the conversation
 	if term.u.diff.fullScreen() || term.editor.Text() != "x" || term.u.diff.mode != chatDiffPaneAuto {

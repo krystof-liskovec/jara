@@ -113,13 +113,14 @@ func renderChatAgentTranscript(out *chatTerminalOutput, agent *chatAgent) {
 			case "plan":
 				out.appendAt("assistant", "Plan:\n"+chatText(item.Text)+"\n", at)
 			case "commandExecution":
-				text := "$ " + chatText(item.Command) + "\n"
+				title, body := chatCommandTitle(item.Command)
 				if output := strings.TrimRight(item.AggregatedOutput, "\n"); output != "" {
-					text += chatText(textutil.TailText(output, chatAgentCommandOutput)) + "\n"
+					body += textutil.TailText(output, chatAgentCommandOutput) + "\n"
 				}
-				out.appendAt("tool", text, at)
+				out.StartChatTool(item.ID, title, body, true, at)
+				out.FinishChatTool(item.ID, chatToolFailure(item.Status))
 			case "fileChange":
-				out.appendAt("tool", formatChatFileChangeList(item.Status, item.Changes), at)
+				out.StartChatTool(item.ID, chatFileChangeTitle(item.Status, item.Changes), chatFileChangeRowDetails(item.Changes), false, at)
 			case "subAgentActivity", "collabAgentToolCall":
 				if text := chatSubagentItemText(item, nil); text != "" {
 					out.appendAt("subagent", text+"\n", at)

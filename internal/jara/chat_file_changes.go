@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"krystof.liskovec/jara/internal/protocol"
 	"krystof.liskovec/jara/internal/textutil"
@@ -14,15 +15,42 @@ const (
 	chatFileChangeTotalDiffLimit = 240
 )
 
-func formatChatFileChanges(raw json.RawMessage) string {
-	var item struct {
-		Status  string                `json:"status"`
-		Changes []protocol.FileChange `json:"changes"`
+// startFileChangeCall shows the agent's edits as one row that opens to the
+// diffs; lead goes before the full text on outputs that show everything.
+func (u *chatUI) startFileChangeCall(item protocol.HistoryItem, lead string, at time.Time) {
+	u.startToolCall(item.ID, chatFileChangeTitle(item.Status, item.Changes), chatFileChangeRowDetails(item.Changes), false,
+		lead+formatChatFileChangeList(item.Status, item.Changes), at)
+}
+
+// chatFileChangeTitle sums up edits in one line, such as
+// "Edited chat_view.go · +3 −1" or "Edited 3 files · +10 −4".
+func chatFileChangeTitle(status string, changes []protocol.FileChange) string {
+	title := fmt.Sprintf("Edited %d files", len(changes))
+	switch len(changes) {
+	case 0:
+		title = "File changes contained no file paths"
+	case 1:
+		verb := "Edited"
+		switch chatFileChangeKind(changes[0].Kind) {
+		case "added":
+			verb = "Created"
+		case "deleted":
+			verb = "Deleted"
+		}
+		title = verb + " " + chatFileChangePath(changes[0])
 	}
-	if err := json.Unmarshal(raw, &item); err != nil {
-		return "File change details could not be read.\n"
+	added, removed := 0, 0
+	for _, change := range changes {
+		a, r := chatFileChangeCounts(change.Diff)
+		added, removed = added+a, removed+r
 	}
-	return formatChatFileChangeList(item.Status, item.Changes)
+	if added+removed > 0 {
+		title += fmt.Sprintf(" · +%d −%d", added, removed)
+	}
+	if failure := chatToolFailure(status); failure != "" {
+		title += " · " + failure
+	}
+	return title
 }
 
 func formatChatFileChangeList(status string, changes []protocol.FileChange) string {
@@ -37,15 +65,27 @@ func formatChatFileChangeList(status string, changes []protocol.FileChange) stri
 		b.WriteString(" · " + status)
 	}
 	b.WriteString(":\n")
+	b.WriteString(chatFileChangeDetails(changes))
+	return b.String()
+}
 
-	// Every file's summary comes first, then the diffs, so a narrow screen
-	// shows what changed before scrolling through the code.
+// chatFileChangeRowDetails is what a file-change row opens to: the diff
+// alone when its row already names the one file.
+func chatFileChangeRowDetails(changes []protocol.FileChange) string {
+	details := chatFileChangeDetails(changes)
+	if len(changes) == 1 {
+		_, details, _ = strings.Cut(details, "\n")
+	}
+	return details
+}
+
+// chatFileChangeDetails lists every changed file, then the diffs, so a
+// narrow screen shows what changed before scrolling through the code.
+func chatFileChangeDetails(changes []protocol.FileChange) string {
+	var b strings.Builder
 	paths := make([]string, len(changes))
 	for index, change := range changes {
-		path := strings.Join(strings.Fields(chatText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath))), " ")
-		if path == "" {
-			path = "Unknown file"
-		}
+		path := chatFileChangePath(change)
 		paths[index] = path
 		b.WriteString("- " + path)
 		if kind := chatFileChangeKind(change.Kind); kind != "" {
@@ -82,6 +122,14 @@ func formatChatFileChangeList(status string, changes []protocol.FileChange) stri
 		remainingDiffLines -= shown
 	}
 	return b.String()
+}
+
+func chatFileChangePath(change protocol.FileChange) string {
+	path := strings.Join(strings.Fields(chatText(textutil.FirstNonEmpty(change.Path, change.NewPath, change.OldPath))), " ")
+	if path == "" {
+		return "Unknown file"
+	}
+	return path
 }
 
 func chatFileChangeKind(raw json.RawMessage) string {

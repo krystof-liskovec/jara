@@ -52,7 +52,11 @@ func (u *chatUI) runChatExportCommand(args string) {
 func (o *chatTerminalOutput) ChatMarkdown() string {
 	var b strings.Builder
 	for _, entry := range o.entries {
-		text := strings.TrimSpace(entry.text.String())
+		text := entry.text.String()
+		if entry.tool != nil {
+			text = entry.tool.title + "\n" + text
+		}
+		text = strings.TrimSpace(text)
 		if text == "" {
 			continue
 		}

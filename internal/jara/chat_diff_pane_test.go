@@ -2,6 +2,7 @@ package jara
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -19,7 +20,7 @@ func TestChatDiffPaneLayoutAndOrder(t *testing.T) {
 	raw, _ := json.Marshal(map[string]any{"changes": []protocol.FileChange{{Path: "a.go", Diff: "@@ -1 +1 @@\n-old\n+new\n"}, {Path: "b.go", Diff: "+x\n"}}})
 	d.recordFileChanges(raw, true)
 	d.record([]protocol.FileChange{{Path: "c.go", Diff: "+later\n"}}, false)
-	if got := []string{d.changes[0].Path, d.changes[1].Path, d.changes[2].Path}; strings.Join(got, ",") != "c.go,a.go,b.go" {
+	if got := []string{d.changes[0].Path, d.changes[1].Path, d.changes[2].Path}; strings.Join(got, ",") != "a.go,b.go,c.go" {
 		t.Fatalf("order %v", got)
 	}
 	if chatDiffPaneWidth(&d, 119, 40) != 0 || chatDiffPaneWidth(&d, 160, 17) != 0 {
@@ -116,5 +117,55 @@ func TestChatAnimations(t *testing.T) {
 		if got := uniseg.StringWidth(textutil.TerminalEscapes.ReplaceAllString(line, "")); got != 80 {
 			t.Fatalf("line %d width %d", i, got)
 		}
+	}
+}
+
+func TestChatDiffPaneAddsNewChangesBelowTheShownOnes(t *testing.T) {
+	palette := menuColorsForBackground(terminalRGB{r: 30, g: 30, b: 30})
+	var d chatDiffState
+	d.record([]protocol.FileChange{{Path: "old.go", Diff: "@@ -1 +1 @@\n-a\n+kept\n"}}, false)
+	d.record([]protocol.FileChange{{Path: "new.go", Diff: "+added\n"}}, true)
+	// While the new file wipes in, the rows already shown stay on screen.
+	early := strings.Join(renderChatDiffPane(&d, 50, 20, d.arrived.Add(chatRevealPerRow), true, palette, false), "\n")
+	if !strings.Contains(early, "+kept") || strings.Contains(early, "+added") {
+		t.Fatalf("only the new change animates:\n%s", early)
+	}
+	late := strings.Join(renderChatDiffPane(&d, 50, 20, d.arrived.Add(time.Hour), true, palette, false), "\n")
+	if strings.Index(late, "old.go") > strings.Index(late, "new.go") || !strings.Contains(late, "+added") {
+		t.Fatalf("the newest change goes last:\n%s", late)
+	}
+
+	// The pane follows the newest change, or holds still when scrolled back.
+	for i := 0; i < 5; i++ {
+		d.record([]protocol.FileChange{{Path: fmt.Sprintf("f%d.go", i), Diff: strings.Repeat("+line\n", 10)}}, false)
+	}
+	if rows := renderChatDiffPane(&d, 50, 20, time.Now(), false, palette, false); !strings.Contains(strings.Join(rows, "\n"), "f4.go") {
+		t.Fatalf("the pane shows the newest change:\n%s", strings.Join(rows, "\n"))
+	}
+	d.scroll = 15
+	before := renderChatDiffPane(&d, 50, 20, time.Now(), false, palette, false)
+	d.record([]protocol.FileChange{{Path: "f5.go", Diff: "+line\n"}}, true)
+	after := renderChatDiffPane(&d, 50, 20, d.arrived.Add(time.Hour), false, palette, false)
+	if strings.Join(before[1:], "\n") != strings.Join(after[1:], "\n") {
+		t.Fatalf("a scrolled-back pane moved:\n%s\n---\n%s", strings.Join(before, "\n"), strings.Join(after, "\n"))
+	}
+}
+
+func TestGitChangesKeepTheirRowsAcrossRefreshes(t *testing.T) {
+	a, b, c := protocol.FileChange{Path: "a.go", Diff: "+a\n"}, protocol.FileChange{Path: "b.go", Diff: "+b\n"}, protocol.FileChange{Path: "c.go", Diff: "+c\n"}
+	// The session lists the newest first; the pane shows it last.
+	shown, fresh := chatMergeGitChanges(nil, []protocol.FileChange{b, a})
+	if shown[0].Path != "a.go" || shown[1].Path != "b.go" || fresh != 2 {
+		t.Fatalf("first list %+v fresh %d", shown, fresh)
+	}
+	// a.go changes again and c.go is new: both go last; b.go keeps its row.
+	a2 := protocol.FileChange{Path: "a.go", Diff: "+a\n+more\n"}
+	shown, fresh = chatMergeGitChanges(shown, []protocol.FileChange{c, a2, b})
+	if got := shown[0].Path + "," + shown[1].Path + "," + shown[2].Path; got != "b.go,a.go,c.go" || fresh != 2 || shown[1].Diff != a2.Diff {
+		t.Fatalf("refreshed list %s fresh %d", got, fresh)
+	}
+	// A commit removes b.go; the others stay where they were.
+	if shown, fresh = chatMergeGitChanges(shown, []protocol.FileChange{c, a2}); len(shown) != 2 || shown[0].Path != "a.go" || fresh != 0 {
+		t.Fatalf("after commit %+v fresh %d", shown, fresh)
 	}
 }

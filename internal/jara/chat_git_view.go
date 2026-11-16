@@ -36,7 +36,7 @@ func (d *chatDiffState) visible() []protocol.FileChange {
 // resetAgentChanges forgets the agent's edits before a conversation's
 // history is replayed into the pane.
 func (d *chatDiffState) resetAgentChanges() {
-	d.changes, d.arrived, d.scroll = nil, time.Time{}, 0
+	d.changes, d.arrived, d.fresh, d.scroll = nil, time.Time{}, 0, 0
 }
 
 // refreshGitDiff asks the session for the workspace's uncommitted changes.
@@ -98,11 +98,46 @@ func (u *chatUI) acceptGitDiffResponse(m appMessage) {
 	if signature == g.signature && !first {
 		return
 	}
-	g.signature, g.changes = signature, result.Changes
-	u.diff.scroll = 0
-	if !first && len(result.Changes) > 0 {
-		u.diff.arrived = time.Now() // animate a change that just appeared
+	d := &u.diff
+	d.holdPlace(func() {
+		changes, fresh := chatMergeGitChanges(g.changes, result.Changes)
+		g.signature, g.changes = signature, changes
+		d.arrived, d.fresh = time.Time{}, 0
+		if !first && fresh > 0 {
+			d.arrived, d.fresh = time.Now(), fresh // animate the files that just changed
+		}
+	})
+}
+
+// chatMergeGitChanges orders a fresh list of uncommitted files for the pane.
+// The session lists them newest first; the pane shows them newest last.
+// Files whose diff is unchanged keep their rows, and changed or new files
+// move to the end, so a refresh adds to the pane instead of redrawing it.
+// fresh counts the files at the end that changed.
+func chatMergeGitChanges(shown, latest []protocol.FileChange) (merged []protocol.FileChange, fresh int) {
+	current := make(map[string]protocol.FileChange, len(latest))
+	for _, change := range latest {
+		current[chatFileChangePath(change)] = change
 	}
+	kept := map[string]bool{}
+	for _, change := range shown {
+		path := chatFileChangePath(change)
+		if now, ok := current[path]; ok && !kept[path] && chatSameFileChange(now, change) {
+			merged = append(merged, now)
+			kept[path] = true
+		}
+	}
+	for i := len(latest) - 1; i >= 0; i-- {
+		if !kept[chatFileChangePath(latest[i])] {
+			merged = append(merged, latest[i])
+			fresh++
+		}
+	}
+	return merged, fresh
+}
+
+func chatSameFileChange(a, b protocol.FileChange) bool {
+	return a.Path == b.Path && a.OldPath == b.OldPath && a.NewPath == b.NewPath && a.Diff == b.Diff && string(a.Kind) == string(b.Kind)
 }
 
 // expireGitDiffRequest gives up on a reply that never came.

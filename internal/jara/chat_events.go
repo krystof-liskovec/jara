@@ -111,12 +111,10 @@ func (u *chatUI) event(m appMessage) error {
 		if u.cancel {
 			return u.interrupt()
 		}
-	case "item/agentMessage/delta", "item/commandExecution/outputDelta":
-		role := "assistant"
-		if m.Method == "item/commandExecution/outputDelta" {
-			role = "tool"
-		}
-		u.printRole(role, p.Delta)
+	case "item/agentMessage/delta":
+		u.printRole("assistant", p.Delta)
+	case "item/commandExecution/outputDelta":
+		u.toolCallOutput(p.ItemID, p.Delta)
 	case "item/started", "item/completed":
 		var item protocol.HistoryItem
 		_ = json.Unmarshal(p.Item, &item)
@@ -144,20 +142,21 @@ func (u *chatUI) event(m appMessage) error {
 			if item.StartedAtMs != nil {
 				at = time.UnixMilli(*item.StartedAtMs)
 			}
-			u.printRoleAt("tool", "\n$ "+item.Command+"\n", at)
+			u.startCommandCall(item.ID, item.Command, at)
 		}
 		if item.Type == "fileChange" {
 			if m.Method == "item/started" {
 				u.setActivityLabel("Applying changes")
 			} else {
 				u.setActivityLabel("Thinking")
-				u.printRole("tool", "\n"+formatChatFileChanges(p.Item))
+				u.startFileChangeCall(item, "\n", time.Now())
 				u.diff.recordFileChanges(p.Item, true)
 				u.refreshGitDiff()
 			}
 		}
 		if item.Type == "commandExecution" && m.Method == "item/completed" {
 			u.setActivityLabel("Thinking")
+			u.finishToolCall(item.ID, chatCommandStatus(p.Item))
 		}
 	case "turn/completed":
 		u.refreshGitDiff()
