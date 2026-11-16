@@ -27,6 +27,8 @@ type localRunnerMarker struct {
 	Epoch     int64             `json:"epoch"`
 	Versions  map[string]string `json:"versions,omitempty"`
 	Lost      bool              `json:"lost,omitempty"`
+	// Branch is the branch both checkouts shared at the last sync.
+	Branch string `json:"branch,omitempty"`
 }
 
 var deviceNameRE = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
@@ -144,7 +146,7 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 			release()
 			return nil, remoteChatServerReady{}, err
 		}
-	} else if err := syncWorkspace(o.remote, o.binding, o.root, "push", false, o.includeIgnored); err != nil {
+	} else if err := pushBeforeRunning(o, marker.Branch); err != nil {
 		release()
 		return nil, remoteChatServerReady{}, fmt.Errorf("copy local changes to the remote before starting: %w", err)
 	}
@@ -158,6 +160,7 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 	}
 	err := updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) {
 		m.Remote, m.Workspace, m.Root, m.Seq, m.Epoch, m.Lost = o.remoteName, o.binding.Workspace, o.root, claim.Seq, claim.Epoch, false
+		m.Branch = checkoutState(o.root).Branch
 		if m.Versions == nil {
 			m.Versions = workspaceThreadVersions(o.root)
 		}
@@ -216,11 +219,16 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
 	// Work this device did after its last checkpoint, before another machine
 	// replaced it, is set aside. Edits made here without running the agent
 	// merge like an ordinary pull, which refuses conflicting changes.
-	displaced := loadLocalRunnerMarker(q.ID).Lost
+	marker := loadLocalRunnerMarker(q.ID)
+	displaced := marker.Lost
 	if displaced {
 		if err := setAsideLocalWork(o, q.ID); err != nil {
 			return err
 		}
+	}
+	moved, err := alignRunnerBranch(o, marker.Branch, false, false)
+	if err != nil {
+		return fmt.Errorf("bring this checkout up to date: %w", err)
 	}
 	// A clean Git checkout has nothing to lose, even without sync history.
 	clean := false
@@ -228,11 +236,17 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
 		status, statusErr := gitOutput(o.root, "status", "--porcelain")
 		clean = statusErr == nil && status == ""
 	}
-	if err := syncWorkspace(o.remote, o.binding, o.root, "pull", displaced || clean, o.includeIgnored, true); err != nil {
+	direction, force := "pull", displaced || clean
+	if moved == runnerBranchHost {
+		// The host followed this checkout's branch and set its own changes
+		// aside, so this checkout is the newer copy of that branch.
+		direction, force = "push", true
+	}
+	if err = syncWorkspace(o.remote, o.binding, o.root, direction, force, o.includeIgnored, true); err != nil {
 		return fmt.Errorf("bring this checkout up to date: %w", err)
 	}
 	var checkpoint runnerCheckpoint
-	if err := rpc(o.remote, Request{Op: "runner-export", ID: o.binding.Workspace, Since: since}, nil, &checkpoint); err != nil {
+	if err = rpc(o.remote, Request{Op: "runner-export", ID: o.binding.Workspace, Since: since}, nil, &checkpoint); err != nil {
 		return err
 	}
 	briefed, err := importCheckpoint(checkpoint, o.root)

@@ -61,6 +61,8 @@ func syncGitRPC(q Request) error {
 			return err
 		}
 		return fastForwardCheckout(w.Path, gitCheckoutState{Head: q.Base, Branch: q.Branch}, q.Commit, temp.Name())
+	case "git-switch":
+		return switchRemoteBranch(q)
 	}
 	return fmt.Errorf("unknown RPC operation")
 }

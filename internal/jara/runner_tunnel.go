@@ -109,10 +109,18 @@ func (lr *localRunner) checkpoint(state chatDaemonState) error {
 	if lr.isLost() {
 		return errRunnerLost
 	}
+	marker := loadLocalRunnerMarker(lr.request.ID)
+	// The host follows the branch this device's agent or user switched to.
+	branch := checkoutState(lr.request.Root).Branch
+	if branch != marker.Branch {
+		if _, err := alignRunnerBranch(localRunnerOpen{remote: lr.remote, remoteName: lr.request.RemoteName,
+			binding: lr.binding, root: lr.request.Root, isGit: true}, "", true, true); err != nil {
+			return fmt.Errorf("copy files to the remote: %w", err)
+		}
+	}
 	if err := syncWorkspace(lr.remote, lr.binding, lr.request.Root, "push", true, false, true); err != nil {
 		return fmt.Errorf("copy files to the remote: %w", err)
 	}
-	marker := loadLocalRunnerMarker(lr.request.ID)
 	checkpoint, versions, err := collectCheckpoint(lr.request.Root, lr.request.Runner, state.Conversation, marker.Versions)
 	if err != nil {
 		return err
@@ -132,7 +140,7 @@ func (lr *localRunner) checkpoint(state chatDaemonState) error {
 		}
 		return err
 	}
-	return updateLocalRunnerMarker(lr.request.ID, func(m *localRunnerMarker) { m.Seq, m.Versions = answer.Seq, versions })
+	return updateLocalRunnerMarker(lr.request.ID, func(m *localRunnerMarker) { m.Seq, m.Versions, m.Branch = answer.Seq, versions, branch })
 }
 
 // release answers a jara/release request once this session is idle.

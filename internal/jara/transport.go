@@ -80,6 +80,7 @@ type Request struct {
 	SourcePath         string   `json:"source_path,omitempty"`
 	Commit             string   `json:"commit,omitempty"`
 	Base               string   `json:"base,omitempty"` // commit the endpoint is expected to have checked out
+	Commits            []string `json:"commits,omitempty"`
 	Subdir             string   `json:"subdir,omitempty"`
 	Resume             bool     `json:"resume,omitempty"`
 	ResumeLatest       bool     `json:"resume_latest,omitempty"`
