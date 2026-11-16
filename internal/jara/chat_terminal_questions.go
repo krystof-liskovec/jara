@@ -9,13 +9,22 @@ import (
 // waiting on. Options come first, then "Type your own answer" when the
 // question allows it, then Submit for a multi-select question. N, pressed
 // with the input box empty, starts a note: what is typed then goes with the
-// chosen option instead of replacing it, as in Claude Code's own picker.
+// chosen option instead of replacing it, as in Claude Code's own picker. When
+// the question also takes your own answer, n starts a note only once you
+// chose an option with the keys, so an answer starting with "n" stays yours.
 type chatQuestionMenu struct {
 	key      string // request and question the cursor and checks belong to
 	cursor   int
 	checked  map[int]bool
 	required bool // Submit was pressed with nothing checked
 	noting   bool // the input box holds a note for the answer
+	chose    bool // an option was chosen with the keys (arrows, Space, Enter)
+}
+
+// noteKeyStarts reports whether n starts a note rather than typing.
+func (m *chatQuestionMenu) noteKeyStarts(question chatQuestion) bool {
+	_, other, _ := chatQuestionRows(question)
+	return len(question.Options) > 0 && !m.noting && (other < 0 || m.chose && m.cursor < len(question.Options))
 }
 
 // chatQuestionNotePrefix marks a note among a question's answers, as Codex's
@@ -80,9 +89,13 @@ func (t *chatTerminal) questionChoices() ([]chatCompletionChoice, bool) {
 	if heading == "" {
 		heading = "Question"
 	}
-	hint := "↑↓ choose · Enter select · n add a note"
+	note := " · n add a note"
+	if !menu.noteKeyStarts(question) {
+		note = " · then n adds a note"
+	}
+	hint := "↑↓ choose · Enter select" + note
 	if question.MultiSelect {
-		hint = "↑↓ choose · Enter or Space check · n add a note"
+		hint = "↑↓ choose · Enter or Space check" + note
 	}
 	switch {
 	case menu.required:
@@ -137,8 +150,11 @@ func (t *chatTerminal) handleQuestionKey(input chatEditorInput) (bool, error) {
 	if menu.noting && options > 0 {
 		note, typed = typed, ""
 	}
+	if input.Key == chatEditorUp || input.Key == chatEditorDown || input.Key == chatEditorEnter && text == "" || input.Text == " " && text == "" {
+		defer func() { menu.chose = true }()
+	}
 	switch {
-	case input.Key == chatEditorText && (input.Text == "n" || input.Text == "N") && text == "" && !menu.noting && options > 0:
+	case input.Key == chatEditorText && (input.Text == "n" || input.Text == "N") && text == "" && menu.noteKeyStarts(question):
 		menu.noting = true
 	case input.Key == chatEditorEscape && menu.noting:
 		menu.noting = false
