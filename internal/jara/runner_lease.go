@@ -16,28 +16,43 @@ import (
 )
 
 // A runner lease records which machine runs a workspace's agent. The remote
-// host keeps it with the workspace, the latest checkpoint of the running
-// conversation, and the tunnel socket that reaches a device's live session.
+// host keeps it with the workspace, the checkpointed conversations, and the
+// tunnel socket that reaches a device's live session.
 //
-// Owner is empty while no device holds the workspace; the host may then run
-// the agent itself. Epoch increases with every claim, so a device that lost
-// its lease (for example, after a forced takeover while it was offline)
-// cannot write checkpoints or open a tunnel any more.
+// Owner is empty while no device holds the workspace; the host then runs the
+// agent itself. Epoch increases with every change of runner, so a device
+// that was replaced (for example, while it slept) cannot write checkpoints or
+// open a tunnel any more. A device's link renews LastSeen every few seconds;
+// a device that stops renewing it is offline.
 type runnerLease struct {
 	Workspace string `json:"workspace"`
 	Owner     string `json:"owner,omitempty"`
 	Epoch     int64  `json:"epoch"`
 	ClaimedAt int64  `json:"claimed_at,omitempty"`
 	LastSeen  int64  `json:"last_seen,omitempty"`
+	// Link identifies the device's current link; an older link that ends
+	// after a newer one started must not act.
+	Link string `json:"link,omitempty"`
+	// Busy and Pending are the device's last report: a turn is running, or
+	// scheduled work is waiting. Either makes the host continue for it.
+	Busy    bool `json:"busy,omitempty"`
+	Pending bool `json:"pending,omitempty"`
+	// Want names a device waiting for the current runner to become idle.
+	Want string `json:"want,omitempty"`
 	// LastRunner is the device or runnerHub that ran the agent most recently.
 	LastRunner string `json:"last_runner,omitempty"`
-	// Seq numbers checkpoints; Writer wrote checkpoint Seq.
+	// Seq numbers checkpoints; Writer wrote checkpoint Seq. Conversation is
+	// the conversation the runner had open.
 	Seq          int64  `json:"seq,omitempty"`
 	Writer       string `json:"writer,omitempty"`
 	CheckpointAt int64  `json:"checkpoint_at,omitempty"`
 	Conversation string `json:"conversation,omitempty"`
-	// HubSeq is the checkpoint the host's own agent state reflects.
-	HubSeq int64 `json:"hub_seq,omitempty"`
+	// Threads records the checkpoint that last changed each conversation.
+	Threads map[string]int64 `json:"threads,omitempty"`
+	// HubSeq is the checkpoint the host's own agent state reflects, and
+	// HubVersions the host's conversation versions at that point.
+	HubSeq      int64             `json:"hub_seq,omitempty"`
+	HubVersions map[string]string `json:"hub_versions,omitempty"`
 }
 
 // runnerHub names the remote host itself as a runner.
@@ -45,9 +60,24 @@ const runnerHub = "remote host"
 
 const runnerLostMessage = "runner lease lost"
 
-var errRunnerLost = errors.New(runnerLostMessage + ": another device continued this conversation")
+var errRunnerLost = errors.New(runnerLostMessage + ": another machine continued this conversation")
 
-type runnerPaths struct{ lease, lock, bundle, dir, key string }
+// runnerHeartbeatInterval is how often a device renews its lease: often
+// enough that a few lost heartbeats do not make it look offline.
+func runnerHeartbeatInterval() time.Duration {
+	return min(5*time.Second, runnerLinkTimeout()/4)
+}
+
+// runnerLinkTimeout is how long a device may stay silent before the host
+// treats it as offline. JARA_RUNNER_TIMEOUT (seconds) shortens it for tests.
+func runnerLinkTimeout() time.Duration {
+	if seconds, err := strconv.Atoi(os.Getenv("JARA_RUNNER_TIMEOUT")); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	return 30 * time.Second
+}
+
+type runnerPaths struct{ lease, lock, threads, dir, key string }
 
 func runnerPathSet(id string) (runnerPaths, error) {
 	if !nameRE.MatchString(id) {
@@ -60,7 +90,7 @@ func runnerPathSet(id string) (runnerPaths, error) {
 	sum := sha256.Sum256([]byte(id))
 	key := hex.EncodeToString(sum[:6])
 	return runnerPaths{lease: filepath.Join(dir, id+".json"), lock: filepath.Join(dir, id+".lock"),
-		bundle: filepath.Join(dir, id+".checkpoint.json"), dir: dir, key: key}, nil
+		threads: filepath.Join(dir, id+".threads"), dir: dir, key: key}, nil
 }
 
 // socket is where a device's tunnel exposes its session for one lease epoch.
@@ -68,6 +98,8 @@ func runnerPathSet(id string) (runnerPaths, error) {
 func (p runnerPaths) socket(epoch int64) string {
 	return filepath.Join(p.dir, p.key+"-"+strconv.FormatInt(epoch, 10)+".sock")
 }
+
+func (p runnerPaths) thread(id string) string { return filepath.Join(p.threads, id+".json") }
 
 func loadRunnerLease(paths runnerPaths, id string) (runnerLease, bool, error) {
 	data, err := os.ReadFile(paths.lease)
@@ -86,6 +118,16 @@ func loadRunnerLease(paths runnerPaths, id string) (runnerLease, bool, error) {
 
 func saveRunnerLease(paths runnerPaths, lease runnerLease) error {
 	return fsutil.WriteJSON(paths.lease, lease)
+}
+
+// runnerLeaseExists reports whether devices have ever run this workspace.
+func runnerLeaseExists(id string) bool {
+	paths, err := runnerPathSet(id)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(paths.lease)
+	return err == nil
 }
 
 // lockRunner serializes lease changes. Lease operations are short, so a lock
@@ -107,8 +149,30 @@ func lockRunner(paths runnerPaths) (func(), error) {
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("another runner change is in progress for this workspace; retry shortly")
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+// updateRunnerLease applies change under the lease lock.
+func updateRunnerLease(paths runnerPaths, id string, change func(*runnerLease) error) (runnerLease, error) {
+	unlock, err := lockRunner(paths)
+	if err != nil {
+		return runnerLease{}, err
+	}
+	defer unlock()
+	lease, _, err := loadRunnerLease(paths, id)
+	if err != nil {
+		return runnerLease{}, err
+	}
+	if err = change(&lease); err != nil {
+		return lease, err
+	}
+	return lease, saveRunnerLease(paths, lease)
+}
+
+// online reports whether the device holding the lease renewed it recently.
+func (lease runnerLease) online() bool {
+	return lease.Owner != "" && time.Since(time.Unix(lease.LastSeen, 0)) < runnerLinkTimeout()
 }
 
 // dialRunner connects to the live session of the device holding the lease.
@@ -123,17 +187,15 @@ func (lease runnerLease) holds(runner string, epoch int64) bool {
 	return lease.Owner != "" && lease.Owner == runner && lease.Epoch == epoch
 }
 
+// replaceDevice moves the lease off an offline device to the host.
+func (lease *runnerLease) replaceDevice() {
+	fmt.Fprintf(os.Stderr, "%s is offline; continuing here from its checkpoint of %s.\n", lease.Owner, describeRunnerTime(lease.CheckpointAt))
+	lease.Owner, lease.Epoch, lease.Link, lease.Busy, lease.Pending = "", lease.Epoch+1, "", false, false
+}
+
 func describeRunnerTime(unix int64) string {
 	if unix == 0 {
 		return "never"
 	}
-	age := time.Since(time.Unix(unix, 0)).Round(time.Second)
-	return age.String() + " ago"
-}
-
-// offlineRunnerError explains how to continue while the device is offline.
-func offlineRunnerError(lease runnerLease) error {
-	return fmt.Errorf("this conversation runs on %s, which is not reachable (last seen %s; last checkpoint %s). "+
-		"Continue here from that checkpoint with --take-over; work %s did after it is set aside when it reconnects",
-		lease.Owner, describeRunnerTime(lease.LastSeen), describeRunnerTime(lease.CheckpointAt), lease.Owner)
+	return time.Since(time.Unix(unix, 0)).Round(time.Second).String() + " ago"
 }

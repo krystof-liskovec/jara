@@ -90,10 +90,20 @@ func runLocalRunnerDaemon(q Request) error {
 		stopServer()
 		return err
 	}
-	runner := newLocalRunner(remote, q)
-	go runner.tunnelLoop(paths.socket)
+	current := func() chatDaemonState {
+		saved, _, _ := readSavedChatDaemonState(q.ID, paths)
+		return saved
+	}
+	status := func() runnerHeartbeat {
+		saved := current()
+		return runnerHeartbeat{Busy: saved.ActiveTurn, Pending: schedules.hasPending() || crunch.hasPending(), Conversation: saved.Conversation}
+	}
+	runner := newLocalRunner(remote, q, paths.schedules, status)
+	go runner.linkLoop(paths.socket)
+	go runner.midTurnCheckpoints(current)
+	go watchSleep(runner.stop, func() { runner.goingToSleep(current(), sleepBudget) })
 	result := serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state, runner.hooks())
-	runner.stopTunnel()
+	runner.stopLink()
 	if !runner.isLost() && !runner.released {
 		// The session ended here (for example /quit): save the final state and
 		// free the workspace so any device, or the remote host, continues it.

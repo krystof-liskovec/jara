@@ -273,23 +273,30 @@ func connectExistingChatDaemon(id string) (net.Conn, error) {
 
 func proxyChatDaemon(conn net.Conn) error {
 	defer conn.Close()
-	done := make(chan error, 2)
+	input := make(chan error, 1)
+	output := make(chan error, 1)
 	go func() {
 		_, err := io.Copy(conn, os.Stdin)
-		done <- err
+		input <- err
 	}()
 	go func() {
 		_, err := io.Copy(os.Stdout, conn)
-		done <- err
+		output <- err
 	}()
-	err := <-done
-	_ = conn.Close()
-	other := <-done
+	var err error
+	select {
+	case err = <-output:
+		// The session closed this client (for example, it handed the
+		// workspace to another machine). Exit now so the client sees the end
+		// instead of waiting for input that will not come.
+	case err = <-input:
+		_ = conn.Close()
+		if other := <-output; err == nil {
+			err = other
+		}
+	}
 	if err != nil && !strings.Contains(err.Error(), "closed network connection") {
 		return err
-	}
-	if other != nil && !strings.Contains(other.Error(), "closed network connection") {
-		return other
 	}
 	return nil
 }

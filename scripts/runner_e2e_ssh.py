@@ -17,8 +17,7 @@ env = dict(os.environ)
 hub = os.environ["E2E_HUB"]
 env.update({"JARA_DATA": hub + "/data", "CODEX_HOME": hub + "/codex", "CLAUDE_CONFIG_DIR": hub + "/claude",
             "JARA_CONFIG": hub + "/config.json", "HOME": hub + "/home"})
-if noexec and reverse:
-    remote, local = reverse.split(":", 1)
+def relay(remote, local):
     try: os.unlink(remote)
     except FileNotFoundError: pass
     server = socket.socket(socket.AF_UNIX); server.bind(remote); server.listen(8)
@@ -34,7 +33,14 @@ if noexec and reverse:
             except OSError: pass
     while True:
         conn, _ = server.accept()
-        up = socket.socket(socket.AF_UNIX); up.connect(local)
+        up = socket.socket(socket.AF_UNIX)
+        try: up.connect(local)
+        except OSError: conn.close(); continue
         threading.Thread(target=pipe, args=(conn, up), daemon=True).start()
         threading.Thread(target=pipe, args=(up, conn), daemon=True).start()
+if reverse:
+    remote, local = reverse.split(":", 1)
+    threading.Thread(target=relay, args=(remote, local), daemon=True).start()
+    if noexec:
+        threading.Event().wait()
 sys.exit(subprocess.call(["sh", "-c", command], env=env))

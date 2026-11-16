@@ -4,28 +4,34 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"gitea.liskovec.dev/krystof.liskovec/jara/internal/fsutil"
 )
 
 // localRunnerMarker remembers, on this device, which checkpoint its checkout
-// and agent state reflect, so it can tell whether another device continued
-// the conversation in the meantime.
+// and conversations reflect and which conversation versions it has saved.
 type localRunnerMarker struct {
-	Remote    string `json:"remote"`
-	Workspace string `json:"workspace"`
-	Root      string `json:"root"`
-	Seq       int64  `json:"seq"`
-	Epoch     int64  `json:"epoch"`
-	Lost      bool   `json:"lost,omitempty"`
+	Remote    string            `json:"remote"`
+	Workspace string            `json:"workspace"`
+	Root      string            `json:"root"`
+	Seq       int64             `json:"seq"`
+	Epoch     int64             `json:"epoch"`
+	Versions  map[string]string `json:"versions,omitempty"`
+	Lost      bool              `json:"lost,omitempty"`
 }
 
 var deviceNameRE = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
+
+var errRunnerUnsupported = errors.New("the remote Jara cannot hand workspaces to devices yet; upgrade it with `jara deployment upgrade`")
 
 // runnerDeviceName names this device in leases; JARA_DEVICE overrides it.
 func runnerDeviceName() string {
@@ -37,10 +43,7 @@ func runnerDeviceName() string {
 	if name == "" {
 		name = "this-device"
 	}
-	if len(name) > 64 {
-		name = name[:64]
-	}
-	return name
+	return name[:min(len(name), 64)]
 }
 
 // localRunnerID names this device's session for a remote workspace.
@@ -77,98 +80,186 @@ type localRunnerOpen struct {
 	takeOver       bool
 }
 
-// openLocalRunner runs a workspace's agent on this device. It claims the
-// workspace from the remote host, catches up with a checkpoint written
-// elsewhere (setting aside local work it would overwrite), and starts or
-// reattaches to the local session.
+// openLocalRunner opens a workspace's conversation with its agent running on
+// this device. The window follows the conversation: while another machine
+// runs it (the host continuing work this device left when it slept, or
+// another device), the window watches that session, and the conversation
+// moves back here as soon as that machine is idle.
 func openLocalRunner(o localRunnerOpen, q Request) error {
-	device := runnerDeviceName()
-	id := localRunnerID(o.remoteName, o.binding.Workspace)
-	q.UserInterface, q.ID, q.Root, q.RemoteName, q.Workspace, q.Runner = "jara", id, o.root, o.remoteName, o.binding.Workspace, device
-	if chatDaemonRunning(id) {
-		conn, err := connectExistingChatDaemon(id)
+	q.UserInterface, q.ID, q.Root, q.RemoteName, q.Workspace, q.Runner =
+		"jara", localRunnerID(o.remoteName, o.binding.Workspace), o.root, o.remoteName, o.binding.Workspace, runnerDeviceName()
+	connection, ready, err := connectLocalRunner(o, q, true)
+	if err != nil {
+		return err
+	}
+	conversation := q.Conversation
+	if conversation == "" && !q.New && !q.Resume && !q.ResumeLatest {
+		conversation = ready.Conversation
+	}
+	options := chatLoopOptions{
+		cwd: ready.CWD, id: conversation, workspaceLabel: ready.Workspace,
+		persistentSession: true, initialized: ready.Initialized, attachedTurnActive: ready.ActiveTurn,
+		resumeAtStart: q.Conversation == "" && (q.Resume || q.ResumeLatest),
+		resumeLatest:  q.Conversation == "" && q.ResumeLatest,
+		reconnect: func(thread string) (*appConnection, remoteChatServerReady, error) {
+			again := q
+			again.Conversation, again.New, again.Resume, again.ResumeLatest = thread, false, false, false
+			return connectLocalRunner(o, again, false)
+		},
+	}
+	fmt.Fprintln(os.Stderr, ready.Notice)
+	return chatLoopWithOptions(connection, os.Stdin, os.Stdout, options)
+}
+
+// connectLocalRunner connects to this device's session, starting it after
+// claiming the workspace, or to the machine the claim has to wait for.
+func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnection, remoteChatServerReady, error) {
+	if chatDaemonRunning(q.ID) {
+		conn, err := connectExistingChatDaemon(q.ID)
 		if err != nil {
-			return err
+			return nil, remoteChatServerReady{}, err
 		}
-		return finishLocalRunnerUI(id, runRemoteChatClientConnection(q, conn))
+		return readyLocalRunner(conn, "The agent runs on this device.")
 	}
 	var claim runnerClaim
-	err := rpc(o.remote, Request{Op: "runner-claim", ID: o.binding.Workspace, Runner: device, Force: o.takeOver}, nil, &claim)
-	if err != nil {
+	// A window reconnecting by itself only reclaims the conversation from the
+	// host; it never displaces another device the user moved to.
+	wire := Request{Op: "runner-claim", ID: o.binding.Workspace, Runner: q.Runner, Force: first && o.takeOver, Wait: true, Passive: !first}
+	if err := rpc(o.remote, wire, nil, &claim); err != nil {
 		if strings.Contains(err.Error(), "unknown RPC operation") {
-			return fmt.Errorf("the remote Jara cannot hand workspaces to devices yet; upgrade it with `jara deployment upgrade`")
+			err = errRunnerUnsupported
 		}
-		return err
+		return nil, remoteChatServerReady{}, err
+	}
+	if claim.Wait {
+		return watchRunner(o, q, claim.Runner)
 	}
 	q.Epoch = claim.Epoch
 	release := func() {
-		_ = rpc(o.remote, Request{Op: "runner-release", ID: o.binding.Workspace, Runner: device, Epoch: claim.Epoch}, nil, nil)
+		_ = rpc(o.remote, Request{Op: "runner-release", ID: o.binding.Workspace, Runner: q.Runner, Epoch: claim.Epoch}, nil, nil)
 	}
-	marker := loadLocalRunnerMarker(id)
-	if claim.Seq > 0 && claim.Seq != marker.Seq && claim.Writer != device {
-		fmt.Fprintf(os.Stderr, "Continuing from %s's checkpoint.\n", claim.Writer)
-		if err = catchUpLocalRunner(o, id, &q); err != nil {
+	marker := loadLocalRunnerMarker(q.ID)
+	if claim.Seq != marker.Seq {
+		if err := catchUpLocalRunner(o, &q, marker.Seq); err != nil {
 			release()
-			return err
+			return nil, remoteChatServerReady{}, err
 		}
-	} else if err = syncWorkspace(o.remote, o.binding, o.root, "push", false, o.includeIgnored); err != nil {
+	} else if err := syncWorkspace(o.remote, o.binding, o.root, "push", false, o.includeIgnored); err != nil {
 		release()
-		return fmt.Errorf("copy local changes to the remote before starting: %w", err)
-	}
-	err = updateLocalRunnerMarker(id, func(m *localRunnerMarker) {
-		m.Remote, m.Workspace, m.Root, m.Seq, m.Epoch, m.Lost = o.remoteName, o.binding.Workspace, o.root, claim.Seq, claim.Epoch, false
-	})
-	if err != nil {
-		release()
-		return err
+		return nil, remoteChatServerReady{}, fmt.Errorf("copy local changes to the remote before starting: %w", err)
 	}
 	if q.Conversation == "" && !q.New && !q.Resume && !q.ResumeLatest {
 		q.Conversation = claim.Conversation
-		if paths, pathErr := chatDaemonPathSet(id); pathErr == nil {
-			if previous, ok, _ := readSavedChatDaemonState(id, paths); ok && previous.Conversation != "" {
+		if paths, err := chatDaemonPathSet(q.ID); err == nil {
+			if previous, ok, _ := readSavedChatDaemonState(q.ID, paths); ok && previous.Conversation != "" {
 				q.Conversation = previous.Conversation
 			}
 		}
 	}
-	fmt.Fprintf(os.Stderr, "The agent runs on this device (%s); %s keeps a copy after every turn.\n", device, o.remoteName)
+	err := updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) {
+		m.Remote, m.Workspace, m.Root, m.Seq, m.Epoch, m.Lost = o.remoteName, o.binding.Workspace, o.root, claim.Seq, claim.Epoch, false
+		if m.Versions == nil {
+			m.Versions = workspaceThreadVersions(o.root)
+		}
+	})
+	if err != nil {
+		release()
+		return nil, remoteChatServerReady{}, err
+	}
 	conn, err := startLocalRunnerDaemon(q)
 	if err != nil {
 		release()
-		return err
+		return nil, remoteChatServerReady{}, err
 	}
-	return finishLocalRunnerUI(id, runRemoteChatClientConnection(q, conn))
+	return readyLocalRunner(conn, fmt.Sprintf("The agent runs on this device (%s); %s keeps every conversation after each turn.", q.Runner, o.remoteName))
 }
 
-// catchUpLocalRunner brings the checkout and agent state to the newest
-// checkpoint, which another device or the remote host wrote.
-func catchUpLocalRunner(o localRunnerOpen, id string, q *Request) error {
-	if err := setAsideLocalWork(o, id); err != nil {
-		return err
+func readyLocalRunner(conn net.Conn, notice string) (*appConnection, remoteChatServerReady, error) {
+	app := startChatConnection(conn)
+	ready, err := awaitRemoteChatReady(app)
+	if err != nil {
+		app.close()
+		return nil, ready, err
 	}
-	if err := syncWorkspace(o.remote, o.binding, o.root, "pull", true, o.includeIgnored, true); err != nil {
+	ready.Notice = notice
+	return app, ready, nil
+}
+
+// watchRunner attaches this window to the session of the machine running the
+// conversation, through the remote host. When that machine hands over, the
+// session ends and the window reconnects, now claiming it here.
+func watchRunner(o localRunnerOpen, q Request, runner string) (*appConnection, remoteChatServerReady, error) {
+	wire := Request{UserInterface: "jara", ID: o.binding.Workspace, Conversation: q.Conversation, Reconnect: true}
+	diagnostics := &chatDiagnosticBuffer{}
+	connection, err := startChatServerCommand(sshCommand(o.remote, false, shellArgs("jara", "_chat-server", token(wire))), diagnostics)
+	if err != nil {
+		return nil, remoteChatServerReady{}, err
+	}
+	ready, err := awaitRemoteChatReady(connection)
+	if err != nil {
+		connection.close()
+		if detail := strings.TrimSpace(diagnostics.String()); detail != "" {
+			err = fmt.Errorf("%w: %s", err, chatText(detail))
+		}
+		return nil, ready, err
+	}
+	ready.Notice = fmt.Sprintf("%s is running this conversation; you are watching it live. It moves to this device when %s is idle.", runner, runner)
+	if runner != runnerHub {
+		ready.Notice = fmt.Sprintf("%s is running this conversation; you are watching it live. Run jara --local to move it here.", runner)
+	}
+	return connection, ready, nil
+}
+
+// catchUpLocalRunner brings the checkout, conversations and scheduled prompts
+// to the newest checkpoint, which another machine wrote.
+func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
+	// Work this device did after its last checkpoint, before another machine
+	// replaced it, is set aside. Edits made here without running the agent
+	// merge like an ordinary pull, which refuses conflicting changes.
+	displaced := loadLocalRunnerMarker(q.ID).Lost
+	if displaced {
+		if err := setAsideLocalWork(o, q.ID); err != nil {
+			return err
+		}
+	}
+	// A clean Git checkout has nothing to lose, even without sync history.
+	clean := false
+	if o.isGit {
+		status, statusErr := gitOutput(o.root, "status", "--porcelain")
+		clean = statusErr == nil && status == ""
+	}
+	if err := syncWorkspace(o.remote, o.binding, o.root, "pull", displaced || clean, o.includeIgnored, true); err != nil {
 		return fmt.Errorf("bring this checkout up to date: %w", err)
 	}
-	var bundle runnerBundle
-	if err := rpc(o.remote, Request{Op: "runner-export", ID: o.binding.Workspace}, nil, &bundle); err != nil {
+	var checkpoint runnerCheckpoint
+	if err := rpc(o.remote, Request{Op: "runner-export", ID: o.binding.Workspace, Since: since}, nil, &checkpoint); err != nil {
 		return err
 	}
-	native, err := importConversation(bundle, o.root)
+	briefed, err := importCheckpoint(checkpoint, o.root)
 	if err != nil {
 		return err
 	}
-	if !native {
-		fmt.Fprintln(os.Stderr, "The agent's own session could not be restored here; the conversation continues from Jara's transcript.")
+	if len(briefed) > 0 {
+		fmt.Fprintf(os.Stderr, "%d conversation(s) continue from Jara's transcript; their agent sessions could not be restored here.\n", len(briefed))
+	}
+	if paths, pathErr := chatDaemonPathSet(q.ID); pathErr == nil {
+		if err = replaceSchedules(paths.schedules, checkpoint.Schedules); err != nil {
+			return err
+		}
 	}
 	if q.Conversation == "" && !q.New {
-		q.Conversation, q.Resume, q.ResumeLatest = bundle.ThreadID, false, false
+		q.Conversation, q.Resume, q.ResumeLatest = checkpoint.Current, false, false
 	}
-	return nil
+	return updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) { m.Versions = workspaceThreadVersions(o.root) })
 }
 
-func finishLocalRunnerUI(id string, err error) error {
-	if loadLocalRunnerMarker(id).Lost {
-		fmt.Fprintln(os.Stderr, "Another device continued this conversation, so the agent here stopped. "+
-			"Run jara --local again to continue it on this device; unsynced local work is set aside first.")
+// defaultLocalRunner reports whether conversations run on this device unless
+// --run-remote says otherwise: the agent CLI is installed here, and
+// JARA_RUN_REMOTE=1 does not opt out.
+func defaultLocalRunner() bool {
+	if os.Getenv("JARA_RUN_REMOTE") == "1" || runtime.GOOS == "windows" {
+		return false
 	}
-	return err
+	_, err := exec.LookPath("codex")
+	return err == nil
 }

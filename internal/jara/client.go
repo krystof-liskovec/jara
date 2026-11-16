@@ -2,6 +2,7 @@ package jara
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -192,8 +193,9 @@ func Run(args []string) error {
 	latest := f.Bool("latest", false, "resume Codex's latest session")
 	resumeLatest := f.Bool("resume-latest", false, "continue Codex's latest session with a prompt")
 	takeover := f.Bool("takeover", false, "detach other terminal clients")
-	runLocal := f.Bool("local", false, "run the agent on this device; the remote keeps a copy of files and conversation")
-	takeOver := f.Bool("take-over", false, "continue from the last checkpoint although the device running the agent is offline")
+	runLocal := f.Bool("local", false, "run the agent on this device (the default when Codex is installed here)")
+	runRemote := f.Bool("run-remote", false, "run the agent on the remote host instead of this device")
+	takeOver := f.Bool("take-over", false, "continue here although another device looks online")
 	force := f.Bool("force", false, "overwrite conflicts / permit transfer with running agents")
 	includeIgnored := f.Bool("include-ignored", false, "explicitly include Git-ignored files; .jaraignore still applies")
 	deleteMissing := f.Bool("delete", false, "propagate deletions of previously synchronized files")
@@ -251,9 +253,11 @@ func Run(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q; see jara --help", action)
 	}
-	if (*runLocal || *takeOver) && (*chatInterface != "jara" || action != "open" && action != "new" && action != "resume") {
-		return fmt.Errorf("--local and --take-over require open, new, or resume in the Jara interface")
+	localEligible := *chatInterface == "jara" && (action == "open" || action == "new" || action == "resume")
+	if (*runLocal || *takeOver) && (!localEligible || *runRemote) {
+		return fmt.Errorf("--local and --take-over require open, new, or resume in the Jara interface, without --run-remote")
 	}
+	useLocal := *runLocal || *takeOver || localEligible && !*runRemote && defaultLocalRunner()
 	if *latest && action != "resume" {
 		return fmt.Errorf("--latest requires jara resume")
 	}
@@ -308,11 +312,10 @@ func Run(args []string) error {
 	}
 	var openLocal func(Request) error
 	openSession := func(q Request) error {
-		if *runLocal && openLocal == nil {
+		if (*runLocal || *takeOver) && openLocal == nil {
 			return fmt.Errorf("--local needs a workspace on the remote: open a Git repository or use --copy")
 		}
 		q.CodexArgs = codexArgs
-		q.RunnerTakeover = *takeOver
 		q.UserInterface = *chatInterface
 		if q.Runtime, err = resolveClientAgent(c, root, chosen, action, *agentName); err != nil {
 			return err
@@ -335,7 +338,10 @@ func Run(args []string) error {
 			q.ResumeLatest = *resumeLatest
 		}
 		if openLocal != nil {
-			return openLocal(q)
+			// Running here is the default only where the host supports it.
+			if err := openLocal(q); !errors.Is(err, errRunnerUnsupported) || *runLocal || *takeOver {
+				return err
+			}
 		}
 		return openRemote(r, q)
 	}
@@ -420,7 +426,7 @@ func Run(args []string) error {
 	if err = saveConfig(c); err != nil {
 		return err
 	}
-	if *runLocal {
+	if useLocal {
 		openLocal = func(q Request) error {
 			return openLocalRunner(localRunnerOpen{remote: r, remoteName: chosen, binding: b, root: root,
 				isGit: isGit, includeIgnored: *includeIgnored, takeOver: *takeOver}, q)

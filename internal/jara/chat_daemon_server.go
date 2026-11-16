@@ -88,6 +88,10 @@ func runChatDaemon(q Request) error {
 	binary, args = agentServerCommand(binary, args, q.Runtime, q.AgentExplicit, q.AgentArgs)
 	server := projectToolCommand(cwd, append([]string{binary}, args...)...)
 	isolatePersistentChatProcess(server)
+	runner, err := hubRunnerDaemon(q, server, schedules)
+	if err != nil {
+		return err
+	}
 	input, err := server.StdinPipe()
 	if err != nil {
 		return err
@@ -125,7 +129,7 @@ func runChatDaemon(q Request) error {
 		_ = server.Wait()
 		return err
 	}
-	return serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state)
+	return serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state, runner)
 }
 
 func waitForChatDaemonPID(paths chatDaemonPaths) error {

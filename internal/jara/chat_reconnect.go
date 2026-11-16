@@ -129,6 +129,14 @@ func (u *chatUI) acceptReconnect(result chatReconnectResult) error {
 		transcript.ClearChat()
 	}
 	u.afterHistory = "Reconnected to the Jara session.\n"
+	// The conversation may now run on another machine, with its checkout
+	// at another path.
+	if result.ready.CWD != "" {
+		u.cwd = result.ready.CWD
+	}
+	if result.ready.Notice != "" {
+		u.afterHistory = result.ready.Notice + "\n"
+	}
 	return u.initializeChatServer()
 }
 

@@ -31,7 +31,7 @@ func TestClaudeProjectName(t *testing.T) {
 	}
 }
 
-func TestFindCodexRolloutAndDestination(t *testing.T) {
+func TestIndexCodexRolloutsAndDestination(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("CODEX_HOME", home)
 	id := "0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000"
@@ -42,9 +42,9 @@ func TestFindCodexRolloutAndDestination(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, rel), []byte("{}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	path, found, err := FindCodexRollout(id)
-	if err != nil || path != filepath.Join(home, rel) || found != filepath.ToSlash(rel) {
-		t.Fatalf("find = %q %q %v", path, found, err)
+	found, ok := IndexCodexRollouts()[id]
+	if !ok || found != filepath.ToSlash(rel) {
+		t.Fatalf("index = %q %v", found, ok)
 	}
 	dest, err := CodexRolloutDestination(found, id)
 	if err != nil || dest != filepath.Join(home, "sessions", "2026", "11", "16", filepath.Base(rel)) {

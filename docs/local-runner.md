@@ -1,75 +1,92 @@
-# Running the agent on your device (experimental)
+# Agents on your device (experimental)
 
-`jara --local` runs the agent on the machine you are sitting at, against your
-local checkout, with your local Codex and Claude Code CLIs and sign-in. The
-remote host keeps the shared copy: after every turn it receives the checkout's
-commits and edits and the conversation itself. Any device can watch the
-running conversation or continue it, including the remote host.
+In the Jara conversation interface, `jara` runs the agent on the machine you
+are sitting at: against your local checkout, with your local Codex and Claude
+Code CLIs and sign-in. The remote host keeps the shared copy. After every turn,
+and every 20 seconds during long turns, it receives the checkout's commits and
+edits, every conversation of the workspace, and pending scheduled prompts.
+
+Any device can watch a running conversation live or continue it. When your
+laptop goes to sleep in the middle of a turn, the remote host continues the
+turn by itself. When the laptop wakes, its window follows the conversation and
+takes it back as soon as the remote host is idle.
 
 This is an experimental branch feature. It needs a remote host running the same
 Jara version (`jara deployment upgrade --remote NAME`), and a Unix client
-(Linux or macOS) with `codex` on `PATH`. `claude` is used when installed.
+(Linux or macOS) with `codex` on `PATH`. `claude` is used when installed. Only
+the Jara interface takes part; native Codex and Claude Code terminals
+(`--interface codex`) keep running on the remote host.
+
+## Commands
+
+```sh
+jara                        # run here when Codex is installed; otherwise on the host
+jara --run-remote           # run this session on the remote host instead
+JARA_RUN_REMOTE=1 jara      # the same, for every session in this shell
+jara new                    # a new conversation, running here
+jara runner status          # where the agent runs, online or not, last checkpoint
+jara --take-over            # take over although the other device still looks online
+```
+
+`JARA_DEVICE` overrides the device name used in leases (the host name by
+default). Several projects, or several Git worktrees of one project, are
+independent workspaces: each runs wherever it was last opened.
 
 ## Model
 
 Exactly one machine runs a workspace's agent at a time. The remote host keeps a
 **runner lease** for each workspace: the device holding it, an epoch that
-increases with every claim, and the latest **checkpoint**.
+increases whenever the runner changes, and the latest **checkpoint**.
 
 ```text
- laptop (runs the agent)            remote host (shared copy)           phone / desktop
- ───────────────────────            ─────────────────────────           ───────────────
- local checkout ── per-turn sync ─▶ workspace checkout
- agent session  ── checkpoint ────▶ lease + conversation checkpoint
- chat session   ◀── ssh -R socket ─ runners/<key>-<epoch>.sock ◀────── jara connect
+ laptop (runs the agent)              remote host (shared copy)            phone / desktop
+ ───────────────────────              ─────────────────────────            ───────────────
+ checkout          ── sync ─────────▶ workspace checkout
+ conversations     ── checkpoint ───▶ lease + every conversation
+ link (heartbeats) ── ssh ──────────▶ jara _runner-link ─▶ lease renewed
+ chat session      ◀── ssh -R ─────── runners/<key>-<epoch>.sock ◀──────── jara connect
 ```
 
-- **Claim.** `jara --local` claims the workspace. If another device holds it
-  and is online, the remote host asks that device to release it (it saves a
-  final checkpoint first). A device whose turn or scheduled work is still
-  running refuses. The remote host's own idle session is stopped and
-  checkpointed.
-- **Catch up.** If the newest checkpoint came from elsewhere, this device sets
-  aside conflicting local work (below), pulls the files with `jara sync pull`
-  semantics, and installs the conversation.
-- **Run.** The session runs as a background `jara _runner-daemon`, like the
-  remote host's persistent session: `/detach` leaves it running, and `/quit`
-  while idle ends it.
-- **Checkpoint.** After every turn the device mirrors the checkout to the remote
-  host (commits as commits, then uncommitted edits and deletions as files) and
-  uploads the conversation.
-- **Live view.** The device keeps a reverse SSH Unix-socket forward to the
-  remote host. When the device holds the lease, `jara connect` on the remote
-  host (a phone in Termius, for example) and `jara` on other machines attach to
-  the device's live session instead of starting the agent on the remote host.
-- **Hand over.** When the session ends on the device, it saves a final
-  checkpoint and releases the lease. The next connection elsewhere continues
-  from there. If the remote host continues, it installs the checkpoint into its
-  own agent state first.
+- **Claim.** Opening a workspace claims it. An idle device holding it hands it
+  over after a final checkpoint. A busy one finishes its turn first; the
+  claimant watches meanwhile. The remote host's own session works the same
+  way.
+- **Catch up.** If the newest checkpoint came from another machine, the device
+  pulls the files and installs every conversation that changed since it last
+  saw them, along with pending scheduled prompts.
+- **Run.** The session runs as a background `jara _runner-daemon`. `/detach`
+  leaves it running; `/quit` while idle ends it and hands the workspace over.
+- **Link.** One SSH connection per device carries a reverse Unix-socket forward
+  to the live session and `jara _runner-link`, which renews the lease with a
+  heartbeat every few seconds. Through it, `jara connect` on the remote host
+  (a phone in Termius, for example) and other devices attach to the live
+  session.
 
-## Commands
+## Sleep, network loss and coming back
 
-```sh
-jara --local                     # run here; continue the workspace's conversation
-jara new --local                 # start a new conversation, running here
-jara runner status               # which device runs this workspace, and is it online?
-jara --local --take-over         # continue here although the running device is offline
-jara connect --take-over ID      # on the remote host: continue there instead
-```
+- **Going to sleep with Linux and systemd.** Jara holds a logind delay lock.
+  Just before suspend, if a turn is running or scheduled work is waiting, it
+  saves a checkpoint (within about three seconds) and tells the remote host,
+  which continues at once.
+- **Disappearing without warning** (macOS sleep, network loss, a crash). When
+  the heartbeats stop for 30 seconds, a watcher on the remote host takes over
+  if a turn was running or work was scheduled. The interrupted turn continues
+  with a note that the device went offline, from the last checkpoint: at most
+  about 20 seconds of work is redone.
+- **An idle device that sleeps** keeps the workspace. If you open the
+  conversation elsewhere meanwhile, that machine takes over.
+- **Waking up.** The device learns that another machine took over. Its session
+  stops, and its open window reconnects. While the remote host is still busy,
+  the window shows the remote session live. When the remote host is idle, it
+  hands back and the window continues here, with the remote host's progress
+  pulled in.
 
-`JARA_DEVICE` overrides the device name used in leases (the host name by
-default).
+A window that reconnects by itself only takes the conversation back from the
+remote host, never from another device you moved to. Open it again with `jara`
+to move it explicitly.
 
-## Offline devices and forced takeover
-
-If the device running the agent is unreachable (lid closed, no network), other
-devices refuse to start the conversation and report when that device was last
-seen and when its last checkpoint was saved. `--take-over` continues from that
-checkpoint. The epoch increases, so the offline device can no longer write
-checkpoints. When it reconnects, its tunnel is refused and its session stops.
-
-The next `jara --local` on that device sets aside anything the newer
-checkpoint does not contain before catching up:
+Work a device did after its last checkpoint, before another machine replaced
+it, is set aside before catching up:
 
 - Uncommitted work goes into a Git stash named `jara: local work set aside …`.
 - Commits the remote copy lacks stay on a `jara/set-aside-<time>` branch, and
@@ -77,47 +94,45 @@ checkpoint does not contain before catching up:
 - In copied (non-Git) folders, changed files are copied to
   `~/.local/share/jara/set-aside/<id>/<time>/`.
 
-Work done during a turn that never finished is only on the offline device.
+Edits you made yourself on a device that was not running the agent merge like
+`jara sync pull`, which refuses conflicting changes.
 
 ## How conversations move
 
-A checkpoint contains Jara's own record of the conversation (its transcript and
-agent segments) plus each agent's native session file:
+A checkpoint contains Jara's record of each changed conversation (its
+transcript and agent segments) plus each agent's native session file:
 
 - Claude Code: `~/.claude/projects/<folder>/<session>.jsonl`
 - Codex: the rollout under `~/.codex/sessions/`
 
-The checkouts live at different paths on each machine, so Jara rewrites the
+Checkouts live at different paths on each machine, so Jara rewrites the
 checkout path inside these files on import (`/home/agent/workspaces/w-…` ↔
 `/Users/you/src/project`). Neither format is a documented interchange format,
 which is why [native migration](migration.md) was previously refused. Here they
 are used best-effort, with a fallback:
 
-- If a native file is missing or cannot be installed, the conversation is
-  marked to continue in a fresh agent session briefed on Jara's transcript.
-- If Codex rejects the resumed thread, or a Claude Code session file is missing
-  when the next turn starts, the same briefing fallback applies instead of
-  failing.
+- If a native file is missing or cannot be installed, the conversation
+  continues in a fresh agent session briefed on Jara's transcript.
+- The same happens when Codex rejects the resumed thread, or a Claude Code
+  session file is missing when the next turn starts.
 
 The briefing keeps the exchange and the working tree, not the agent's internal
-tool history. While a device runs the agent, Jara keeps a transcript even for
-Codex-only conversations so this fallback always has something to replay.
+tool history. Sessions taking part keep a transcript of every conversation,
+including Codex-only ones, so the fallback always has something to replay.
 
 ## Limits of this experiment
 
-- Only the workspace's current conversation moves. Other saved conversations
-  stay on the machine that ran them.
-- The remote host's checkout is a mirror while a device holds the lease. Edits
-  made there directly, for example over plain SSH, are overwritten by the next
-  checkpoint.
-- Remote-host terminals (`--interface codex`) are not blocked while a device
-  holds the workspace. The remote session browser does not list device-run
-  sessions; connect by workspace instead.
+- While a device holds the workspace, the remote host's checkout is a mirror.
+  Edits made there directly, for example over plain SSH, are overwritten by the
+  next checkpoint.
+- A window queue (prompts waiting in the composer) and `/crunch` tasks stay
+  with the session that held them; scheduled prompts move.
+- Handing back to a waking device ends other windows attached to the remote
+  host's session, such as a phone; reconnect them to follow the conversation.
 - Each checkpoint opens several SSH connections, so connection multiplexing
   (`ControlMaster`) in your SSH config makes them faster.
-- The device uses its own `PATH` and toolchains, not the remote host's mise
-  environment, and its own agent configuration and credentials.
-- The remote host's `sshd_config` now sets `StreamLocalBindUnlink yes` and
-  `ClientAliveInterval 30`, so a dropped device tunnel is noticed and replaced.
-  Older deployments still work, because the remote host removes stale tunnel
-  sockets itself.
+- The device uses its own `PATH`, toolchains, agent configuration and
+  credentials, without the container's isolation: the agent's own sandbox
+  settings apply.
+- The remote host's `sshd_config` sets `StreamLocalBindUnlink yes` and
+  `ClientAliveInterval 30`, so dropped device tunnels are noticed and replaced.

@@ -14,6 +14,7 @@ type remoteChatServerReady struct {
 	ActiveTurn     bool   `json:"active_turn,omitempty"`
 	Error          string `json:"error,omitempty"`
 	ManagedSession bool   `json:"managed_session,omitempty"`
+	Notice         string `json:"-"` // where the agent runs, shown after reconnecting
 }
 
 func runRemoteChatServer(q Request) error {
