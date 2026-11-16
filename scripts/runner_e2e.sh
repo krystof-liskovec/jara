@@ -145,4 +145,22 @@ git switch -q feature; echo remote-only > $R/hub/data/workspaces/$WS/c.txt
 chat "feature again" /quit jara > $R/back-feature.out
 [ "$(hub_branch)" = feature ] || { cat $R/back-feature.out; fail "remote did not follow the laptop's branch"; }
 git -C $R/hub/data/workspaces/$WS stash list | grep -q "jara: work on" || fail "remote edits were not stashed"
+
+echo "== 11. the primary forwards every checkpoint to a standby over its peer key"
+mkdir -p $R/backup/home; export E2E_HOST_backuphost=$R/backup
+python3 - "$JARA_CONFIG" <<'PY'
+import json,sys
+c=json.load(open(sys.argv[1])); c["remotes"]["backup"]={"host":"backuphost"}; json.dump(c,open(sys.argv[1],"w"))
+PY
+jara remote standby backup > $R/standby.out 2>&1 || { cat $R/standby.out; fail "standby setup failed"; }
+grep -q "Standby chain: hub → backup" $R/standby.out || { cat $R/standby.out; fail "no standby chain"; }
+echo standby-file > standby.txt
+chat "for the standby" /detach jara > /dev/null
+for _ in $(seq 40); do status | grep -q "Standby backup: up to date" && break; sleep 0.5; done
+status | grep -q "Standby backup: up to date" || { status; cat $R/hub/data/runners/*.forward.log; fail "nothing forwarded"; }
+B=$R/backup/data
+[ "$(git -C $B/workspaces/$WS rev-parse HEAD)" = "$(git rev-parse HEAD)" ] || fail "standby lacks the commits"
+grep -q standby-file $B/workspaces/$WS/standby.txt || fail "standby lacks the files"
+[ "$(ls $B/runners/$WS.threads/codex-thread-*.json | wc -l)" -ge 2 ] || fail "standby lacks the conversations"
+grep -q '"primary": *"hub"' $B/runners/*.standby.json || fail "standby does not know its primary"
 echo PASS

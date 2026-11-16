@@ -11,11 +11,13 @@ import (
 
 func remoteCommand(c *Config, args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("use remote add, list, use, order, or remove")
+		return fmt.Errorf("use remote add, list, use, order, standby, or remove")
 	}
 	switch args[0] {
 	case "order":
 		return remoteOrderCommand(c, args[1:])
+	case "standby":
+		return remoteStandbyCommand(c, args[1:])
 	case "list":
 		for _, n := range c.rankedRemotes() {
 			mark := " "
@@ -32,10 +34,14 @@ func remoteCommand(c *Config, args []string) error {
 		if _, ok := c.Remotes[args[1]]; !ok {
 			return fmt.Errorf("unknown remote")
 		}
+		chained := len(c.standbyChain()) > 1
 		if err := c.rankRemotes([]string{args[1]}); err != nil {
 			return err
 		}
-		return saveConfig(*c)
+		if err := saveConfig(*c); err != nil || !chained && len(c.standbyChain()) < 2 {
+			return err
+		}
+		return setupPeers(*c)
 	case "remove":
 		if len(args) != 2 || !nameRE.MatchString(args[1]) {
 			return fmt.Errorf("use remote remove NAME")
@@ -47,8 +53,12 @@ func remoteCommand(c *Config, args []string) error {
 		if _, managed := c.HostDeployments[name]; managed {
 			return fmt.Errorf("%q was deployed by Jara; use jara deployment uninstall %s", name, name)
 		}
+		chained := len(c.standbyChain()) > 1
 		forgetRemote(c, name)
-		return saveConfig(*c)
+		if err := saveConfig(*c); err != nil || !chained {
+			return err
+		}
+		return setupPeers(*c)
 	case "add":
 		if len(args) < 2 || !nameRE.MatchString(args[1]) {
 			return fmt.Errorf("a name containing letters, digits, underscores or hyphens is required")

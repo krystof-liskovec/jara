@@ -18,6 +18,12 @@ func init() {
 		summary:  "Show or set the ranking of remote hosts; the first is the default and primary host. Unlisted remotes keep their order after the named ones.",
 		examples: []string{"jara remote order", "jara remote order jellyfish backup"},
 	}
+	commandHelp["remote standby"] = helpEntry{
+		usage: "jara remote standby NAME [--off] [--address HOST[:PORT]]",
+		summary: "Make a remote a standby: the primary (rank 1) forwards every checkpoint to it over SSH, with a key that may only run Jara's standby operations. " +
+			"--address is how other hosts reach it, when your SSH configuration uses an alias, jump host or tunnel they cannot.",
+		examples: []string{"jara remote standby backup", "jara remote standby backup --address backup.example.org:2222", "jara remote standby backup --off"},
+	}
 	commandHelp["runner"] = helpEntry{
 		usage: "jara runner status|prefer ...",
 		summary: "Show which machine runs a workspace's agent, whether it is online, and its last checkpoint; " +

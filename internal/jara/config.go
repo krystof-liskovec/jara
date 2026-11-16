@@ -22,6 +22,10 @@ type Remote struct {
 	Identity string `json:"identity,omitempty"`
 	Editor   string `json:"editor,omitempty"`
 	Agent    string `json:"agent,omitempty"`
+	// Standby makes the remote receive the primary's checkpoints; PeerHost
+	// is the address other hosts reach it at, when it differs from yours.
+	Standby  bool   `json:"standby,omitempty"`
+	PeerHost string `json:"peer_host,omitempty"`
 }
 type Binding struct {
 	Remote    string `json:"remote"`

@@ -34,6 +34,13 @@ type runnerCheckpointAnswer struct {
 type runnerStatus struct {
 	Lease  runnerLease `json:"lease"`
 	Online bool        `json:"online"`
+	// Standbys is what this host last forwarded to each standby, in rank.
+	Standbys []namedStandbyStatus `json:"standbys,omitempty"`
+}
+
+type namedStandbyStatus struct {
+	Name string `json:"name"`
+	standbyStatus
 }
 
 func runnerRPC(q Request) error {
@@ -48,7 +55,14 @@ func runnerRPC(q Request) error {
 		if err != nil {
 			return err
 		}
-		return out.Encode(runnerStatus{Lease: lease, Online: lease.online()})
+		status := runnerStatus{Lease: lease, Online: lease.online()}
+		statuses := loadStandbyStatuses(paths)
+		for _, standby := range loadStandbys() {
+			entry := statuses[standby.Name]
+			entry.Sent = nil
+			status.Standbys = append(status.Standbys, namedStandbyStatus{Name: standby.Name, standbyStatus: entry})
+		}
+		return out.Encode(status)
 	case "runner-prefer":
 		for _, device := range q.Devices {
 			if device == "" || deviceNameRE.MatchString(device) {
@@ -100,6 +114,7 @@ func runnerRPC(q Request) error {
 		if err != nil {
 			return err
 		}
+		triggerStandbyForward(q.ID, paths)
 		return out.Encode(runnerCheckpointAnswer{Seq: lease.Seq})
 	case "runner-release", "runner-tunnel":
 		var socket string
@@ -119,6 +134,9 @@ func runnerRPC(q Request) error {
 			return nil
 		})
 		if err != nil || q.Op == "runner-release" {
+			if err == nil {
+				triggerStandbyForward(q.ID, paths) // standbys learn the device stopped
+			}
 			return err
 		}
 		return out.Encode(map[string]string{"socket": socket})
@@ -226,7 +244,11 @@ func checkpointHubConversations(id, root string, paths runnerPaths, lease *runne
 	if len(checkpoint.Threads) == 0 && len(checkpoint.Schedules) == 0 && len(checkpoint.Crunch) == 0 && (current == "" || current == lease.Conversation) {
 		return nil // nothing changed here since the last checkpoint
 	}
-	return storeRunnerCheckpoint(paths, lease, checkpoint, runnerHub)
+	if err = storeRunnerCheckpoint(paths, lease, checkpoint, runnerHub); err != nil {
+		return err
+	}
+	triggerStandbyForward(id, paths)
+	return nil
 }
 
 // importHubCheckpoint installs conversations that devices checkpointed since
