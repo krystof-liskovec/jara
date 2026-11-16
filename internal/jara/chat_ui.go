@@ -238,6 +238,10 @@ func (u *chatUI) response(m appMessage) error {
 			u.print("\n" + chatGoalRequestError(m.Error.Message) + "\n" + u.chatGoalPrompt())
 			return nil
 		}
+		if chatQueueRequest(p.method) {
+			u.print("\nQueue request failed: " + chatText(m.Error.Message) + "\n" + u.schedulePrompt())
+			return nil
+		}
 		if chatScheduleRequest(p.method) {
 			u.print("\nScheduled prompt request failed: " + chatText(m.Error.Message) + "\n" + u.schedulePrompt())
 			return nil
@@ -324,6 +328,8 @@ func (u *chatUI) response(m appMessage) error {
 		return u.acceptChatGoalResponse(m, p.method, p.action)
 	case "jara/schedule/create", "jara/schedule/list", "jara/schedule/cancel":
 		return u.acceptChatScheduleResponse(m, p.action)
+	case "jara/queue/add", "jara/queue/update", "jara/queue/remove", "jara/queue/clear":
+		return nil // jara/queue/updated carries the result
 	case "jara/crunch/create", "jara/crunch/status", "jara/crunch/stop":
 		return u.acceptChatCrunchResponse(m, p.action)
 	case "turn/start":

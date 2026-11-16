@@ -2,6 +2,7 @@ package jara
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,9 @@ import (
 func Run(args []string) error {
 	if showCommandHelp(args) {
 		return nil
+	}
+	if handled, err := runInternalCommand(args); handled {
+		return err
 	}
 	if len(args) > 0 {
 		switch args[0] {
@@ -28,59 +32,6 @@ func Run(args []string) error {
 				return err
 			}
 			return cloneRepositoryCommand(c, args[1:])
-		case "_rpc", "_open":
-			if len(args) != 2 {
-				return fmt.Errorf("invalid internal invocation")
-			}
-			if args[0] == "_open" {
-				return openRequest(args[1])
-			}
-			var q Request
-			if err := decode(args[1], &q); err != nil {
-				return err
-			}
-			return remoteRPC(q)
-		case "_client-binary":
-			return streamClientBinary()
-		case "_terminal":
-			if len(args) != 2 {
-				return fmt.Errorf("invalid internal invocation")
-			}
-			var codexArgs []string
-			if err := decode(args[1], &codexArgs); err != nil {
-				return err
-			}
-			return runCodexTerminal(codexArgs)
-		case "_background", "_chat":
-			if len(args) != 2 {
-				return fmt.Errorf("invalid background Codex invocation")
-			}
-			var q Request
-			if err := decode(args[1], &q); err != nil {
-				return err
-			}
-			if args[0] == "_chat" {
-				return runJaraChat(q)
-			}
-			return runBackgroundCodex(q)
-		case "_chat-server":
-			if len(args) != 2 {
-				return fmt.Errorf("invalid remote app-server invocation")
-			}
-			var q Request
-			if err := decode(args[1], &q); err != nil {
-				return err
-			}
-			return runRemoteChatServer(q)
-		case "_chat-daemon":
-			if len(args) != 2 {
-				return fmt.Errorf("invalid persistent Jara session invocation")
-			}
-			var q Request
-			if err := decode(args[1], &q); err != nil {
-				return err
-			}
-			return runChatDaemon(q)
 		case "help", "--help", "-h":
 			printHelpEntry("root", commandHelp["root"])
 			return nil
@@ -184,6 +135,9 @@ func Run(args []string) error {
 	if len(args) > 0 && args[0] == "workspace" {
 		return workspaceCommand(&c, args[1:])
 	}
+	if len(args) > 0 && args[0] == "runner" {
+		return runnerCommand(c, args[1:])
+	}
 	if len(args) > 0 && args[0] == "config" {
 		return configCommand(&c, args[1:])
 	}
@@ -239,6 +193,9 @@ func Run(args []string) error {
 	latest := f.Bool("latest", false, "resume Codex's latest session")
 	resumeLatest := f.Bool("resume-latest", false, "continue Codex's latest session with a prompt")
 	takeover := f.Bool("takeover", false, "detach other terminal clients")
+	runLocal := f.Bool("local", false, "run the agent on this device (the default when Codex is installed here)")
+	runRemote := f.Bool("run-remote", false, "run the agent on the remote host instead of this device")
+	takeOver := f.Bool("take-over", false, "continue here although another device looks online")
 	force := f.Bool("force", false, "overwrite conflicts / permit transfer with running agents")
 	includeIgnored := f.Bool("include-ignored", false, "explicitly include Git-ignored files; .jaraignore still applies")
 	deleteMissing := f.Bool("delete", false, "propagate deletions of previously synchronized files")
@@ -296,6 +253,11 @@ func Run(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q; see jara --help", action)
 	}
+	localEligible := *chatInterface == "jara" && (action == "open" || action == "new" || action == "resume")
+	if (*runLocal || *takeOver) && (!localEligible || *runRemote) {
+		return fmt.Errorf("--local and --take-over require open, new, or resume in the Jara interface, without --run-remote")
+	}
+	useLocal := *runLocal || *takeOver || localEligible && !*runRemote && defaultLocalRunner()
 	if *latest && action != "resume" {
 		return fmt.Errorf("--latest requires jara resume")
 	}
@@ -348,8 +310,13 @@ func Run(args []string) error {
 	if err = validateRemote(r); err != nil {
 		return err
 	}
+	var openLocal func(Request) error
 	openSession := func(q Request) error {
+		if (*runLocal || *takeOver) && openLocal == nil {
+			return fmt.Errorf("--local needs a workspace on the remote: open a Git repository or use --copy")
+		}
 		q.CodexArgs = codexArgs
+		q.RemoteName = chosen // shown in the host's terminal status bar
 		q.UserInterface = *chatInterface
 		if q.Runtime, err = resolveClientAgent(c, root, chosen, action, *agentName); err != nil {
 			return err
@@ -370,6 +337,12 @@ func Run(args []string) error {
 			q.Background = true
 			q.Prompt = prompt
 			q.ResumeLatest = *resumeLatest
+		}
+		if openLocal != nil {
+			// Running here is the default only where the host supports it.
+			if err := openLocal(q); !errors.Is(err, errRunnerUnsupported) || *runLocal || *takeOver {
+				return err
+			}
 		}
 		return openRemote(r, q)
 	}
@@ -454,15 +427,21 @@ func Run(args []string) error {
 	if err = saveConfig(c); err != nil {
 		return err
 	}
-	if action == "open" || action == "new" || action == "resume" || action == "run" || action == "handoff" {
+	if useLocal {
+		openLocal = func(q Request) error {
+			return openLocalRunner(localRunnerOpen{remote: r, remoteName: chosen, binding: b, root: root,
+				isGit: isGit, includeIgnored: *includeIgnored, takeOver: *takeOver}, q)
+		}
+	} else if action == "open" || action == "new" || action == "resume" || action == "run" || action == "handoff" {
 		if err = syncLocalChangesBeforeSession(r, b, root, chosen, *includeIgnored, isGit, clonePromptReader, *chatInterface == "jara" && action != "run"); err != nil {
 			return err
 		}
 	}
 	if action == "sync" {
+		syncReportsUnchanged = true
 		return syncWorkspace(r, b, root, direction, *force, *includeIgnored, *deleteMissing)
 	}
-	if isGit {
+	if isGit && !useLocal {
 		var info Workspace
 		if err = rpc(r, Request{Op: "info", ID: b.Workspace}, nil, &info); err != nil {
 			return err

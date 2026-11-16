@@ -22,6 +22,10 @@ type Remote struct {
 	Identity string `json:"identity,omitempty"`
 	Editor   string `json:"editor,omitempty"`
 	Agent    string `json:"agent,omitempty"`
+	// Standby makes the remote receive the primary's checkpoints; PeerHost
+	// is the address other hosts reach it at, when it differs from yours.
+	Standby  bool   `json:"standby,omitempty"`
+	PeerHost string `json:"peer_host,omitempty"`
 }
 type Binding struct {
 	Remote    string `json:"remote"`
@@ -53,6 +57,7 @@ type Config struct {
 	Agent           string                    `json:"agent,omitempty"`
 	WorkspaceAgents map[string]string         `json:"workspace_agents,omitempty"`
 	Remotes         map[string]Remote         `json:"remotes"`
+	Order           []string                  `json:"order,omitempty"` // remote ranking; see rankedRemotes
 	Bindings        map[string]Binding        `json:"bindings"`
 	Associations    map[string]Binding        `json:"associations"`
 	HostDeployments map[string]HostDeployment `json:"host_deployments,omitempty"`

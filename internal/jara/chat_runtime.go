@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 const defaultChatRuntime = "codex"
@@ -54,6 +56,9 @@ func (p chatRuntime) command(extra []string) (string, []string, error) {
 	args, err := p.serverArgs(p, extra)
 	if err != nil {
 		return "", nil, err
+	}
+	if p.binary == protocol.CodexBinary {
+		return protocol.CodexExecutable(), args, nil
 	}
 	return p.binary, args, nil
 }

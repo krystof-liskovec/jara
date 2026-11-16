@@ -55,6 +55,14 @@ func NewUUID() (string, error) {
 
 const ModelMaxIDBytes = 128
 
+// CodexExecutable allows tests to substitute a fake CLI.
+func CodexExecutable() string {
+	if path := os.Getenv("JARA_CODEX_BIN"); path != "" {
+		return path
+	}
+	return CodexBinary
+}
+
 // ClaudeExecutable allows tests to substitute a fake CLI.
 func ClaudeExecutable() string {
 	if path := os.Getenv("JARA_CLAUDE_BIN"); path != "" {

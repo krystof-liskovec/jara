@@ -69,6 +69,11 @@ func runRemoteChatClient(request Request) error {
 	if err := validateExistingChatDaemonRequest(request); err != nil {
 		return err
 	}
+	if connection, err := hubRunnerRoute(&request); err != nil {
+		return err
+	} else if connection != nil {
+		return runRemoteChatClientConnection(request, connection)
+	}
 	connection, err := connectExistingChatDaemon(request.ID)
 	if err != nil {
 		return err

@@ -372,7 +372,8 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 		return nil
 	}
 	if u.chatPlanUpdatePending() {
-		if err := u.queuePrompt(u.thread, message); err != nil {
+		// Kept by this window: it must not run before the mode change applies.
+		if err := u.queueLocalPrompt(u.thread, message); err != nil {
 			u.print("Conversation mode change is pending and the prompt could not be queued: " + err.Error() + "\n" + u.chatPlanPrompt())
 		} else {
 			u.print("Conversation mode change is pending; prompt added to the queue.\n" + u.chatPlanPrompt())

@@ -91,19 +91,48 @@ func paintChatShimmer(text string, tick int, base, glow, bg, bold string) string
 	return b.String()
 }
 
-// The activity row follows Claude Code's spinner: a star that grows and
-// shrinks, the label with a trailing ellipsis under a sweeping shimmer, and
-// muted details in parentheses, e.g. "✻ Thinking… (12s · ctrl+c to interrupt)".
-var chatSpinnerGlyphs = []string{"·", "✢", "✳", "✶", "✻", "✽"}
+// The activity row shows an animated glyph, the label with a trailing
+// ellipsis under a sweeping shimmer, and muted details in parentheses, e.g.
+// "✿ Thinking… (12s · ctrl+c to interrupt)". Each turn picks one animation;
+// JARA_SPINNER=flower, sun or explosion keeps one. Every glyph is one cell
+// wide and has no emoji presentation, so the row never shifts.
+type chatSpinner struct {
+	name   string
+	frames []string
+	bounce bool // play forwards then backwards instead of restarting
+}
 
-// chatSpinnerGlyph ping-pongs through the glyphs so the star breathes.
-func chatSpinnerGlyph(frame int) string {
-	cycle := 2*len(chatSpinnerGlyphs) - 2
-	index := max(0, frame) % cycle
-	if index >= len(chatSpinnerGlyphs) {
+var chatSpinners = []chatSpinner{
+	{name: "flower", frames: []string{"·", "∘", "✾", "❀", "✿"}, bounce: true},               // a bud opens and closes
+	{name: "sun", frames: []string{"◡", "◒", "●", "☼"}, bounce: true},                       // rises, shines, sets
+	{name: "explosion", frames: []string{"·", "•", "✦", "✸", "✹", "✺", "❋", "⁙", "⁘", "∙"}}, // bursts, scatters
+}
+
+// chatSpinnerFor picks the turn's animation from its seed, unless
+// JARA_SPINNER names one.
+func chatSpinnerFor(seed int64) chatSpinner {
+	if name := strings.TrimSpace(os.Getenv("JARA_SPINNER")); name != "" {
+		for _, spinner := range chatSpinners {
+			if spinner.name == name {
+				return spinner
+			}
+		}
+	}
+	// Divide by the verb count so the animation does not follow the verb.
+	return chatSpinners[uint64(seed)/uint64(len(chatThinkingVerbs))%uint64(len(chatSpinners))]
+}
+
+func (s chatSpinner) glyph(frame int) string {
+	frame = max(0, frame)
+	if !s.bounce {
+		return s.frames[frame%len(s.frames)]
+	}
+	cycle := 2*len(s.frames) - 2
+	index := frame % cycle
+	if index >= len(s.frames) {
 		index = cycle - index
 	}
-	return chatSpinnerGlyphs[index]
+	return s.frames[index]
 }
 
 func chatActivityViewLine(model chatViewModel) chatViewLine {
@@ -124,7 +153,7 @@ func chatActivityViewLine(model chatViewModel) chatViewLine {
 			details = append(details, part)
 		}
 	}
-	text := chatSpinnerGlyph(model.ActivityFrame) + " " + strings.TrimSuffix(label, "…") + "…"
+	text := chatSpinnerFor(model.ActivitySeed).glyph(model.ActivityFrame) + " " + strings.TrimSuffix(label, "…") + "…"
 	if len(details) > 0 {
 		text += " (" + strings.Join(details, " · ") + ")"
 	}

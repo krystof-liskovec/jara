@@ -16,7 +16,11 @@ import (
 	"krystof.liskovec/jara/internal/protocol"
 )
 
-func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteCloser, output io.Reader, paths chatDaemonPaths, schedules *chatScheduleManager, crunch *chatCrunchManager, initial *chatDaemonState) error {
+func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteCloser, output io.Reader, paths chatDaemonPaths, schedules *chatScheduleManager, crunch *chatCrunchManager, initial *chatDaemonState, hooks ...chatDaemonRunnerHooks) error {
+	var runner chatDaemonRunnerHooks
+	if len(hooks) > 0 {
+		runner = hooks[0]
+	}
 	var inputMu, stateMu, stateWriteMu, pendingMu sync.Mutex
 	state := *initial
 	pending := map[string]string{}
@@ -24,6 +28,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 	clients := newChatDaemonClientHub(requests)
 	router := newChatDaemonClientRouter()
 	preserveDetachedIdle := false
+	releaseWanted := false // a device asked for the workspace while a turn ran
 	serverDone := make(chan error, 1)
 	clientClosed := make(chan chatDaemonClientClosed, 32)
 	accepted := make(chan net.Conn, 16)
@@ -36,6 +41,12 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 	signal.Notify(signals, chatDaemonTerminationSignals()...)
 	defer signal.Stop(signals)
 	stopAccept := make(chan struct{})
+	schedules.onQueue = func(line []byte) { clients.broadcast(line, appMessage{Method: "jara/queue/updated"}) }
+	if runner.bootstrap != "" {
+		// No window opened this session: initialize the agent and load the
+		// conversation so scheduled and continued turns can start.
+		bootstrapChatDaemon(input, runner.bootstrap, &state, pending)
+	}
 
 	writeState := func() {
 		stateWriteMu.Lock()
@@ -84,12 +95,19 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 			line := append([]byte(nil), scanner.Bytes()...)
 			var message appMessage
 			hasMessage := json.Unmarshal(line, &message) == nil
+			stateMu.Lock()
+			wasActive := state.ActiveTurn
+			stateMu.Unlock()
 			changed := applyChatDaemonEvent(line, &state, &stateMu, &pending, &pendingMu)
 			if changed {
 				writeState()
 				stateMu.Lock()
 				idle := !state.ActiveTurn
+				snapshot := state
 				stateMu.Unlock()
+				if idle && wasActive && runner.turnEnded != nil {
+					runner.turnEnded(snapshot)
+				}
 				if idle {
 					select {
 					case idleSignal <- struct{}{}:
@@ -148,6 +166,9 @@ running:
 			if err != nil {
 				continue
 			}
+			if queued := schedules.queuedPrompts(); len(queued) > 0 {
+				_ = client.write(chatQueueNotification(queued))
+			}
 			preserveDetachedIdle = false
 			setAttachedCount()
 			go readChatDaemonClient(client, input, &inputMu, &state, &stateMu, &stateWriteMu, paths, pending, &pendingMu, router, requests, schedules, crunch, clientClosed)
@@ -175,6 +196,9 @@ running:
 					break running
 				}
 			}
+			if event.release && runner.release != nil {
+				releaseWanted = true // handed over on the next tick when idle
+			}
 			if event.stop {
 				_ = schedules.cancelPending()
 				crunch.stopAll(input, &inputMu)
@@ -198,6 +222,22 @@ running:
 				break running
 			}
 		case <-scheduleTicker.C:
+			stateMu.Lock()
+			snapshot := state
+			stateMu.Unlock()
+			// Hand the workspace to the device that asked for it once the
+			// running turn is done; attached clients reconnect to it.
+			if !snapshot.ActiveTurn && !schedules.running() && !crunch.hasPending() {
+				// One attempt per request: a failed release (it could not save
+				// its checkpoint) leaves the claimant waiting, not a busy loop.
+				release := releaseWanted && runner.release(snapshot)
+				releaseWanted = false
+				if release || runner.handBack != nil && runner.handBack() {
+					reconnect = true
+					shutdown.Store(true)
+					break running
+				}
+			}
 			isScheduleBusy := func() bool {
 				stateMu.Lock()
 				busy := state.ActiveTurn || !state.ThreadLoaded
@@ -230,6 +270,13 @@ running:
 			if err != nil && !shutdown.Load() {
 				result = fmt.Errorf("chat session listener stopped: %w", err)
 			}
+			break running
+		case <-runner.lost:
+			// Attached windows reconnect and follow the conversation to the
+			// machine that continues it.
+			fmt.Fprintln(os.Stderr, "The conversation continues on another machine; stopping the local agent.")
+			reconnect = true
+			shutdown.Store(true)
 			break running
 		case <-signals:
 			reconnect = true
@@ -272,4 +319,36 @@ drained:
 	_ = writeChatDaemonState(paths, snapshot)
 	stateWriteMu.Unlock()
 	return result
+}
+
+// chatDaemonRunnerHooks connect a daemon running on a local device to the
+// remote host that keeps the shared copy of its workspace and conversation.
+type chatDaemonRunnerHooks struct {
+	turnEnded func(chatDaemonState)      // a turn completed; checkpoint it
+	release   func(chatDaemonState) bool // final checkpoint and lease release
+	lost      <-chan struct{}            // closed when another machine took over
+	handBack  func() bool                // the host: a device waits for the workspace
+	bootstrap string                     // conversation to load without a window
+}
+
+// bootstrapChatDaemon starts a session no window has opened yet. Responses
+// to these requests update the daemon state like a window's would.
+func bootstrapChatDaemon(input io.Writer, thread string, state *chatDaemonState, pending map[string]string) {
+	resume := map[string]any{"threadId": thread, "approvalsReviewer": protocol.AutoReviewer}
+	if state.CWD != "" {
+		resume["cwd"] = state.CWD
+	}
+	requests := []map[string]any{
+		{"id": "jara-bootstrap-initialize", "method": "initialize", "params": chatInitializeParams()},
+		{"method": "initialized"},
+		{"id": "jara-bootstrap-resume", "method": "thread/resume", "params": resume},
+	}
+	pending[`"jara-bootstrap-initialize"`] = "initialize"
+	pending[`"jara-bootstrap-resume"`] = "thread/resume"
+	for _, request := range requests {
+		if line, err := json.Marshal(request); err == nil {
+			_, _ = input.Write(append(line, '\n'))
+		}
+	}
+	state.Initialized = true
 }

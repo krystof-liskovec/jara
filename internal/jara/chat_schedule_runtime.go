@@ -25,6 +25,7 @@ type chatSchedule struct {
 	Status    string    `json:"status"`
 	TurnID    string    `json:"turnId,omitempty"`
 	Error     string    `json:"error,omitempty"`
+	Queued    bool      `json:"queued,omitempty"` // a queued prompt, run when idle
 }
 
 type chatScheduleManager struct {
@@ -33,6 +34,7 @@ type chatScheduleManager struct {
 	jobs      []chatSchedule
 	activeID  string
 	requestID string
+	onQueue   func([]byte) // broadcasts jara/queue/updated
 }
 
 func newChatScheduleManager(path string) (*chatScheduleManager, error) {
@@ -103,6 +105,9 @@ func (m *chatScheduleManager) handleClientRequest(method string, params json.Raw
 		}
 		return map[string]any{"schedule": job}, nil
 	default:
+		if chatQueueRequest(method) {
+			return m.handleQueueRequest(method, params, currentThread)
+		}
 		return nil, fmt.Errorf("unsupported Jara schedule operation")
 	}
 }
@@ -131,7 +136,7 @@ func (m *chatScheduleManager) add(threadID, prompt string, runAt time.Time) (cha
 	defer m.mu.Unlock()
 	pending := 0
 	for _, existing := range m.jobs {
-		if existing.Status == "pending" {
+		if existing.Status == "pending" && !existing.Queued {
 			pending++
 		}
 	}
@@ -151,7 +156,7 @@ func (m *chatScheduleManager) list(threadID string) []chatSchedule {
 	defer m.mu.Unlock()
 	var jobs []chatSchedule
 	for _, job := range m.jobs {
-		if threadID == "" || job.ThreadID == threadID {
+		if !job.Queued && (threadID == "" || job.ThreadID == threadID) {
 			jobs = append(jobs, job)
 		}
 	}
@@ -248,7 +253,7 @@ func (m *chatScheduleManager) startDue(input io.Writer, inputMu *sync.Mutex, bus
 	if err == nil {
 		err = m.saveLocked()
 	}
-	requestID := m.requestID
+	requestID, queued := m.requestID, job.Queued
 	if err != nil {
 		job.Status = "failed"
 		job.Error = err.Error()
@@ -258,6 +263,9 @@ func (m *chatScheduleManager) startDue(input io.Writer, inputMu *sync.Mutex, bus
 		return err
 	}
 	m.mu.Unlock()
+	if queued {
+		m.notifyQueue() // it left the queue
+	}
 	inputMu.Lock()
 	if busy() {
 		inputMu.Unlock()

@@ -242,8 +242,12 @@ func startChatDaemon(q Request, paths chatDaemonPaths) (net.Conn, bool, error) {
 			return conn, false, nil
 		}
 		if chatDaemonPID(paths) == 0 {
-			if log, readErr := os.ReadFile(paths.log); readErr == nil && len(log) > 0 {
-				return nil, false, fmt.Errorf("remote chat service failed: %s", strings.TrimSpace(string(log)))
+			// The process drops its PID file before its error reaches the log.
+			for wait := 0; wait < 10; wait++ {
+				if log, readErr := os.ReadFile(paths.log); readErr == nil && len(log) > 0 {
+					return nil, false, fmt.Errorf("remote chat service failed: %s", strings.TrimSpace(string(log)))
+				}
+				time.Sleep(50 * time.Millisecond)
 			}
 			return nil, false, fmt.Errorf("remote chat service exited during startup")
 		}
@@ -273,23 +277,30 @@ func connectExistingChatDaemon(id string) (net.Conn, error) {
 
 func proxyChatDaemon(conn net.Conn) error {
 	defer conn.Close()
-	done := make(chan error, 2)
+	input := make(chan error, 1)
+	output := make(chan error, 1)
 	go func() {
 		_, err := io.Copy(conn, os.Stdin)
-		done <- err
+		input <- err
 	}()
 	go func() {
 		_, err := io.Copy(os.Stdout, conn)
-		done <- err
+		output <- err
 	}()
-	err := <-done
-	_ = conn.Close()
-	other := <-done
+	var err error
+	select {
+	case err = <-output:
+		// The session closed this client (for example, it handed the
+		// workspace to another machine). Exit now so the client sees the end
+		// instead of waiting for input that will not come.
+	case err = <-input:
+		_ = conn.Close()
+		if other := <-output; err == nil {
+			err = other
+		}
+	}
 	if err != nil && !strings.Contains(err.Error(), "closed network connection") {
 		return err
-	}
-	if other != nil && !strings.Contains(other.Error(), "closed network connection") {
-		return other
 	}
 	return nil
 }

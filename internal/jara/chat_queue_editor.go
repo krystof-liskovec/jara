@@ -50,6 +50,9 @@ func (e *chatQueueEditor) save(u *chatUI, editor *chatEditor, text string) {
 		return
 	}
 	u.queuedPrompts[index].text = text
+	if session := u.queuedPrompts[index].session; session != "" {
+		_ = u.request("jara/queue/update", map[string]string{"id": session, "prompt": text})
+	}
 	e.id, e.original = 0, ""
 	editor.SetCompletionContext(chatCompletionContextFromUI(u))
 	editor.SetCompletionsDisabled(false)

@@ -62,7 +62,7 @@ jara auth codex --remote work
 jara auth claude --remote work   # optional: paste a token from `claude setup-token`
 ```
 
-Configure commit name/email separately with [Git identity settings](docs/git-identity.md).
+Configure commit name/email separately with [Git identity settings](docs/git-identity.md). Experimental: the Jara interface runs the agent on your machine while the host keeps a shared copy; see [agents on your device](docs/local-runner.md).
 
 From a Git repository, run `jara --remote work` to reuse a checkout or clone it.
 For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in
@@ -159,7 +159,7 @@ See [phone setup, keys and direct workspace commands](docs/plain-ssh.md).
 ```sh
 jara remote add work --host example.org --port 2222 --user agent --identity /path/to/key
 jara remote list
-jara remote use work
+jara remote use work   # rank several: jara remote order work backup; standby: jara remote standby backup
 jara doctor
 jara auth codex
 ```

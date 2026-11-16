@@ -10,6 +10,16 @@ import (
 )
 
 func startChatDaemonProcess(request Request, logPath string) (int, error) {
+	command := "_chat-daemon"
+	if request.Runner != "" {
+		command = "_runner-daemon" // the agent runs on this device
+	}
+	return startDetachedJara(command, request, logPath)
+}
+
+// startDetachedJara runs `jara COMMAND REQUEST` in its own session, so it
+// outlives the SSH connection or terminal that started it.
+func startDetachedJara(command string, request Request, logPath string) (int, error) {
 	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return 0, err
@@ -24,11 +34,11 @@ func startChatDaemonProcess(request Request, logPath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	cmd := exec.Command(executable, "_chat-daemon", token(request))
+	cmd := exec.Command(executable, command, token(request))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, log, log
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err = cmd.Start(); err != nil {
-		return 0, fmt.Errorf("start persistent Jara session: %w", err)
+		return 0, fmt.Errorf("start background Jara process: %w", err)
 	}
 	// Reap the daemon if it exits while this process still runs; an unreaped
 	// child stays a zombie that still looks alive, hiding a startup crash.

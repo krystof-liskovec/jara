@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,15 +13,32 @@ type chatQueuedPrompt struct {
 	id       uint64
 	threadID string
 	text     string
+	session  string // the persistent session's ID for this prompt
 }
 
 func (u *chatUI) queuePrompt(threadID, prompt string) error {
+	return u.queuePromptIn(threadID, prompt, false)
+}
+
+// queueLocalPrompt queues a prompt this window sends itself, after a change
+// it is waiting for.
+func (u *chatUI) queueLocalPrompt(threadID, prompt string) error {
+	return u.queuePromptIn(threadID, prompt, true)
+}
+
+func (u *chatUI) queuePromptIn(threadID, prompt string, local bool) error {
 	prompt = strings.TrimSpace(prompt)
 	if threadID == "" || prompt == "" {
 		return fmt.Errorf("enter a prompt before queuing it")
 	}
 	if len(prompt) > maxBackgroundPrompt {
 		return fmt.Errorf("queued prompt exceeds 64 KiB")
+	}
+	if u.persistentSession && !u.chatOffline() && !local {
+		// The session keeps the queue, so it survives this window and moves
+		// with the conversation; jara/queue/updated shows the result. While
+		// reconnecting, the window keeps the prompt and sends it afterwards.
+		return u.request("jara/queue/add", map[string]string{"threadId": threadID, "prompt": prompt})
 	}
 	if len(u.queuedPrompts) >= chatPromptQueueLimit {
 		return fmt.Errorf("prompt queue is full (%d prompts)", chatPromptQueueLimit)
@@ -43,6 +61,14 @@ func isChatQueueCommand(line string) bool {
 
 func (u *chatUI) runChatQueueCommand(line string) error {
 	args := strings.TrimSpace(strings.TrimPrefix(line, "/queue"))
+	if args == "run" && u.persistentSession {
+		u.print("Queued prompts start by themselves whenever the conversation is idle.\n" + u.schedulePrompt())
+		return nil
+	}
+	if args == "clear" && u.persistentSession {
+		u.print("Clearing the queued prompts of this conversation.\n" + u.schedulePrompt())
+		return u.request("jara/queue/clear", map[string]string{"threadId": u.thread})
+	}
 	if args == "run" {
 		started, err := u.dispatchQueuedPrompt()
 		if err != nil {
@@ -170,7 +196,7 @@ func (u *chatUI) dispatchQueuedPrompt() (bool, error) {
 		return false, nil
 	}
 	for index, prompt := range u.queuedPrompts {
-		if prompt.threadID != u.thread {
+		if prompt.threadID != u.thread || prompt.session != "" { // the session runs its own queue
 			continue
 		}
 		u.queuedPrompts = append(u.queuedPrompts[:index], u.queuedPrompts[index+1:]...)
@@ -184,4 +210,40 @@ func (u *chatUI) dispatchQueuedPrompt() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+// acceptQueueUpdate mirrors the session's queue. Prompts keep their local
+// numbers so an edit in progress stays attached to its prompt.
+func (u *chatUI) acceptQueueUpdate(params json.RawMessage) {
+	var update struct {
+		Prompts []struct {
+			ID       string `json:"id"`
+			ThreadID string `json:"threadId"`
+			Prompt   string `json:"prompt"`
+		} `json:"prompts"`
+	}
+	if json.Unmarshal(params, &update) != nil {
+		return
+	}
+	known := map[string]uint64{}
+	for _, prompt := range u.queuedPrompts {
+		if prompt.session != "" {
+			known[prompt.session] = prompt.id
+		}
+	}
+	queue := make([]chatQueuedPrompt, 0, len(update.Prompts)+len(u.queuedPrompts))
+	for _, prompt := range update.Prompts {
+		entry := u.newQueuedPrompt(prompt.ThreadID, chatText(prompt.Prompt))
+		if id, ok := known[prompt.ID]; ok {
+			entry.id = id
+		}
+		entry.session = prompt.ID
+		queue = append(queue, entry)
+	}
+	for _, prompt := range u.queuedPrompts {
+		if prompt.session == "" { // typed while reconnecting; sent by this window
+			queue = append(queue, prompt)
+		}
+	}
+	u.queuedPrompts = queue
 }

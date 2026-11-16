@@ -131,12 +131,12 @@ once on the fallback. `/fallback off` turns it off. Both choices are stored on
 the host in `~/.local/share/jara/models.json`.
 When Codex is working, an animated activity row shows the latest concise
 progress summary when available; otherwise it reports whether Codex is thinking,
-running a command, applying changes, or waiting for input. Like Claude Code's
-spinner, the row reads `✻ Pondering… (12s · ctrl+c to interrupt)`: a star
-that grows and shrinks (`· ✢ ✳ ✶ ✻ ✽`), the label under a sweeping shimmer
-(plain thinking gets a verb picked per turn), and muted details for elapsed
-time, token progress, and how to interrupt. `JARA_REDUCED_MOTION=1` keeps the
-row but stops the shimmer. Message headers show their timestamps when Codex
+running a command, applying changes, or waiting for input. The row reads
+`✿ Pondering… (12s · ctrl+c to interrupt)`: an animation picked per turn (an
+opening flower, a rising sun or an explosion; `JARA_SPINNER=flower|sun|explosion`
+keeps one), the label under a sweeping shimmer with a per-turn verb, and muted
+details for elapsed time, token progress, and how to interrupt.
+`JARA_REDUCED_MOTION=1` keeps the row but stops the shimmer. Message headers show their timestamps when Codex
 provides them.
 
 Bracketed paste inserts text, including multiple lines, without submitting it.
@@ -161,9 +161,11 @@ While a turn is running, type a follow-up and press Tab to queue it. Jara sends
 queued prompts one at a time after the current turn. Use `/queue` to inspect the
 queue, which is also shown above the composer. Use `/queue edit N` to load a
 queued prompt into the composer, then press Enter to save the edit or Escape to
-cancel it. `/queue run` starts one while idle, and `/queue clear` removes queued
-prompts for this conversation. The queue is held by the attached interface and
-is cleared when that interface exits.
+cancel it, and `/queue clear` removes queued prompts for this conversation. In a
+persistent session the session keeps the queue: queued prompts run one at a time
+whenever the conversation is idle, also after the window closes, every attached
+window shows them, and they move with the conversation to another machine.
+Prompts typed while a window reconnects wait in that window until it is back.
 
 - `/compose` starts a multiline message; `/send` submits it and `/discard`
   clears it. Blank lines and indentation are preserved. `/help`, `/status`,
@@ -271,15 +273,15 @@ is cleared when that interface exits.
   `/detach` leaves it running whether it is active or idle. `/stop` always ends it.
 - `/approve` approves the oldest pending command or file approval once.
 - `/deny` rejects that approval; the agent can continue.
-- `/answer Q VALUE` answers question number `Q` in the current question set.
-  Use an option number, comma-separated numbers for a multi-select question
-  (`/answer 1 1,3`), or, when offered, free text. For example, `/answer 1 2`
-  chooses option 2 for question 1. Nothing is preselected or sent until every
-  question in that request has an explicit answer. In the full-screen view,
-  the menu above the input box answers the current question: ↑↓ choose, Enter
-  selects, and in a multi-select question Enter or Space checks an option and
-  Submit sends the checked ones. Text typed in the input box and sent with
-  Enter is your own answer, added to any checked options.
+- `/answer Q VALUE` answers question `Q` of the current set with an option
+  number, comma-separated numbers for a multi-select question (`/answer 1 1,3`)
+  or, when offered, free text. Nothing is sent until every question in the
+  request has an explicit answer. In the full-screen view the menu above the
+  input box answers the current question: ↑↓ choose, Enter selects, and in a
+  multi-select question Enter or Space checks and Submit sends. Text typed and
+  sent with Enter is your own answer, added to any checked options. `n` in an
+  empty input box, once you chose an option with the keys, starts a note sent
+  with that option instead (Claude Code gets it as the note). Escape stops it.
 - `/quit` stops an idle persistent session. During an active turn it closes the
   UI and leaves the agent running until that turn finishes. Use `/stop` to stop
   immediately and release its workspace lock.

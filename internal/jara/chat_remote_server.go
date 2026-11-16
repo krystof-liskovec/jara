@@ -14,11 +14,17 @@ type remoteChatServerReady struct {
 	ActiveTurn     bool   `json:"active_turn,omitempty"`
 	Error          string `json:"error,omitempty"`
 	ManagedSession bool   `json:"managed_session,omitempty"`
+	Notice         string `json:"-"` // where the agent runs, shown after reconnecting
 }
 
 func runRemoteChatServer(q Request) error {
 	if q.UserInterface != "jara" || !nameRE.MatchString(q.ID) {
 		return fmt.Errorf("invalid remote Jara workspace request")
+	}
+	if conn, err := hubRunnerRoute(&q); err != nil {
+		return err
+	} else if conn != nil {
+		return proxyChatDaemon(conn)
 	}
 	conn, managed, err := ensureChatDaemon(q)
 	if err != nil {

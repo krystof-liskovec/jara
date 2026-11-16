@@ -6,18 +6,44 @@ import (
 	"time"
 
 	"krystof.liskovec/jara/internal/textutil"
+	"github.com/rivo/uniseg"
 )
 
-func TestActivityRowFollowsClaudeCodeSpinner(t *testing.T) {
-	var glyphs []string
-	for frame := 0; frame < 12; frame++ {
-		glyphs = append(glyphs, chatSpinnerGlyph(frame))
+func TestActivityRowAnimatesAFlowerSunOrExplosion(t *testing.T) {
+	play := func(spinner chatSpinner, frames int) string {
+		var glyphs []string
+		for frame := 0; frame < frames; frame++ {
+			glyphs = append(glyphs, spinner.glyph(frame))
+		}
+		return strings.Join(glyphs, "")
 	}
-	if got := strings.Join(glyphs, ""); got != "·✢✳✶✻✽✻✶✳✢·✢" {
-		t.Fatalf("spinner must grow and shrink: %s", got)
+	seen := map[string]bool{}
+	for seed := int64(0); seed < 200; seed++ {
+		seen[chatSpinnerFor(seed).name] = true
+	}
+	if len(seen) != len(chatSpinners) {
+		t.Fatalf("turns pick only %v", seen)
+	}
+	for _, spinner := range chatSpinners {
+		t.Setenv("JARA_SPINNER", spinner.name)
+		if got := chatSpinnerFor(7); got.name != spinner.name {
+			t.Fatalf("JARA_SPINNER=%s picked %s", spinner.name, got.name)
+		}
+		for _, glyph := range spinner.frames {
+			if uniseg.StringWidth(glyph) != 1 || strings.TrimSpace(glyph) == "" {
+				t.Fatalf("%s glyph %q must fill one cell", spinner.name, glyph)
+			}
+		}
+	}
+	t.Setenv("JARA_SPINNER", "flower")
+	if got := play(chatSpinnerFor(0), 10); got != "·∘✾❀✿❀✾∘·∘" {
+		t.Fatalf("the flower must open and close: %s", got)
+	}
+	if got := play(chatSpinners[2], 11); got != "·•✦✸✹✺❋⁙⁘∙·" {
+		t.Fatalf("the explosion must burst and restart: %s", got)
 	}
 	line := chatActivityViewLine(chatViewModel{Activity: "Thinking · ~330 tokens", ActivityElapsed: "12s", ActivityHint: "ctrl+c to interrupt", ActivityFrame: 4})
-	if line.text != "✻ Thinking… (12s · ~330 tokens · ctrl+c to interrupt)" || line.kind != "activity" {
+	if line.text != "✿ Thinking… (12s · ~330 tokens · ctrl+c to interrupt)" || line.kind != "activity" {
 		t.Fatalf("activity row %q (%s)", line.text, line.kind)
 	}
 	line = chatActivityViewLine(chatViewModel{Activity: "Thinking", ActivitySeed: 1})

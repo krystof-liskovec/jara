@@ -10,6 +10,12 @@ UsePAM no
 AuthorizedKeysFile /etc/ssh/authorized_keys/%u
 AllowTcpForwarding yes
 AllowStreamLocalForwarding yes
+# Devices running an agent locally publish their session through a reverse
+# Unix-socket forward; replace a socket left by a dropped connection and
+# notice dead connections so a device can reconnect.
+StreamLocalBindUnlink yes
+ClientAliveInterval 30
+ClientAliveCountMax 3
 X11Forwarding no
 AllowAgentForwarding no
 PermitUserEnvironment no
