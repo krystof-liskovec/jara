@@ -108,8 +108,8 @@ func openLocalRunner(o localRunnerOpen, q Request) error {
 			again.Conversation, again.New, again.Resume, again.ResumeLatest = thread, false, false, false
 			return connectLocalRunner(o, again, false)
 		},
+		notice: ready.Notice,
 	}
-	fmt.Fprintln(os.Stderr, ready.Notice)
 	return chatLoopWithOptions(connection, os.Stdin, os.Stdout, options)
 }
 

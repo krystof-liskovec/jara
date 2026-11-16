@@ -16,6 +16,9 @@ import (
 	"krystof.liskovec/jara/internal/fsutil"
 )
 
+// syncReportsUnchanged makes `jara sync` confirm a transfer of nothing.
+var syncReportsUnchanged bool
+
 func syncWorkspace(r Remote, b Binding, root, direction string, force bool, options ...bool) error {
 	includeIgnored, deleteMissing := false, false
 	if len(options) > 0 {
@@ -170,7 +173,10 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	if err = fsutil.WriteJSON(state, next); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Transferred %d file(s), deleted %d previously synchronized file(s).\n", len(u.Files), len(u.Deletes))
+	// Before a session starts, a sync that changed nothing stays silent.
+	if len(u.Files) > 0 || len(u.Deletes) > 0 || syncReportsUnchanged {
+		fmt.Fprintf(os.Stderr, "Transferred %d file(s), deleted %d previously synchronized file(s).\n", len(u.Files), len(u.Deletes))
+	}
 	return nil
 }
 
