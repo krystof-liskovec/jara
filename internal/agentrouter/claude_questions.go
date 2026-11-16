@@ -8,6 +8,10 @@ import (
 	"krystof.liskovec/jara/internal/textutil"
 )
 
+// questionNotePrefix marks the user's note among a question's answers, as
+// Codex's user-input answers carry it.
+const questionNotePrefix = "user_note: "
+
 // claudeQuestion is one entry of Claude Code's AskUserQuestion tool input.
 type claudeQuestion struct {
 	Question string `json:"question"`
@@ -54,7 +58,8 @@ func (s *claudeSession) askUserQuestion(requestID, toolUseID string, input map[s
 
 // answerQuestion returns the user's answers to Claude Code as the tool's
 // updated input: answers keyed by question text, with several choices joined
-// by ", ". A rejected request (an error reply) tells Claude the user declined.
+// by ", ", and the user's notes as annotations keyed the same way. A rejected
+// request (an error reply) tells Claude the user declined.
 func (s *claudeSession) answerQuestion(approval claudeApproval, result json.RawMessage) {
 	var reply struct {
 		Answers map[string]struct {
@@ -66,15 +71,32 @@ func (s *claudeSession) answerQuestion(approval claudeApproval, result json.RawM
 		return
 	}
 	answers := map[string]string{}
+	annotations := map[string]map[string]string{}
 	for i, text := range approval.questions {
-		if answer, ok := reply.Answers[strconv.Itoa(i)]; ok {
-			answers[text] = strings.Join(answer.Answers, ", ")
+		answer, ok := reply.Answers[strconv.Itoa(i)]
+		if !ok {
+			continue
+		}
+		var chosen, notes []string
+		for _, value := range answer.Answers {
+			if note, isNote := strings.CutPrefix(value, questionNotePrefix); isNote {
+				notes = append(notes, note)
+			} else {
+				chosen = append(chosen, value)
+			}
+		}
+		answers[text] = strings.Join(chosen, ", ")
+		if len(notes) > 0 {
+			annotations[text] = map[string]string{"notes": strings.Join(notes, "\n")}
 		}
 	}
-	input := make(map[string]any, len(approval.input)+1)
+	input := make(map[string]any, len(approval.input)+2)
 	for key, value := range approval.input {
 		input[key] = value
 	}
 	input["answers"] = answers
+	if len(annotations) > 0 {
+		input["annotations"] = annotations
+	}
 	s.respondPermission(approval.requestID, input, true, "")
 }

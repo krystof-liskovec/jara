@@ -156,14 +156,15 @@ func TestAgentRouterForwardsClaudeQuestions(t *testing.T) {
 		}
 	}
 	h.Send(map[string]any{"id": request["id"], "result": map[string]any{"answers": map[string]any{
-		"0": map[string]any{"answers": []string{"SQLite"}}, "1": map[string]any{"answers": []string{"Cache", "my own idea"}}}}})
+		"0": map[string]any{"answers": []string{"SQLite", "user_note: it has to run on a phone"}}, "1": map[string]any{"answers": []string{"Cache", "my own idea"}}}}})
 	h.WaitFor(agentfake.IsMethod("turn/completed"))
 	// A dismissed question tells Claude the user declined.
 	request = ask()
 	h.Send(map[string]any{"id": request["id"], "error": map[string]any{"code": -32000, "message": "cancelled"}})
 	h.WaitFor(agentfake.IsMethod("turn/completed"))
 	got := agentfake.ReadLog(t, "claude-question")
-	if len(got) != 2 || !strings.Contains(got[0], `"behavior":"allow"`) || !strings.Contains(got[0], `"answers":{"Which database?":"SQLite","Which extras?":"Cache, my own idea"}`) || !strings.Contains(got[0], `"questions":[`) {
+	if len(got) != 2 || !strings.Contains(got[0], `"behavior":"allow"`) || !strings.Contains(got[0], `"answers":{"Which database?":"SQLite","Which extras?":"Cache, my own idea"}`) || !strings.Contains(got[0], `"questions":[`) ||
+		!strings.Contains(got[0], `"annotations":{"Which database?":{"notes":"it has to run on a phone"}}`) {
 		t.Fatalf("answer sent to Claude: %v", got)
 	}
 	if !strings.Contains(got[1], `"behavior":"deny"`) {
