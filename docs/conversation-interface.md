@@ -273,15 +273,15 @@ Prompts typed while a window reconnects wait in that window until it is back.
   `/detach` leaves it running whether it is active or idle. `/stop` always ends it.
 - `/approve` approves the oldest pending command or file approval once.
 - `/deny` rejects that approval; the agent can continue.
-- `/answer Q VALUE` answers question number `Q` in the current question set.
-  Use an option number, comma-separated numbers for a multi-select question
-  (`/answer 1 1,3`), or, when offered, free text. For example, `/answer 1 2`
-  chooses option 2 for question 1. Nothing is preselected or sent until every
-  question in that request has an explicit answer. In the full-screen view,
-  the menu above the input box answers the current question: ↑↓ choose, Enter
-  selects, and in a multi-select question Enter or Space checks an option and
-  Submit sends the checked ones. Text typed in the input box and sent with
-  Enter is your own answer, added to any checked options.
+- `/answer Q VALUE` answers question `Q` of the current set with an option
+  number, comma-separated numbers for a multi-select question (`/answer 1 1,3`)
+  or, when offered, free text. Nothing is sent until every question in the
+  request has an explicit answer. In the full-screen view the menu above the
+  input box answers the current question: ↑↓ choose, Enter selects, and in a
+  multi-select question Enter or Space checks and Submit sends. Text typed and
+  sent with Enter is your own answer, added to any checked options; after Tab
+  it is a note sent with the chosen option instead (Claude Code receives it as
+  the question's note). Tab or Escape stops the note.
 - `/quit` stops an idle persistent session. During an active turn it closes the
   UI and leaves the agent running until that turn finishes. Use `/stop` to stop
   immediately and release its workspace lock.
