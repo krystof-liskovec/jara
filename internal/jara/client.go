@@ -438,6 +438,7 @@ func Run(args []string) error {
 		}
 	}
 	if action == "sync" {
+		syncReportsUnchanged = true
 		return syncWorkspace(r, b, root, direction, *force, *includeIgnored, *deleteMissing)
 	}
 	if isGit && !useLocal {

@@ -43,6 +43,7 @@ type chatLoopOptions struct {
 	resumeAtStart           bool
 	resumeLatest            bool
 	reconnect               chatReconnector // nil when a lost connection ends the interface
+	notice                  string          // shown in the transcript once it loads
 }
 
 func chatLoop(c *appConnection, input io.Reader, output io.Writer, cwd, id string) error {
@@ -59,6 +60,9 @@ func chatLoopWithOptions(c *appConnection, input io.Reader, output io.Writer, op
 		resumeAtStart:      options.resumeAtStart, resumeLatest: options.resumeLatest,
 		pending: map[string]chatPending{}, pendingTurnModels: map[string]chatTurnRequest{},
 		items: map[string]json.RawMessage{},
+	}
+	if options.notice != "" {
+		u.afterHistory = options.notice + "\n"
 	}
 	u.reconnect = options.reconnect
 	defer func() {
