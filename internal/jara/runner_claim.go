@@ -81,6 +81,11 @@ func claimRunner(q Request, paths runnerPaths) (runnerClaim, error) {
 		lease.Wants, lease.HandBackAt, lease.Link, lease.Busy, lease.Pending = nil, 0, "", false, false
 		claim = runnerClaim{Epoch: lease.Epoch, Seq: lease.Seq, Writer: lease.Writer, Conversation: lease.Conversation,
 			Socket: paths.socket(lease.Epoch), Root: workspace.Path}
+		for thread, seq := range lease.Threads {
+			if seq > q.Since {
+				claim.Changed = append(claim.Changed, thread)
+			}
+		}
 		return nil
 	})
 	return claim, err

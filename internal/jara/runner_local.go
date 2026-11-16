@@ -126,9 +126,10 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 		return readyLocalRunner(conn, "The agent runs on this device.")
 	}
 	var claim runnerClaim
+	marker := loadLocalRunnerMarker(q.ID)
 	// A window reconnecting by itself only reclaims the conversation from the
 	// host; it never displaces another device the user moved to.
-	wire := Request{Op: "runner-claim", ID: o.binding.Workspace, Runner: q.Runner, Force: first && o.takeOver, Wait: true, Passive: !first}
+	wire := Request{Op: "runner-claim", ID: o.binding.Workspace, Runner: q.Runner, Force: first && o.takeOver, Wait: true, Passive: !first, Since: marker.Seq}
 	if err := rpc(o.remote, wire, nil, &claim); err != nil {
 		if strings.Contains(err.Error(), "unknown RPC operation") {
 			err = errRunnerUnsupported
@@ -142,9 +143,8 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 	release := func() {
 		_ = rpc(o.remote, Request{Op: "runner-release", ID: o.binding.Workspace, Runner: q.Runner, Epoch: claim.Epoch}, nil, nil)
 	}
-	marker := loadLocalRunnerMarker(q.ID)
 	if claim.Seq != marker.Seq {
-		if err := catchUpLocalRunner(o, &q, marker.Seq); err != nil {
+		if err := catchUpLocalRunner(o, &q, marker.Seq, claim); err != nil {
 			release()
 			return nil, remoteChatServerReady{}, err
 		}
@@ -217,7 +217,7 @@ func watchRunner(o localRunnerOpen, q Request, runner string) (*appConnection, r
 
 // catchUpLocalRunner brings the checkout, conversations and scheduled prompts
 // to the newest checkpoint, which another machine wrote.
-func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
+func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64, claim runnerClaim) error {
 	// Work this device did after its last checkpoint, before another machine
 	// replaced it, is set aside. Edits made here without running the agent
 	// merge like an ordinary pull, which refuses conflicting changes.
@@ -247,11 +247,7 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
 	if err = syncWorkspace(o.remote, o.binding, o.root, direction, force, o.includeIgnored, true); err != nil {
 		return fmt.Errorf("bring this checkout up to date: %w", err)
 	}
-	var checkpoint runnerCheckpoint
-	if err = rpcCompressed(o.remote, Request{Op: "runner-export", ID: o.binding.Workspace, Since: since, Compress: true}, nil, &checkpoint); err != nil {
-		return err
-	}
-	briefed, err := importCheckpoint(checkpoint, o.root)
+	checkpoint, briefed, err := fetchCheckpoint(o, since, claim.Root, claim.Changed)
 	if err != nil {
 		return err
 	}
@@ -269,9 +265,11 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64) error {
 	if q.Conversation == "" && !q.New {
 		q.Conversation, q.Resume, q.ResumeLatest = checkpoint.Current, false, false
 	}
-	// Imported session files are rewritten for this checkout, so the host's
-	// copies no longer match them byte for byte.
-	return updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) { m.Versions, m.Sent = workspaceThreadVersions(o.root), nil })
+	// The host converts its copies to this checkout's form for the next
+	// checkpoint's deltas.
+	return updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) {
+		m.Versions, m.Sent = workspaceThreadVersions(o.root), sentAfterImport(m.Sent, checkpoint)
+	})
 }
 
 // defaultLocalRunner reports whether conversations run on this device unless

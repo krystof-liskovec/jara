@@ -195,6 +195,11 @@ including Codex-only ones, so the fallback always has something to replay.
   end of every turn a SHA-256 of each changed file. A copy that does not match
   is repaired: after a dropped connection, from where the copy ends; only a
   copy that really differs gets the whole file.
+- Taking a conversation back works the same way in reverse: the device tells
+  the remote host how much of each session file it has (compared with the
+  checkout path converted), receives only the lines added since, checks them
+  against the host's SHA-256 and appends them. Its next checkpoint is a delta
+  again; the host converts its copy to the device's checkout path first.
 - The device uses its own `PATH`, toolchains, agent configuration and
   credentials, without the container's isolation: the agent's own sandbox
   settings apply.

@@ -73,28 +73,8 @@ func exportThread(thread *agentrouter.Thread, root, writer string, rollouts map[
 		return runnerBundle{}, err
 	}
 	bundle := runnerBundle{ThreadID: thread.ID, Root: root, Thread: record, Writer: writer, At: time.Now().Unix()}
-	seen := map[string]bool{}
-	for _, segment := range thread.Segments {
-		key := segment.Agent + "/" + segment.BackendID
-		if seen[key] || !portable.ValidBackendID(segment.BackendID) {
-			continue
-		}
-		seen[key] = true
-		file := runnerNativeFile{Agent: segment.Agent, BackendID: segment.BackendID}
-		var path string
-		switch segment.Agent {
-		case protocol.AgentClaude:
-			if !segment.Started {
-				continue
-			}
-			file.CWD, path = thread.CWD, portable.ClaudeSessionPath(thread.CWD, segment.BackendID)
-		default:
-			rel, ok := rollouts[segment.BackendID]
-			if !ok {
-				continue // imported as a briefing instead
-			}
-			file.Path, path = rel, filepath.Join(portable.CodexHome(), filepath.FromSlash(rel))
-		}
+	for _, file := range threadNativeFiles(thread, rollouts) {
+		path := file.local
 		info, statErr := os.Stat(path)
 		if statErr != nil || !info.Mode().IsRegular() || info.Size() > portable.MaxNativeFile {
 			continue
@@ -116,6 +96,36 @@ func exportThread(thread *agentrouter.Thread, root, writer string, rollouts map[
 	return bundle, nil
 }
 
+// threadNativeFiles lists a conversation's native session files on this
+// machine, each with its local path, whether or not it exists.
+func threadNativeFiles(thread *agentrouter.Thread, rollouts map[string]string) []runnerNativeFile {
+	var files []runnerNativeFile
+	seen := map[string]bool{}
+	for _, segment := range thread.Segments {
+		key := segment.Agent + "/" + segment.BackendID
+		if seen[key] || !portable.ValidBackendID(segment.BackendID) {
+			continue
+		}
+		seen[key] = true
+		file := runnerNativeFile{Agent: segment.Agent, BackendID: segment.BackendID}
+		switch segment.Agent {
+		case protocol.AgentClaude:
+			if !segment.Started {
+				continue
+			}
+			file.CWD, file.local = thread.CWD, portable.ClaudeSessionPath(thread.CWD, segment.BackendID)
+		default:
+			rel, ok := rollouts[segment.BackendID]
+			if !ok {
+				continue // imported as a briefing instead
+			}
+			file.Path, file.local = rel, filepath.Join(portable.CodexHome(), filepath.FromSlash(rel))
+		}
+		files = append(files, file)
+	}
+	return files
+}
+
 // importConversation installs a checkpoint for a workspace checked out at
 // root. It reports whether the current agent session was restored natively;
 // otherwise the conversation continues from a briefing on its transcript.
@@ -135,10 +145,6 @@ func importConversation(bundle runnerBundle, root string) (bool, error) {
 		if !portable.ValidBackendID(file.BackendID) {
 			continue
 		}
-		if file.Base != 0 {
-			return false, fmt.Errorf("checkpoint carries a partial conversation file")
-		}
-		data := portable.RewritePath(file.bytes(), bundle.Root, root)
 		var dest string
 		switch file.Agent {
 		case protocol.AgentClaude:
@@ -153,7 +159,11 @@ func importConversation(bundle runnerBundle, root string) (bool, error) {
 		default:
 			continue
 		}
-		if err := portable.WriteFileAtomic(dest, data); err != nil {
+		if file.Base > 0 {
+			if err := appendImportedDelta(dest, bundle.Root, root, file); err != nil {
+				return false, err
+			}
+		} else if err := portable.WriteFileAtomic(dest, portable.RewritePath(file.bytes(), bundle.Root, root)); err != nil {
 			return false, fmt.Errorf("install %s session: %w", protocol.AgentDisplayName(file.Agent), err)
 		}
 		restored[file.Agent+"/"+file.BackendID] = true

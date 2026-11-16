@@ -242,8 +242,12 @@ func startChatDaemon(q Request, paths chatDaemonPaths) (net.Conn, bool, error) {
 			return conn, false, nil
 		}
 		if chatDaemonPID(paths) == 0 {
-			if log, readErr := os.ReadFile(paths.log); readErr == nil && len(log) > 0 {
-				return nil, false, fmt.Errorf("remote chat service failed: %s", strings.TrimSpace(string(log)))
+			// The process drops its PID file before its error reaches the log.
+			for wait := 0; wait < 10; wait++ {
+				if log, readErr := os.ReadFile(paths.log); readErr == nil && len(log) > 0 {
+					return nil, false, fmt.Errorf("remote chat service failed: %s", strings.TrimSpace(string(log)))
+				}
+				time.Sleep(50 * time.Millisecond)
 			}
 			return nil, false, fmt.Errorf("remote chat service exited during startup")
 		}
