@@ -94,6 +94,14 @@ type Request struct {
 	CodexArgs          []string `json:"codex_args,omitempty"`
 	AgentArgs          []string `json:"agent_args,omitempty"` // Claude Code arguments for the Jara UI
 	Reconnect          bool     `json:"reconnect,omitempty"`  // the client reconnects if the session stops
+	// Local runner fields: the device running the agent, its lease epoch, the
+	// local checkout, and the remote that keeps the shared copy.
+	Runner         string `json:"runner,omitempty"`
+	Epoch          int64  `json:"epoch,omitempty"`
+	RunnerTakeover bool   `json:"runner_takeover,omitempty"` // continue here although the device is offline
+	Root           string `json:"root,omitempty"`
+	RemoteName     string `json:"remote_name,omitempty"`
+	Workspace      string `json:"workspace,omitempty"`
 }
 
 func rpc(r Remote, q Request, input io.Reader, v any) error {

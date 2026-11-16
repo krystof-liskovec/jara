@@ -21,6 +21,7 @@ type chatDaemonClientClosed struct {
 	stop         bool
 	handoff      bool
 	suspend      bool
+	release      bool // a local runner is asked to hand the workspace over
 	disconnected bool
 }
 
@@ -42,16 +43,18 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 	requestedStop := false
 	requestedHandoff := false
 	requestedSuspend := false
+	requestedRelease := false
 	for scanner.Scan() {
 		line := append([]byte(nil), scanner.Bytes()...)
 		var message appMessage
 		if json.Unmarshal(line, &message) == nil {
-			if message.Method == "jara/close" || message.Method == "jara/detach" || message.Method == "jara/stop" || message.Method == "jara/handoff" || message.Method == "jara/suspend" {
+			if message.Method == "jara/close" || message.Method == "jara/detach" || message.Method == "jara/stop" || message.Method == "jara/handoff" || message.Method == "jara/suspend" || message.Method == "jara/release" {
 				requestedClose = message.Method == "jara/close" || message.Method == "jara/stop"
 				requestedDetach = message.Method == "jara/detach"
 				requestedStop = message.Method == "jara/stop"
 				requestedHandoff = message.Method == "jara/handoff"
 				requestedSuspend = message.Method == "jara/suspend"
+				requestedRelease = message.Method == "jara/release"
 				break
 			}
 			if message.Method == "initialized" {
@@ -218,8 +221,8 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 	}
 	closed <- chatDaemonClientClosed{
 		client: client, close: requestedClose, detach: requestedDetach,
-		stop: requestedStop, handoff: requestedHandoff, suspend: requestedSuspend,
-		disconnected: !requestedClose && !requestedDetach && !requestedStop && !requestedHandoff && !requestedSuspend,
+		stop: requestedStop, handoff: requestedHandoff, suspend: requestedSuspend, release: requestedRelease,
+		disconnected: !requestedClose && !requestedDetach && !requestedStop && !requestedHandoff && !requestedSuspend && !requestedRelease,
 	}
 }
 

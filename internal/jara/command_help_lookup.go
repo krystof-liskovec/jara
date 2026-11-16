@@ -10,7 +10,7 @@ var boolHelpOptions = map[string]bool{
 	"clone": true, "copy": true, "worktree": true, "takeover": true,
 	"force": true, "include-ignored": true, "delete": true, "resume": true,
 	"new": true, "latest": true, "resume-latest": true, "check": true, "native": true, "vim": true, "nvim": true,
-	"docker": true, "token-stdin": true, "volumes": true, "local": true,
+	"docker": true, "token-stdin": true, "volumes": true, "local": true, "take-over": true,
 }
 
 func showCommandHelp(args []string) bool {
@@ -59,7 +59,7 @@ func commandHelpKey(args []string) string {
 		return "root"
 	case "open", "resume", "new", "run", "connect", "sessions", "clone", "edit", "doctor", "forward", "reverse", "tunnel", "setup", "menu", "ui", "keygen", "environment", "migrate", "version", "handoff", "delegation", "mcp":
 		return command
-	case "sync", "tools":
+	case "sync", "tools", "runner":
 		return command
 	case "key":
 		if len(args) > 1 {

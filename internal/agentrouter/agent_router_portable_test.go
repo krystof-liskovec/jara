@@ -1,0 +1,66 @@
+package agentrouter
+
+import (
+	"strings"
+	"testing"
+
+	"krystof.liskovec/jara/internal/agentfake"
+	"krystof.liskovec/jara/internal/portable"
+	"krystof.liskovec/jara/internal/protocol"
+)
+
+// A moved Claude Code conversation whose native session is missing continues
+// in a fresh session briefed on Jara's transcript instead of failing.
+func TestPortableClaudeThreadRebriefsWithoutNativeSession(t *testing.T) {
+	agentfake.Setup(t)
+	t.Setenv(PortableThreadsEnv, "1")
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	h := startRouterHarness(t, protocol.AgentClaude)
+	h.Response(h.Request("initialize", map[string]any{}))
+	cwd := t.TempDir()
+	started := h.Response(h.Request("thread/start", map[string]any{"cwd": cwd}))
+	thread := started["result"].(map[string]any)["thread"].(map[string]any)["id"].(string)
+
+	routedTurn(h, thread, textInput("first"))
+	if record := LoadThread(thread); record == nil || !record.Portable {
+		t.Fatalf("portable conversation was not recorded: %+v", record)
+	}
+	// The native session exists: the next turn resumes it.
+	if err := portable.WriteFileAtomic(portable.ClaudeSessionPath(cwd, thread), []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
+	routedTurn(h, thread, textInput("second"))
+	if prompts := agentfake.ReadLog(t, "claude-prompt"); prompts[len(prompts)-1] != "second" {
+		t.Fatalf("resumed turn prompt: %q", prompts[len(prompts)-1])
+	}
+	// Moved to a machine without it: the next turn is briefed instead.
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	routedTurn(h, thread, textInput("third"))
+	prompts := agentfake.ReadLog(t, "claude-prompt")
+	briefing := prompts[len(prompts)-1]
+	if !strings.Contains(briefing, "moved to another machine") || !strings.Contains(briefing, "User: first") || !strings.HasSuffix(briefing, "third") {
+		t.Fatalf("moved briefing: %q", briefing)
+	}
+}
+
+// A moved Codex conversation whose rollout was not restored starts its next
+// turn in a fresh Codex thread briefed on the transcript.
+func TestMovedCodexThreadRebriefs(t *testing.T) {
+	agentfake.Setup(t)
+	record := &Thread{ID: "codex-moved", CWD: t.TempDir(), Turns: []TranscriptTurn{{User: "earlier", Agent: protocol.AgentCodex, Reply: "done"}},
+		Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: "codex-moved", StartTurn: 1}}}
+	record.MarkMoved()
+	if err := StoreThread(record); err != nil {
+		t.Fatal(err)
+	}
+	h := startRouterHarness(t, protocol.AgentCodex)
+	h.Response(h.Request("initialize", map[string]any{}))
+	if resumed := h.Response(h.Request("thread/resume", map[string]any{"threadId": "codex-moved"})); resumed["error"] != nil {
+		t.Fatalf("resume: %v", resumed)
+	}
+	routedTurn(h, "codex-moved", textInput("next"))
+	turns := agentfake.ReadLog(t, "codex-turn")
+	if last := turns[len(turns)-1]; strings.HasPrefix(last, "codex-moved|") || !strings.Contains(last, "moved to another machine") || !strings.Contains(last, "User: earlier") {
+		t.Fatalf("moved Codex turn: %q", turns)
+	}
+}

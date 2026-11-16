@@ -24,7 +24,11 @@ func startChatDaemonProcess(request Request, logPath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	cmd := exec.Command(executable, "_chat-daemon", token(request))
+	command := "_chat-daemon"
+	if request.Runner != "" {
+		command = "_runner-daemon" // the agent runs on this device
+	}
+	cmd := exec.Command(executable, command, token(request))
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = input, log, log
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err = cmd.Start(); err != nil {

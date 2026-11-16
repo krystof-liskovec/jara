@@ -53,6 +53,11 @@ type Thread struct {
 	// Rebrief starts the next turn in a fresh agent session briefed on the
 	// transcript, after /rewind dropped turns that session still remembers.
 	Rebrief bool `json:"rebrief,omitempty"`
+	// RebriefMoved explains the rebrief as a move to another machine.
+	RebriefMoved bool `json:"rebrief_moved,omitempty"`
+	// Portable conversations can move between machines, so Jara keeps their
+	// transcript even when only Codex ran them.
+	Portable bool `json:"portable,omitempty"`
 
 	goalContinuations int
 	crunchGoal        bool // /goalcrunch drives the goal's turns
@@ -65,7 +70,7 @@ var routedThreadIDRE = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 func (t *Thread) Current() ThreadSegment { return t.Segments[len(t.Segments)-1] }
 
 func (t *Thread) persistent() bool {
-	if len(t.Segments) > 1 || t.Rebrief {
+	if t.Portable || len(t.Segments) > 1 || t.Rebrief {
 		return true
 	}
 	for _, segment := range t.Segments {
@@ -162,7 +167,8 @@ func (r *agentRouter) startThread(id json.RawMessage, params json.RawMessage) er
 		return err
 	}
 	thread := &Thread{ID: threadID, CWD: request.CWD, Created: time.Now().Unix(), Model: textutil.FirstNonEmpty(model, protocol.ClaudeDefaultModel),
-		Reviewer: requestedReviewer(params), Segments: []ThreadSegment{{Agent: protocol.AgentClaude, BackendID: threadID, StartTurn: 1}}}
+		Reviewer: requestedReviewer(params), Segments: []ThreadSegment{{Agent: protocol.AgentClaude, BackendID: threadID, StartTurn: 1}},
+		Portable: portableThreads()}
 	r.threads[threadID] = thread
 	thread.claude = newClaudeSession(r, thread, threadID, false)
 	r.reply(id, map[string]any{"thread": map[string]any{"id": threadID, "turns": []any{}}, "model": thread.Model})
@@ -202,7 +208,7 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 	r.codexToVirtual[segment.BackendID] = thread.ID
 	codexRequest, _ := json.Marshal(thread.codexOpenParams(map[string]any{"threadId": segment.BackendID}))
 	return r.callCodex(codexCall{method: "thread/resume", callback: func(result, failure json.RawMessage) {
-		if failure != nil {
+		if failure != nil && !thread.rebriefAfterMove() {
 			r.send(rpcMessage{ID: id, Error: failure})
 			return
 		}
@@ -228,7 +234,8 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 	thread := r.threads[request.ThreadID]
 	if thread == nil {
 		// A Codex-only conversation not seen before: start tracking it.
-		thread = &Thread{ID: request.ThreadID, Created: time.Now().Unix(), Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: request.ThreadID, StartTurn: 1}}}
+		thread = &Thread{ID: request.ThreadID, Created: time.Now().Unix(), Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: request.ThreadID, StartTurn: 1}},
+			Portable: portableThreads()}
 		r.threads[request.ThreadID] = thread
 	}
 	thread.selectReviewer(params)
@@ -245,9 +252,14 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 		plan = thread.planSwitch(from, target, text)
 		message = textutil.FirstNonEmpty(plan.returning, plan.fresh)
 	}
+	thread.checkMovedClaudeSession()
 	if thread.Rebrief {
-		thread.Rebrief, switching = false, true
-		plan = agentSwitch{from: from, to: target, previous: -1, fresh: thread.briefing(rewindBriefing, thread.Turns, text)}
+		header := rewindBriefing
+		if thread.RebriefMoved {
+			header = movedBriefing
+		}
+		thread.Rebrief, thread.RebriefMoved, switching = false, false, true
+		plan = agentSwitch{from: from, to: target, previous: -1, fresh: thread.briefing(header, thread.Turns, text)}
 		message = plan.fresh
 	}
 	startTurn := len(thread.Turns) + 1
@@ -310,7 +322,7 @@ func (r *agentRouter) postProcessCodexResult(call codexCall, result, failure jso
 		}
 		if json.Unmarshal(result, &response) == nil && response.Thread.ID != "" && r.threads[response.Thread.ID] == nil {
 			thread := &Thread{ID: response.Thread.ID, CWD: response.Thread.CWD, Created: time.Now().Unix(),
-				Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: response.Thread.ID, StartTurn: 1}}}
+				Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: response.Thread.ID, StartTurn: 1}}, Portable: portableThreads()}
 			thread.seedFromHistory(response.Thread.Turns)
 			r.threads[thread.ID] = thread
 		}

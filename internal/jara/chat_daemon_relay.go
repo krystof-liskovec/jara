@@ -16,7 +16,11 @@ import (
 	"krystof.liskovec/jara/internal/protocol"
 )
 
-func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteCloser, output io.Reader, paths chatDaemonPaths, schedules *chatScheduleManager, crunch *chatCrunchManager, initial *chatDaemonState) error {
+func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteCloser, output io.Reader, paths chatDaemonPaths, schedules *chatScheduleManager, crunch *chatCrunchManager, initial *chatDaemonState, hooks ...chatDaemonRunnerHooks) error {
+	var runner chatDaemonRunnerHooks
+	if len(hooks) > 0 {
+		runner = hooks[0]
+	}
 	var inputMu, stateMu, stateWriteMu, pendingMu sync.Mutex
 	state := *initial
 	pending := map[string]string{}
@@ -84,12 +88,19 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 			line := append([]byte(nil), scanner.Bytes()...)
 			var message appMessage
 			hasMessage := json.Unmarshal(line, &message) == nil
+			stateMu.Lock()
+			wasActive := state.ActiveTurn
+			stateMu.Unlock()
 			changed := applyChatDaemonEvent(line, &state, &stateMu, &pending, &pendingMu)
 			if changed {
 				writeState()
 				stateMu.Lock()
 				idle := !state.ActiveTurn
+				snapshot := state
 				stateMu.Unlock()
+				if idle && wasActive && runner.turnEnded != nil {
+					runner.turnEnded(snapshot)
+				}
 				if idle {
 					select {
 					case idleSignal <- struct{}{}:
@@ -175,6 +186,17 @@ running:
 					break running
 				}
 			}
+			if event.release && runner.release != nil {
+				stateMu.Lock()
+				snapshot := state
+				stateMu.Unlock()
+				if !snapshot.ActiveTurn && !schedules.hasPending() && !crunch.hasPending() && runner.release(snapshot) {
+					// Attached clients reconnect, through the remote host, to the next runner.
+					reconnect = true
+					shutdown.Store(true)
+					break running
+				}
+			}
 			if event.stop {
 				_ = schedules.cancelPending()
 				crunch.stopAll(input, &inputMu)
@@ -231,6 +253,10 @@ running:
 				result = fmt.Errorf("chat session listener stopped: %w", err)
 			}
 			break running
+		case <-runner.lost:
+			fmt.Fprintln(os.Stderr, "Another device continued this conversation; stopping the local agent.")
+			shutdown.Store(true)
+			break running
 		case <-signals:
 			reconnect = true
 			shutdown.Store(true)
@@ -272,4 +298,12 @@ drained:
 	_ = writeChatDaemonState(paths, snapshot)
 	stateWriteMu.Unlock()
 	return result
+}
+
+// chatDaemonRunnerHooks connect a daemon running on a local device to the
+// remote host that keeps the shared copy of its workspace and conversation.
+type chatDaemonRunnerHooks struct {
+	turnEnded func(chatDaemonState)      // a turn completed; checkpoint it
+	release   func(chatDaemonState) bool // final checkpoint and lease release
+	lost      <-chan struct{}            // closed when another device took over
 }
