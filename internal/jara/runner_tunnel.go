@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"strconv"
@@ -121,37 +122,50 @@ func (lr *localRunner) checkpoint(state chatDaemonState) error {
 	if err := syncWorkspace(lr.remote, lr.binding, lr.request.Root, "push", true, false, true); err != nil {
 		return fmt.Errorf("copy files to the remote: %w", err)
 	}
-	// Session files go as the bytes appended since the host's copy; when the
-	// host's copy differs, once more in full.
-	var answer struct {
-		Seq int64 `json:"seq"`
-	}
+	// Session files go as the bytes appended since the host's copy, with
+	// checksums once the turn has ended. Files the host's copy does not match
+	// continue from what it has, or go whole.
+	var answer runnerCheckpointAnswer
 	var versions map[string]string
-	sent := &runnerSentState{Prev: marker.Sent}
-	for attempt := 0; ; attempt++ {
+	sent := &runnerSentState{Prev: maps.Clone(marker.Sent), Verify: !state.ActiveTurn}
+	if sent.Prev == nil {
+		sent.Prev = map[string]runnerSentFile{}
+	}
+	for attempt := 1; ; attempt++ {
 		sent.Next = map[string]runnerSentFile{}
-		var checkpoint runnerCheckpoint
-		var err error
-		if checkpoint, versions, err = collectCheckpoint(lr.request.Root, lr.request.Runner, state.Conversation, marker.Versions, sent); err != nil {
+		checkpoint, current, err := collectCheckpoint(lr.request.Root, lr.request.Runner, state.Conversation, marker.Versions, sent)
+		if err != nil {
 			return err
 		}
+		versions = current
 		checkpoint.Schedules = pendingSchedules(lr.paths.schedules)
 		checkpoint.Crunch = activeCrunch(lr.paths.crunch)
+		answer = runnerCheckpointAnswer{}
 		err = rpcCompressed(lr.remote, lr.wire("runner-checkpoint"), checkpoint, &answer)
-		if err == nil {
-			break
-		}
-		if strings.Contains(err.Error(), runnerLostMessage) {
+		if err != nil && strings.Contains(err.Error(), runnerLostMessage) {
 			lr.markLost()
 		}
-		if attempt > 0 || !strings.Contains(err.Error(), runnerResendMessage) {
+		switch {
+		case err == nil && len(answer.Resync) == 0:
+		case attempt >= 3:
+			if err == nil {
+				err = fmt.Errorf("conversation files still differ from %s's copy after repair", lr.request.RemoteName)
+			}
 			return err
+		case err != nil && strings.Contains(err.Error(), runnerResendMessage):
+			clear(sent.Prev) // a host that cannot repair: send whole files
+			continue
+		case err != nil:
+			return err
+		default:
+			repairSent(sent.Prev, checkpoint, answer.Resync)
+			continue
 		}
-		sent.Prev = nil
+		break
 	}
 	return updateLocalRunnerMarker(lr.request.ID, func(m *localRunnerMarker) {
 		m.Seq, m.Versions, m.Branch = answer.Seq, versions, branch
-		if m.Sent == nil || sent.Prev == nil {
+		if m.Sent == nil {
 			m.Sent = map[string]runnerSentFile{}
 		}
 		for path, file := range sent.Next {
@@ -325,6 +339,26 @@ func (lr *localRunner) midTurnCheckpoints(state func() chatDaemonState) {
 		case <-ticker.C:
 			if current := state(); current.ActiveTurn {
 				lr.checkpointLater(current)
+			}
+		}
+	}
+}
+
+// repairSent points each session file the host's copy did not match at what
+// the host has: a delta continues there when this device's file has the same
+// bytes, and the whole file goes otherwise.
+func repairSent(sent map[string]runnerSentFile, checkpoint runnerCheckpoint, resync []runnerResync) {
+	for _, have := range resync {
+		for _, bundle := range checkpoint.Threads {
+			for _, file := range bundle.Files {
+				if bundle.ThreadID != have.ThreadID || file.Agent != have.Agent || file.BackendID != have.BackendID || file.local == "" {
+					continue
+				}
+				if state, ok := resumeFrom(file.local, have.Size, have.Tail); ok {
+					sent[file.local] = state
+				} else {
+					delete(sent, file.local)
+				}
 			}
 		}
 	}
