@@ -184,7 +184,7 @@ func remoteOpen(q Request) error {
 		}
 		if (selected.Kind == "terminal" || selected.Kind == "background") && !q.Background {
 			warnRunningCodexArgs(q.CodexArgs)
-			return attach(Session{Name: selected.Action, Workspace: selected.Workspace}, q.Takeover)
+			return attach(Session{Name: selected.Action, Workspace: selected.Workspace}, q.Takeover, q.RemoteName)
 		}
 
 		q.ID = selected.Workspace
@@ -298,7 +298,7 @@ func remoteOpen(q Request) error {
 			}
 		}
 		warnRunningCodexArgs(q.CodexArgs)
-		return attach(matches[i], q.Takeover)
+		return attach(matches[i], q.Takeover, q.RemoteName)
 	}
 	if q.New && !q.Worktree && !q.Background && len(matches) > 0 {
 		yes, e := confirm("Another agent uses these files. Start another in the same workspace?")
@@ -452,7 +452,7 @@ func remoteOpen(q Request) error {
 		fmt.Fprintf(os.Stdout, "Started background %s run in session %s. Use `jara sessions` to attach.\n", protocol.AgentDisplayName(q.Runtime), name)
 		return nil
 	}
-	return attach(Session{Name: name, Workspace: q.ID}, q.Takeover)
+	return attach(Session{Name: name, Workspace: q.ID}, q.Takeover, q.RemoteName)
 }
 
 func configureTmuxBackground(session string, background terminalRGB) error {

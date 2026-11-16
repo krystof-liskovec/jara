@@ -316,6 +316,7 @@ func Run(args []string) error {
 			return fmt.Errorf("--local needs a workspace on the remote: open a Git repository or use --copy")
 		}
 		q.CodexArgs = codexArgs
+		q.RemoteName = chosen // shown in the host's terminal status bar
 		q.UserInterface = *chatInterface
 		if q.Runtime, err = resolveClientAgent(c, root, chosen, action, *agentName); err != nil {
 			return err

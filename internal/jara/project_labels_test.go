@@ -99,3 +99,9 @@ func TestProjectProvenancePersistsAndBrowserReadsCurrentBranch(t *testing.T) {
 		t.Fatalf("missing checkout details: %q", detail)
 	}
 }
+
+func TestTmuxLabelIsSafeInStatusFormats(t *testing.T) {
+	if got := tmuxLabel("  work #1\n"); got != "work ＃1" {
+		t.Fatalf("tmux label = %q", got)
+	}
+}
