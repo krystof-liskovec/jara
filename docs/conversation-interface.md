@@ -131,12 +131,12 @@ once on the fallback. `/fallback off` turns it off. Both choices are stored on
 the host in `~/.local/share/jara/models.json`.
 When Codex is working, an animated activity row shows the latest concise
 progress summary when available; otherwise it reports whether Codex is thinking,
-running a command, applying changes, or waiting for input. Like Claude Code's
-spinner, the row reads `✻ Pondering… (12s · ctrl+c to interrupt)`: a star
-that grows and shrinks (`· ✢ ✳ ✶ ✻ ✽`), the label under a sweeping shimmer
-(plain thinking gets a verb picked per turn), and muted details for elapsed
-time, token progress, and how to interrupt. `JARA_REDUCED_MOTION=1` keeps the
-row but stops the shimmer. Message headers show their timestamps when Codex
+running a command, applying changes, or waiting for input. The row reads
+`✿ Pondering… (12s · ctrl+c to interrupt)`: an animation picked per turn (an
+opening flower, a rising sun or an explosion; `JARA_SPINNER=flower|sun|explosion`
+keeps one), the label under a sweeping shimmer with a per-turn verb, and muted
+details for elapsed time, token progress, and how to interrupt.
+`JARA_REDUCED_MOTION=1` keeps the row but stops the shimmer. Message headers show their timestamps when Codex
 provides them.
 
 Bracketed paste inserts text, including multiple lines, without submitting it.
