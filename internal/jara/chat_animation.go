@@ -94,7 +94,7 @@ func paintChatShimmer(text string, tick int, base, glow, bg, bold string) string
 // The activity row shows an animated glyph, the label with a trailing
 // ellipsis under a sweeping shimmer, and muted details in parentheses, e.g.
 // "✿ Thinking… (12s · ctrl+c to interrupt)". Each turn picks one animation;
-// JARA_SPINNER=flower, sun, explosion, fish or wave keeps one. An animation's
+// JARA_SPINNER=flower, sun, explosion, fish, wave or visualizer keeps one. An animation's
 // frames are all as wide and have no emoji presentation, so the row never
 // shifts.
 type chatSpinner struct {
@@ -112,6 +112,29 @@ var chatSpinners = []chatSpinner{
 	{name: "fish", frames: []string{"><>  ", " ><> ", "  ><>", "  <><", " <>< ", "<><  "}, hold: 2},
 	// A wave rolls out from a wall, finds the far one, and rolls back in.
 	{name: "wave", frames: []string{"|.  ", "|.. ", "|...", "... ", "...|", "..| ", ".|  "}, hold: 2},
+	{name: "visualizer", frames: chatVisualizerFrames()}, // bars dance like an audio visualizer
+}
+
+// chatVisualizerFrames draws five bars that rise and fall at their own pace.
+// Each bar mixes two waves whose periods divide the loop, so it repeats
+// without a jump.
+func chatVisualizerFrames() []string {
+	const loop = 24
+	levels := []rune("▁▂▃▄▅▆▇█")
+	bars := []struct{ period, ripple, phase, ripplePhase float64 }{
+		{8, 12, 0.0, 1.3}, {6, 24, 2.1, 0.4}, {12, 4, 4.0, 2.2}, {4, 8, 1.1, 3.6}, {24, 6, 5.2, 0.9},
+	}
+	frames := make([]string, loop)
+	for frame := range frames {
+		row := make([]rune, len(bars))
+		for i, bar := range bars {
+			at := 2 * math.Pi * float64(frame)
+			height := 0.65*math.Sin(at/bar.period+bar.phase) + 0.35*math.Sin(at/bar.ripple+bar.ripplePhase)
+			row[i] = levels[min(len(levels)-1, max(0, int(math.Round((height+1)/2*float64(len(levels)-1)))))]
+		}
+		frames[frame] = string(row)
+	}
+	return frames
 }
 
 // chatSpinnerFor picks the turn's animation from its seed, unless

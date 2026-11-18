@@ -63,6 +63,14 @@ func TestActivityRowPicksAnAnimation(t *testing.T) {
 	if got := strings.Join(wave, "|"); got != "|.  ||.. ||...|... |...||..| |.|  ||.  " {
 		t.Fatalf("the wave must roll out and back: %s", got)
 	}
+	// The visualizer's five bars keep moving: no two frames in a row match,
+	// and the last frame leads back into the first.
+	frames := chatVisualizerFrames()
+	for i, bars := range frames {
+		if len([]rune(bars)) != 5 || strings.Trim(bars, "▁▂▃▄▅▆▇█") != "" || bars == frames[(i+1)%len(frames)] {
+			t.Fatalf("visualizer frame %d %q (next %q)", i, bars, frames[(i+1)%len(frames)])
+		}
+	}
 	t.Setenv("JARA_SPINNER", "flower")
 	line := chatActivityViewLine(chatViewModel{Activity: "Thinking · ~330 tokens", ActivityElapsed: "12s", ActivityHint: "ctrl+c to interrupt", ActivityFrame: 4})
 	if line.text != "✿ Thinking… (12s · ~330 tokens · ctrl+c to interrupt)" || line.kind != "activity" {
