@@ -3,6 +3,8 @@
 package jara
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -133,5 +135,25 @@ func TestArrowsOpenSessionsAndWorkMenus(t *testing.T) {
 	typeChatKeys(t, term, "\x1b[D")
 	if term.picker.active() || term.sessionPicker {
 		t.Fatalf("Left on the providers closes the picker without opening sessions: %q %v", term.picker.kind, term.sessionPicker)
+	}
+}
+
+func TestModelListKeepsEveryProvidersModels(t *testing.T) {
+	var data []protocol.CodexModel
+	for i := range 14 {
+		id := fmt.Sprintf("gpt-%d", i)
+		data = append(data, protocol.CodexModel{ID: id, Model: id})
+	}
+	for _, alias := range []string{"default", "opus", "sonnet", "haiku", "fable"} {
+		data = append(data, protocol.CodexModel{ID: "claude/" + alias, Model: "claude/" + alias})
+	}
+	raw, _ := json.Marshal(map[string]any{"data": data})
+	browser := newChatModelBrowser()
+	if _, err := browser.acceptPage(raw); err != nil {
+		t.Fatal(err)
+	}
+	codex, claude := chatProviderModels(browser.models, protocol.AgentCodex), chatProviderModels(browser.models, protocol.AgentClaude)
+	if len(codex) != chatModelMaxShown || len(claude) != 5 || !browser.more {
+		t.Fatalf("kept %d Codex and %d Claude Code models, more %v", len(codex), len(claude), browser.more)
 	}
 }

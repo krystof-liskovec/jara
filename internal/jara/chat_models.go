@@ -12,7 +12,7 @@ import (
 
 const (
 	chatModelMaxPages = 2
-	chatModelMaxShown = 12
+	chatModelMaxShown = 12 // per provider, so Claude Code's entries after Codex's still fit
 )
 
 type chatModelBrowser struct {
@@ -73,7 +73,7 @@ func (b *chatModelBrowser) acceptPage(raw json.RawMessage) (bool, error) {
 			continue
 		}
 		b.seen[key] = struct{}{}
-		if len(b.models) < chatModelMaxShown {
+		if len(chatProviderModels(b.models, chatModelProvider(model))) < chatModelMaxShown {
 			b.models = append(b.models, model)
 		} else {
 			b.more = true
