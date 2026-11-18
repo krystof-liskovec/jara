@@ -55,6 +55,7 @@ const (
 )
 
 type chatEditor struct {
+	private             bool // the text is a secret: it stays out of the history
 	text                string
 	cursor              int
 	pastePreviews       []chatEditorPastePreview
@@ -180,7 +181,9 @@ func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
 		}
 		result.Submitted = true
 		result.Value = e.text
-		e.remember(result.Value)
+		if !e.private {
+			e.remember(result.Value)
+		}
 		e.text = ""
 		e.cursor = 0
 		e.pastePreviews = nil

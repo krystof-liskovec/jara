@@ -2,15 +2,11 @@ package jara
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os/exec"
 	"time"
 
 	"krystof.liskovec/jara/internal/agentrouter"
-	"krystof.liskovec/jara/internal/protocol"
 )
 
 // Conversation is independent of terminal transport and can support more agents.
@@ -63,61 +59,12 @@ func (provider codexConversations) List(ctx context.Context) ([]Conversation, er
 	if binary == "" {
 		binary = "/usr/local/bin/codex"
 	}
-	cmd := exec.CommandContext(ctx, binary, "app-server", "--listen", "stdio://")
-	in, err := cmd.StdinPipe()
+	server, err := startCodexOneShot(ctx, binary)
 	if err != nil {
 		return nil, err
 	}
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-	cmd.Stderr = io.Discard
-	if err = cmd.Start(); err != nil {
-		return nil, err
-	}
-	defer func() { in.Close(); _ = cmd.Process.Kill(); _ = cmd.Wait() }()
-	scanner := protocol.NewLineScanner(out)
-	encoder := json.NewEncoder(in)
-	sequence := 0
-	request := func(method string, params any, result any) error {
-		sequence++
-		if err := encoder.Encode(map[string]any{"id": sequence, "method": method, "params": params}); err != nil {
-			return err
-		}
-		for scanner.Scan() {
-			var response struct {
-				ID     int             `json:"id"`
-				Result json.RawMessage `json:"result"`
-				Error  *struct {
-					Message string `json:"message"`
-				} `json:"error"`
-			}
-			if json.Unmarshal(scanner.Bytes(), &response) != nil || response.ID != sequence {
-				continue
-			}
-			if response.Error != nil {
-				return fmt.Errorf("Codex: %s", response.Error.Message)
-			}
-			if result != nil {
-				return json.Unmarshal(response.Result, result)
-			}
-			return nil
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if scanner.Err() != nil {
-			return scanner.Err()
-		}
-		return io.ErrUnexpectedEOF
-	}
-	if err = request("initialize", map[string]any{"clientInfo": map[string]string{"name": "jara", "title": "Jara", "version": Version}}, nil); err != nil {
-		return nil, err
-	}
-	if err = encoder.Encode(map[string]any{"method": "initialized"}); err != nil {
-		return nil, err
-	}
+	defer server.close()
+	request := server.request
 	var all []Conversation
 	cursor := ""
 	seen := map[string]bool{}

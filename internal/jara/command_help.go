@@ -19,7 +19,7 @@ var commandHelp = map[string]helpEntry{
 			"setup, deployment, host, uninstall\tSet up and maintain Jara hosts.",
 			"forward, reverse, tunnel\tForward ports over SSH.",
 			"menu/ui, version, keygen, key\tClient and SSH key tools.",
-			"environment, docker, migrate, help\tOther commands.",
+			"usage, update, environment, docker, migrate, help\tOther commands.",
 		},
 		options: []string{
 			"--remote NAME       Attach this folder to a configured host (once; later runs reuse it).",
@@ -346,7 +346,7 @@ var commandHelp = map[string]helpEntry{
 			"jara auth git --remote jellyfish",
 		},
 	},
-	"auth codex": {usage: "jara auth codex [--remote NAME]", summary: "Sign in to Codex on a remote host using device authorization.", options: []string{"--remote NAME   Select a configured host."}, examples: []string{"jara auth codex --remote jellyfish"}},
+	"auth codex": {usage: "jara auth codex [--remote NAME | --all [--api-key [--token-stdin]]]", summary: "Sign in to Codex on a remote host using device authorization; --all signs in on this device and every remote, one device code each, or saves one OpenAI API key everywhere with --api-key.", options: []string{"--remote NAME   Select a configured host.", "--all           This device and every remote; hosts already signed in are skipped.", "--add           With --all: add a further account on every host, keeping the others.", "--api-key       With --all: save an OpenAI API key instead.", "--token-stdin   With --api-key: read the key from standard input."}, examples: []string{"jara auth codex --remote jellyfish", "jara auth codex --all", "jara auth codex --all --add", "printf '%s' \"$OPENAI_API_KEY\" | jara auth codex --all --api-key --token-stdin"}},
 	"auth git": {
 		usage:   "jara auth git [OPTIONS]",
 		summary: "Configure Git credentials for a repository host.",

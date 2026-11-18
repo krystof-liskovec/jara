@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"krystof.liskovec/jara/internal/agentrouter"
 	"strings"
 	"time"
 
@@ -58,7 +59,7 @@ func (u *chatUI) renderChatHistory(turns []protocol.HistoryTurn) {
 						text.WriteString(content.Text)
 					}
 				}
-				if text.Len() > 0 {
+				if text.Len() > 0 && text.String() != agentrouter.AccountContinuation {
 					u.printRoleAt("user", text.String()+"\n", at)
 					u.promptLog = append(u.promptLog, chatPromptEntry{turnID: turn.ID, text: text.String()})
 				}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"krystof.liskovec/jara/internal/agentrouter"
 	"io"
 	"os"
 	"os/exec"
@@ -24,6 +25,13 @@ func remoteRPC(q Request) error {
 	case "codex-args-show", "codex-args-set", "codex-args-clear", "claude-args-show", "claude-args-set", "claude-args-clear":
 		runtime, action, _ := strings.Cut(q.Op, "-args-")
 		return agentArgsRPC(runtime, action, os.Stdin, os.Stdout)
+	case "accounts-remember":
+		agentrouter.RememberAccounts()
+		return nil
+	case "versions":
+		return versionsRPC()
+	case "usage":
+		return usageRPC(os.Stdout)
 	case "mcp-set":
 		return mcpRPC("set", os.Stdin)
 	case "image-upload":

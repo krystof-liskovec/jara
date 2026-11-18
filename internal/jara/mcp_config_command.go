@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"slices"
@@ -29,7 +30,7 @@ const mcpLocal = "local"
 
 const mcpUsage = "use jara config mcp list | add NAME [--on PLACE]... (--url URL [--header K=V]... | [--env K=V]... -- COMMAND [ARGS...]) | where NAME everywhere|PLACE... | remove NAME | import [--from claude|codex] [--on PLACE]... | sync"
 
-func mcpConfigCommand(c *Config, args []string) error {
+func mcpConfigCommand(c *Config, args []string, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("%s", mcpUsage)
 	}
@@ -42,7 +43,7 @@ func mcpConfigCommand(c *Config, args []string) error {
 		name, rest = rest[0], rest[1:]
 	}
 	if action == "where" {
-		return mcpWhere(c, name, rest)
+		return mcpWhere(c, name, rest, out)
 	}
 	var command []string
 	if action == "add" {
@@ -69,10 +70,10 @@ func mcpConfigCommand(c *Config, args []string) error {
 	}
 	switch action {
 	case "list":
-		printMCPServers(c.MCPServers)
+		printMCPServers(out, c.MCPServers)
 		return nil
 	case "sync":
-		return applyMCPServers(c, true)
+		return applyMCPServers(c, true, out)
 	case "add":
 		server := mcpServer{URL: *url}
 		if len(command) > 0 {
@@ -94,7 +95,7 @@ func mcpConfigCommand(c *Config, args []string) error {
 	case "import":
 		imported, notes := importLocalMCPServers(*from)
 		for _, note := range notes {
-			fmt.Println(note)
+			fmt.Fprintln(out, note)
 		}
 		if len(imported) == 0 {
 			return fmt.Errorf("found no MCP servers to import")
@@ -102,18 +103,18 @@ func mcpConfigCommand(c *Config, args []string) error {
 		for _, importedName := range sortedMCPNames(imported) {
 			c.MCPServers[importedName] = sharedMCPServer{mcpServer: imported[importedName], On: on}
 		}
-		fmt.Printf("Imported %s: %s\n", mcpCount(len(imported)), strings.Join(sortedMCPNames(imported), ", "))
+		fmt.Fprintf(out, "Imported %s: %s\n", mcpCount(len(imported)), strings.Join(sortedMCPNames(imported), ", "))
 	default:
 		return fmt.Errorf("%s", mcpUsage)
 	}
 	if err := validateMCPServers(mcpShare(c.MCPServers, "")); err != nil {
 		return err
 	}
-	return applyMCPServers(c, false)
+	return applyMCPServers(c, false, out)
 }
 
 // mcpWhere changes where a server runs.
-func mcpWhere(c *Config, name string, places []string) error {
+func mcpWhere(c *Config, name string, places []string, out io.Writer) error {
 	server, ok := c.MCPServers[name]
 	if !ok {
 		return fmt.Errorf("there is no MCP server named %s", name)
@@ -128,7 +129,7 @@ func mcpWhere(c *Config, name string, places []string) error {
 	}
 	server.On = places
 	c.MCPServers[name] = server
-	return applyMCPServers(c, false)
+	return applyMCPServers(c, false, out)
 }
 
 func checkMCPPlaces(c *Config, places []string) error {
@@ -160,23 +161,23 @@ func mcpShareDigest(share mcpServers) string {
 // applyMCPServers writes this device's share, sends every remote its share
 // (with force, also unchanged ones), then saves the shared list and what each
 // remote received. Unreachable remotes catch up before their next session.
-func applyMCPServers(c *Config, force bool) error {
+func applyMCPServers(c *Config, force bool, out io.Writer) error {
 	local := mcpShare(c.MCPServers, mcpLocal)
 	if err := saveMCPServers(local); err != nil {
 		return fmt.Errorf("save this device's MCP servers: %w", err)
 	}
-	fmt.Printf("This device: %s\n", mcpCount(len(local)))
+	fmt.Fprintf(out, "This device: %s\n", mcpCount(len(local)))
 	for _, name := range sortedRemoteNames(c.Remotes) {
 		share := mcpShare(c.MCPServers, name)
 		if !force && c.MCPSynced[name] == mcpShareDigest(share) {
-			fmt.Printf("%s: %s, up to date\n", name, mcpCount(len(share)))
+			fmt.Fprintf(out, "%s: %s, up to date\n", name, mcpCount(len(share)))
 			continue
 		}
 		if err := sendMCPShare(c, name, share); err != nil {
-			fmt.Printf("%s: not updated yet (%v); it catches up before its next session\n", name, err)
+			fmt.Fprintf(out, "%s: not updated yet (%v); it catches up before its next session\n", name, err)
 			continue
 		}
-		fmt.Printf("%s: %s\n", name, mcpCount(len(share)))
+		fmt.Fprintf(out, "%s: %s\n", name, mcpCount(len(share)))
 	}
 	return saveConfig(*c)
 }
@@ -245,25 +246,30 @@ func mcpCount(count int) string {
 
 // printMCPServers lists the servers and where they run; env and header
 // values stay hidden as they often hold tokens.
-func printMCPServers(servers map[string]sharedMCPServer) {
+func printMCPServers(out io.Writer, servers map[string]sharedMCPServer) {
 	if len(servers) == 0 {
-		fmt.Println("No MCP servers yet · add one with jara config mcp add, or import yours with jara config mcp import")
+		fmt.Fprintln(out, "No MCP servers yet · add one with jara config mcp add, or import yours with jara config mcp import")
 		return
 	}
 	for _, name := range slices.Sorted(maps.Keys(servers)) {
-		server := servers[name]
-		target, keys, kind := server.URL, server.Headers, "headers"
-		if server.Command != "" {
-			target, keys, kind = strings.Join(append([]string{server.Command}, server.Args...), " "), server.Env, "env"
-		}
-		where := "everywhere"
-		if len(server.On) > 0 {
-			where = "on " + strings.Join(server.On, ", ")
-		}
-		line := "  " + name + "  " + target + "  · " + where
-		if len(keys) > 0 {
-			line += " · " + kind + ": " + strings.Join(slices.Sorted(maps.Keys(keys)), ", ")
-		}
-		fmt.Println(line)
+		fmt.Fprintln(out, "  "+name+"  "+mcpServerSummary(servers[name]))
 	}
+}
+
+// mcpServerSummary tells what a server runs, where, and which env or header
+// keys it sets.
+func mcpServerSummary(server sharedMCPServer) string {
+	target, keys, kind := server.URL, server.Headers, "headers"
+	if server.Command != "" {
+		target, keys, kind = strings.Join(append([]string{server.Command}, server.Args...), " "), server.Env, "env"
+	}
+	where := "everywhere"
+	if len(server.On) > 0 {
+		where = "on " + strings.Join(server.On, ", ")
+	}
+	line := target + "  · " + where
+	if len(keys) > 0 {
+		line += " · " + kind + ": " + strings.Join(slices.Sorted(maps.Keys(keys)), ", ")
+	}
+	return line
 }

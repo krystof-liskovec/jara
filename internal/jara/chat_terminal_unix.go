@@ -124,6 +124,9 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 			if err = u.acceptReconnect(result); err == nil {
 				err = t.draw()
 			}
+		case text := <-u.backgroundRuns:
+			u.acceptChatBackground(text)
+			err = t.draw()
 		case data := <-inputChunks:
 			for _, event := range t.parser.feed(data) {
 				if done, err = t.handleKey(event); done || err != nil {
@@ -211,18 +214,8 @@ func (t *chatTerminal) interrupt() (done bool, err error) {
 func (t *chatTerminal) tick(now time.Time) error {
 	u := t.u
 	if event := t.parser.flushEscape(now); event != nil && event.input != nil {
-		if u.diff.fullScreen() {
-			u.diff.hideOnScreen()
-			t.dirty = true
-		} else if t.queueEditor.active() {
-			t.queueEditor.cancel(u, t.editor)
-			t.scrollOffset = 0
-			t.dirty = true
-		} else if !t.picker.active() && !t.sessionPicker && t.escapeAgent() {
-			// Escape returned from a subagent to the main agent.
-		} else {
-			result := t.editor.Apply(*event.input)
-			t.dirty = t.dirty || result.Changed
+		if err := t.handleEscape(*event.input); err != nil { // a lone Escape key
+			return err
 		}
 	}
 	for id, pending := range u.pending {

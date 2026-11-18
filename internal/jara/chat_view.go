@@ -376,6 +376,9 @@ func chatComposerLabels(model chatViewModel) (string, string) {
 		}
 		return label, " Enter save · Esc cancel "
 	}
+	if strings.HasSuffix(model.ComposerTitle, " · hidden ") {
+		return model.ComposerTitle, " Enter save · Esc cancel "
+	}
 	if model.ComposerTitle != "" {
 		return model.ComposerTitle, " Esc main "
 	}

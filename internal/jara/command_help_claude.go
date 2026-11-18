@@ -19,14 +19,16 @@ func init() {
 	auth.examples = append(auth.examples, "jara auth claude --remote jellyfish")
 	commandHelp["auth"] = auth
 	commandHelp["auth claude"] = helpEntry{
-		usage:   "jara auth claude [--remote NAME] [--token-stdin]",
-		summary: "Store a Claude token on a remote host. Create it with `claude setup-token` (an Anthropic API key also works); Jara asks for it with hidden input.",
+		usage:   "jara auth claude [--remote NAME | --all] [--token-stdin]",
+		summary: "Store a Claude token on a remote host, or with --all on this device and every remote. Create it with `claude setup-token` (an Anthropic API key also works); Jara asks for it with hidden input.",
 		options: []string{
 			"--remote NAME   Select a configured host.",
+			"--all           Save it on this device and every remote.",
 			"--token-stdin   Read the token from standard input instead of prompting.",
 		},
 		examples: []string{
 			"jara auth claude --remote jellyfish",
+			"jara auth claude --all",
 			"printf '%s' \"$CLAUDE_CODE_OAUTH_TOKEN\" | jara auth claude --remote jellyfish --token-stdin",
 		},
 	}

@@ -46,8 +46,19 @@ func run(args []string) error {
 		case "help", "--help", "-h":
 			printHelpEntry("root", commandHelp["root"])
 			return nil
+		case "usage":
+			return usageCommand(args[1:])
+		case "update":
+			if len(args) != 1 {
+				return fmt.Errorf("use jara update")
+			}
+			c, err := readConfig()
+			if err != nil {
+				return err
+			}
+			return checkUpdates(c, true, bufio.NewReader(os.Stdin), os.Stdout)
 		case "version", "--version":
-			fmt.Println(Version)
+			fmt.Println(Version + thisBuild().describe())
 			return nil
 		case "connect":
 			return connectCommand(args[1:])
@@ -264,6 +275,9 @@ func run(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q; see jara --help", action)
 	}
+	if action == "open" || action == "new" || action == "resume" || action == "sessions" {
+		offerUpdatesAtStart(c)
+	}
 	localEligible := *chatInterface == "jara" && (action == "open" || action == "new" || action == "resume")
 	if (*runLocal || *takeOver) && (!localEligible || *runRemote) {
 		return fmt.Errorf("--local and --take-over require open, new, or resume in the Jara interface, without --run-remote")
@@ -359,6 +373,7 @@ func run(args []string) error {
 			q.Prompt = prompt
 			q.ResumeLatest = *resumeLatest
 		}
+		applyChatFinished(root, &q)
 		noteChatMoves(r, chosen, localRunnerOpen{remote: r, remoteName: chosen, binding: b, root: root, isGit: isGit, includeIgnored: *includeIgnored},
 			q, localEligible && localRunnerAvailable())
 		if openLocal != nil {

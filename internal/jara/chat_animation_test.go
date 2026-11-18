@@ -1,6 +1,8 @@
 package jara
 
 import (
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -42,26 +44,46 @@ func TestActivityRowPicksAnAnimation(t *testing.T) {
 	if got := play(chatSpinners[2], 11); got != "·•✦✸✹✺❋⁙⁘∙·" {
 		t.Fatalf("the explosion must burst and restart: %s", got)
 	}
-	// The fish holds each step for two ticks, turns at the far side, and
-	// swims back to start again.
-	t.Setenv("JARA_SPINNER", "fish")
-	var swim []string
-	for frame := 0; frame < 14; frame += 2 {
-		swim = append(swim, chatSpinnerFor(3).glyph(frame))
+	// The comet streaks across, its tail fading, and starts again.
+	t.Setenv("JARA_SPINNER", "comet")
+	var comet []string
+	for frame := 0; frame < 9; frame++ {
+		comet = append(comet, chatSpinnerFor(3).glyph(frame))
 	}
-	if got := strings.Join(swim, "|"); got != "><>  | ><> |  ><>|  <><| <>< |<><  |><>  " || chatSpinnerFor(3).glyph(1) != "><>  " {
-		t.Fatalf("the fish must swim there and back: %s", got)
+	if got := strings.Join(comet, "|"); got != "●     |•●    |·•●   | ·•●  |  ·•● |   ·•●|    ·•|     ·|●     " {
+		t.Fatalf("the comet must streak across and start again: %s", got)
 	}
-	if line := chatActivityViewLine(chatViewModel{Activity: "Thinking", ActivityFrame: 4}); !strings.HasPrefix(line.text, "  ><> ") {
-		t.Fatalf("fish row %q", line.text)
+	if line := chatActivityViewLine(chatViewModel{Activity: "Thinking", ActivityFrame: 2}); !strings.HasPrefix(line.text, "·•●    Thinking…") {
+		t.Fatalf("comet row %q", line.text)
 	}
 	t.Setenv("JARA_SPINNER", "chomper")
 	var chomps []string
-	for frame := 0; frame < 11; frame++ {
+	for frame := 0; frame < 8; frame += 2 {
 		chomps = append(chomps, chatSpinnerFor(3).glyph(frame))
 	}
-	if got := strings.Join(chomps, "|"); got != "C····|O····| C···| O···|  C··|  O··|   C·|   O·|    C|    O|C····" {
-		t.Fatalf("the chomper must eat its way along and start again: %s", got)
+	if got := strings.Join(chomps, "|"); got != "C· · ·|O · · |C· · ·|O · · " || chatSpinnerFor(3).glyph(1) != "C· · ·" {
+		t.Fatalf("the chomper must eat on and on without a jump: %s", got)
+	}
+	// The snake slithers across, through the edge and back in.
+	t.Setenv("JARA_SPINNER", "snake")
+	var snake []string
+	for frame := 0; frame < 18; frame += 2 {
+		snake = append(snake, chatSpinnerFor(3).glyph(frame))
+	}
+	if got := strings.Join(snake, "|"); got != "~-~>    | -~->   |  ~-~>  |   -~-> |    ~-~>|>    -~-|~>    ~-|~->    -|~-~>    " {
+		t.Fatalf("the snake must slither through the edge and loop: %s", got)
+	}
+	// The π estimates close in from both sides and settle on 3.1416.
+	pi := chatPiFrames()
+	if pi[0] != "π≈3.0000" || pi[1] != "π≈3.1667" || pi[2] != "π≈3.1333" || pi[len(pi)-1] != "π≈3.1416" || pi[17] != "π≈3.1416" {
+		t.Fatalf("pi frames %q", pi)
+	}
+	for i := 1; i < len(pi); i++ {
+		previous, _ := strconv.ParseFloat(strings.TrimPrefix(pi[i-1], "π≈"), 64)
+		current, _ := strconv.ParseFloat(strings.TrimPrefix(pi[i], "π≈"), 64)
+		if math.Abs(current-math.Pi) > math.Abs(previous-math.Pi)+0.00005 {
+			t.Fatalf("estimate %d moved away from π: %s after %s", i, pi[i], pi[i-1])
+		}
 	}
 	// The visualizer's five bars keep moving: no two frames in a row match,
 	// and the last frame leads back into the first.

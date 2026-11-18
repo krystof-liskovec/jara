@@ -43,6 +43,9 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 	u, editor := t.u, t.editor
 	color := os.Getenv("NO_COLOR") == ""
 	composerText, composerCursor := editor.previewText()
+	if u.login.secret != "" {
+		composerText, composerCursor = chatMaskSecret(composerText, composerCursor)
+	}
 	cursorLine, cursorColumn := chatEditorCursorPosition(composerText, composerCursor)
 	u.diff.screenWidth, u.diff.screenHeight = width, height
 	if chatDiffFullScreen(&u.diff, width, height) {
@@ -66,6 +69,9 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 	composerTitle := ""
 	if agent := u.viewedAgent(); agent != nil {
 		composerTitle = chatAgentComposerLabel(agent)
+	}
+	if u.login.secret != "" {
+		composerTitle = " " + chatSecretLabel(u.login.secret) + " · hidden "
 	}
 	frame := renderChatView(chatViewModel{
 		TranscriptLines: transcript, Agents: agentLines, AgentTargets: agentTargets, ComposerTitle: composerTitle,

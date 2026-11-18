@@ -77,7 +77,14 @@ func (p *chatTerminalPicker) sync(u *chatUI) {
 		p.kind, p.selected, u.pickerRequested = "remote", max(0, slices.Index(u.remotePlaces, chatPlace.remote)), ""
 		return
 	}
-	if p.kind == "rewind" || p.kind == "remote" {
+	if u.pickerRequested == "login" { // its descriptions fill in as the agents answer
+		p.kind, p.selected, p.provider, u.pickerRequested = "login", 0, "", ""
+		if u.chatAgent() == protocol.AgentClaude {
+			p.selected = 1
+		}
+		return
+	}
+	if p.kind == "rewind" || p.kind == "remote" || p.kind == "login" {
 		return
 	}
 	if u.pickerRequested != "" {
@@ -144,6 +151,11 @@ func (p *chatTerminalPicker) choices(u *chatUI) []chatCompletionChoice {
 		return chatRewindPickerChoices(u, p.selected)
 	case "remote":
 		return chatRemotePickerChoices(u, p.selected)
+	case "login":
+		if p.provider != "" {
+			return chatLoginMethodChoices(u, p.provider, p.selected)
+		}
+		return chatLoginPickerChoices(u, p.selected)
 	default:
 		return nil
 	}
@@ -170,6 +182,14 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 		index := p.selected
 		p.close()
 		return u.rewindTo(index)
+	case "login":
+		if p.provider == "" { // the agent first, then how it signs in
+			p.provider, p.selected = chatLoginAgents[min(p.selected, len(chatLoginAgents)-1)], 0
+			return nil
+		}
+		methods := chatLoginMethods[p.provider]
+		u.pendingLine = "/login " + p.provider + " " + methods[min(p.selected, len(methods)-1)].name
+		p.close()
 	case "remote":
 		if p.selected < len(u.remotePlaces) {
 			u.pendingLine = "/remote " + textOr(u.remotePlaces[p.selected], "here")

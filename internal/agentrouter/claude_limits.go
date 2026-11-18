@@ -36,6 +36,7 @@ func (r *agentRouter) observeClaudeRateLimits(raw json.RawMessage) {
 	}
 	wasRejected := r.claudeLimits != nil && r.claudeLimits.Status == "rejected"
 	r.claudeLimits = &info
+	saveClaudeUsage(&info)
 	if wasRejected && info.Status != "rejected" {
 		r.notify("account/rateLimits/updated", map[string]any{"rateLimits": r.claudeRateLimitBucket()})
 	}
@@ -57,13 +58,17 @@ func (r *agentRouter) claudeUsageLimited(message string) bool {
 			r.claudeLimits.ResetsAt = reset
 		}
 	}
+	saveClaudeUsage(r.claudeLimits)
 	return true
 }
 
 // claudeRateLimitBucket converts Claude's windows into Codex's rate-limit
 // shape: the five-hour window as primary and the weekly one as secondary.
 func (r *agentRouter) claudeRateLimitBucket() map[string]any {
-	info := r.claudeLimits
+	return claudeLimitBucket(r.claudeLimits)
+}
+
+func claudeLimitBucket(info *claudeRateLimits) map[string]any {
 	if info == nil {
 		return map[string]any{"primary": nil, "secondary": nil, "rateLimitReachedType": nil}
 	}

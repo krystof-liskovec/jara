@@ -186,7 +186,7 @@ func (u *chatUI) response(m appMessage) error {
 		return nil
 	}
 	delete(u.pending, string(m.ID))
-	if u.acceptChatAgentResponse(m, p) {
+	if u.acceptChatAgentResponse(m, p) || u.acceptChatLoginResponse(m, p) || u.acceptChatAccountsResponse(m, p) {
 		return nil
 	}
 	if (chatGoalRequest(p.method) || p.method == "thread/settings/update") && p.threadID != "" && p.threadID != u.thread {
@@ -194,6 +194,10 @@ func (u *chatUI) response(m appMessage) error {
 	}
 	if p.method == "thread/settings/update" {
 		return u.acceptChatPlanResponse(m, p)
+	}
+	if p.method == chatMCPStatusMethod {
+		u.acceptChatMCPStatus(m)
+		return nil
 	}
 	if p.method == "jara/btw" {
 		u.acceptChatBtwResponse(m)
@@ -317,6 +321,7 @@ func (u *chatUI) response(m appMessage) error {
 			u.printRole("system", u.afterHistory)
 			u.afterHistory = ""
 		}
+		u.checkChatSignIn() // advisory: a dropped connection reports itself
 		started, err := u.dispatchQueuedPrompt()
 		if err != nil {
 			return err

@@ -77,6 +77,9 @@ func (u *chatUI) line(line string) (bool, error) {
 		}
 	}
 	line = strings.TrimSpace(line)
+	if took, err := u.takeChatLoginCode(line); took {
+		return false, err
+	}
 	switch {
 	case line == "/quit":
 		return true, u.quitSession()
@@ -128,6 +131,15 @@ func (u *chatUI) line(line string) (bool, error) {
 	case isChatAutoCommand(line):
 		u.runChatAutoCommand(line)
 		return false, nil
+	case isChatAccountsCommand(line):
+		return false, u.runChatAccountsCommand(line)
+	case isChatLoginCommand(line):
+		return false, u.runChatLoginCommand(line)
+	case isChatUsageCommand(line):
+		u.runChatUsageCommand(line)
+		return false, nil
+	case isChatMCPCommand(line):
+		return false, u.runChatMCPCommand(line)
 	case isChatBtwCommand(line):
 		return false, u.runChatBtwCommand(line)
 	case isChatDefaultCommand(line):
@@ -318,9 +330,14 @@ func (u *chatUI) quitSession() error {
 	return u.cancelQuestionRequests("User exited the conversation.")
 }
 
+// stopIdleSession answers Ctrl+C on an idle conversation: the session
+// closes, and the folder's next plain jara starts a new conversation.
 func (u *chatUI) stopIdleSession() error {
 	if !u.persistentSession || u.agentTurnActive() {
 		return nil
+	}
+	if u.thread != "" {
+		markChatFinished(chatPlace.root)
 	}
 	return u.sendPersistentExit("jara/close")
 }

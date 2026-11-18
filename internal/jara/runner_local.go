@@ -91,6 +91,7 @@ type localRunnerOpen struct {
 // moves back here as soon as that machine is idle.
 // Without a remote (o.remoteName empty) the session simply runs here.
 func openLocalRunner(o localRunnerOpen, q Request) error {
+	applyChatFinished(o.root, &q)
 	q, err := localRunnerRequest(o, q)
 	if err != nil {
 		return err

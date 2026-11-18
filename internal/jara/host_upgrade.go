@@ -16,10 +16,11 @@ import (
 )
 
 type deploymentUpgradeOptions struct {
-	force            bool
-	forceDowngrade   bool
-	keepCodexVersion bool
-	assumeYes        bool
+	force             bool
+	forceDowngrade    bool
+	keepCodexVersion  bool
+	keepClaudeVersion bool
+	assumeYes         bool
 }
 
 func deploymentUpgradeCommand(c Config, args []string) error {
@@ -33,11 +34,13 @@ func deploymentUpgradeCommand(c Config, args []string) error {
 			options.forceDowngrade = true
 		case "--keep-codex-version":
 			options.keepCodexVersion = true
+		case "--keep-claude-version":
+			options.keepClaudeVersion = true
 		case "-y":
 			options.assumeYes = true
 		default:
 			if name != "" {
-				return fmt.Errorf("use jara deployment upgrade [NAME] [-y] [--force] [--force-downgrade] [--keep-codex-version]")
+				return fmt.Errorf("use jara deployment upgrade [NAME] [-y] [--force] [--force-downgrade] [--keep-codex-version] [--keep-claude-version]")
 			}
 			name = arg
 		}
@@ -153,6 +156,10 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		}
 	}
 	claudeAdded := addMissingClaudePin(settings, latestClaudeCode, log)
+	claudeTarget := ""
+	if !claudeAdded && !options.keepClaudeVersion {
+		claudeTarget = newerClaudePin(settings, latestClaudeCode, log)
+	}
 	runDocker := func(timeout time.Duration, args []string, stream bool) ([]byte, error) {
 		return runner.run(timeout, "", args, nil, stream)
 	}
@@ -245,7 +252,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	if _, err = runner.shell(30*time.Second, copySettings, nil, false); err != nil {
 		return fmt.Errorf("preserve host settings in the candidate source tree: %w", err)
 	}
-	if targetCodexVersion != codexVersion || claudeAdded {
+	if targetCodexVersion != codexVersion || claudeAdded || claudeTarget != "" {
 		updatedEnv := envBefore
 		if targetCodexVersion != codexVersion {
 			var pinErr error
@@ -253,8 +260,8 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 				return pinErr
 			}
 		}
-		if claudeAdded {
-			updatedEnv = appendEnvSetting(updatedEnv, "CLAUDE_CODE_VERSION", settings["CLAUDE_CODE_VERSION"])
+		if claudeAdded || claudeTarget != "" {
+			updatedEnv = setEnvSetting(updatedEnv, "CLAUDE_CODE_VERSION", settings["CLAUDE_CODE_VERSION"])
 		}
 		stageEnv := path.Join(stage, "deploy/.env")
 		if _, err = runner.shell(30*time.Second, "cat > "+quote(stageEnv), bytes.NewReader(updatedEnv), false); err != nil {

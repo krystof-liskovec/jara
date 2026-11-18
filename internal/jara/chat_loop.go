@@ -121,6 +121,8 @@ func chatPlainLoop(u *chatUI, input io.Reader, output io.Writer) error {
 			if err := u.acceptReconnect(result); err != nil {
 				return err
 			}
+		case text := <-u.backgroundRuns:
+			u.acceptChatBackground(text)
 		case line := <-lines:
 			quit, err := u.line(line)
 			if err != nil {

@@ -13,7 +13,7 @@ func (u *chatUI) event(m appMessage) error {
 	if m.Method == "" {
 		return u.response(m)
 	}
-	if u.routeChatAgentEvent(m) {
+	if u.routeChatAgentEvent(m) || u.acceptChatLoginEvent(m) || u.acceptChatAccountSwitch(m) {
 		return nil
 	}
 	if m.Method == "thread/settings/updated" {
@@ -197,9 +197,10 @@ func (u *chatUI) event(m appMessage) error {
 		if !chatUIIsInteractive(u) || p.Turn.Status != "completed" {
 			u.print("\n[" + p.Turn.Status + "]\n")
 		}
-		if p.Turn.Error != nil {
+		if p.Turn.Error != nil && !u.signedOutTurnError(p.Turn.Error.Message) {
 			u.print(p.Turn.Error.Message + "\n")
 		}
+		u.login.hinted = false
 		if retried, err := u.retryOnFallback(m.Params); retried || err != nil {
 			return err
 		}
@@ -223,7 +224,9 @@ func (u *chatUI) acceptChatErrorEvent(params json.RawMessage) error {
 		WillRetry bool   `json:"willRetry"`
 	}
 	if err := json.Unmarshal(params, &notification); err != nil || !notification.WillRetry {
-		u.print("\nCodex: " + string(params) + "\n")
+		if !u.signedOutTurnError(notification.Error.Message + " " + notification.Message) {
+			u.print("\nCodex: " + string(params) + "\n")
+		}
 		return nil
 	}
 

@@ -65,6 +65,34 @@ message instead of silently overwriting that disagreement. Logs identify the
 previous image tag for manual recovery. Candidate and previous images are retained;
 image retention/pruning is currently manual.
 
+## Update offers when Jara starts
+
+Opening a conversation in a terminal (`jara`, `jara new`, `jara resume`,
+`jara sessions`) offers what is out of date, before the conversation opens:
+
+- **Jara on remotes older than this client.** A remote is older when it runs
+  an earlier version or an earlier build of the same version: `install.sh`
+  stamps each build with its source and time (`jara version` shows it), and a
+  host's Jara built from the client's bundle carries the same stamp.
+- **Newer Codex and Claude Code releases**, offered for this device and the
+  remotes: update this device and the remotes, this device only, or not now.
+  When this device is already current, remotes left behind are offered on
+  their own, so a remote skipped once keeps being offered.
+
+Only agents signed in on a machine are offered there. This device updates
+with each CLI's own updater (`codex update`, `claude update`); a remote is
+upgraded once with `jara deployment upgrade`, which also brings its Jara to
+this client's build and raises only the agents you accepted. Remotes without a
+saved Docker host connection are named, with how to add one. An upgrade that
+the remote defers because it is in use is offered again next time.
+
+Release and remote versions come from a check made at most every six hours;
+opening waits up to three seconds for a due check and otherwise uses the
+previous one while the new one finishes in the background. "Not now" holds an
+offer back for a day, until a newer release comes out. `jara update` checks
+right away, including declined offers. Set `JARA_NO_UPDATE_CHECK=1` to turn
+the offers off.
+
 ## Upgrade Jara itself
 
 After installing a newer local Jara CLI, update a deployment created by guided
@@ -79,7 +107,9 @@ candidate image with native Docker on the host, defers while the environment is
 in use, and replaces the server container with rollback on failure. The host
 needs no Git, Compose, or Jara installation. Each upgrade checks npm for a newer
 stable Codex release and pins it in the replacement image and deployment env.
-Pass `--keep-codex-version` to preserve the current Codex pin. Workspace volumes
+Pass `--keep-codex-version` to preserve the current Codex pin. Claude Code's pin
+is raised the same way unless you pass `--keep-claude-version`; an empty pin
+(Claude Code disabled) stays empty. Workspace volumes
 remain in place. After success, Jara asks whether to remove the previous image
 tag used for rollback. Pass `-y` (for example, `jara deployment upgrade jellyfish -y`)
 to answer yes to all upgrade prompts, including previous image removal and

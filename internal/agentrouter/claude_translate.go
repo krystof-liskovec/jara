@@ -48,10 +48,11 @@ type claudeLine struct {
 		Output        int64 `json:"output_tokens"`
 		CacheCreation int64 `json:"cache_creation_input_tokens"`
 	} `json:"usage"`
-	EstimatedTokens int64    `json:"estimated_tokens"`
-	Model           string   `json:"model"` // init: the model Claude Code resolved
-	IsError         bool     `json:"is_error"`
-	Errors          []string `json:"errors"`
+	EstimatedTokens int64             `json:"estimated_tokens"`
+	Model           string            `json:"model"`       // init: the model Claude Code resolved
+	MCPServers      []claudeMCPStatus `json:"mcp_servers"` // init: each server's state
+	IsError         bool              `json:"is_error"`
+	Errors          []string          `json:"errors"`
 }
 
 type claudeContentBlock struct {
@@ -132,6 +133,9 @@ func (s *claudeSession) handleLine(raw []byte) {
 		if line.Subtype == "task_notification" {
 			s.finishBackgroundClaudeSubagent(line)
 		}
+		if line.Subtype == "init" {
+			s.mcpServers = line.MCPServers
+		}
 		if line.Subtype == "init" && line.Model != "" && line.Model != s.resolvedModel {
 			s.resolvedModel = line.Model
 			s.r.notify("jara/model/resolved", map[string]any{"threadId": s.thread.ID, "model": line.Model})
@@ -161,6 +165,9 @@ func (s *claudeSession) handleLine(raw []byte) {
 				message = "Claude Code ended the turn with " + line.Subtype
 			}
 			if s.r.claudeUsageLimited(message) {
+				if s.continueOnNextAccount() {
+					return
+				}
 				s.usageLimited = true
 				message = "Claude usage limit reached: " + message
 			}

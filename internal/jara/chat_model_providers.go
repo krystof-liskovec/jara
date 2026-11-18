@@ -93,6 +93,10 @@ func (p *chatTerminalPicker) chooseModel(u *chatUI) error {
 // back returns from a provider's models to the providers and reports
 // whether it did.
 func (p *chatTerminalPicker) back(u *chatUI) bool {
+	if p.kind == "login" && p.provider != "" {
+		p.selected, p.provider = slices.Index(chatLoginAgents, p.provider), ""
+		return true
+	}
 	if p.kind != "model" || p.provider == "" || u.models == nil {
 		return false
 	}

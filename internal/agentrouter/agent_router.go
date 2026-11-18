@@ -68,6 +68,8 @@ type agentRouter struct {
 	btwForking     int                        // side-question forks awaiting their thread ID
 	codexChildren  map[string]bool            // Codex subagent threads
 	claudeAgents   map[string]*claudeSubagent // Claude Code subagents by virtual thread ID
+	logins         claudeLogins               // a Claude Code sign-in from the interface
+	switches       accountSwitches            // turns continuing on another account
 }
 
 func runAgentRouter(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, claudeArgs ...string) error {
@@ -227,7 +229,7 @@ func (r *agentRouter) fromCodex(m rpcMessage) error {
 		r.send(m)
 		return nil
 	}
-	if r.captureBtw(m) {
+	if r.captureBtw(m) || r.holdForAccountSwitch(&m) {
 		return nil
 	}
 	m.Params = r.rewriteCodexThread(m.Params)
@@ -311,9 +313,12 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		}
 		return nil
 	}
-	params := m.Params
+	params := r.realTurnIDs(m.Params)
 	if len(params) == 0 {
 		params = json.RawMessage("{}")
+	}
+	if m.Method == "turn/start" || m.Method == "account/login/start" {
+		RememberAccounts() // before a sign-in replaces the account in use
 	}
 	switch m.Method {
 	case "initialize":
@@ -342,6 +347,12 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		}
 	case "jara/btw":
 		return r.askBtw(m.ID, params)
+	case "jara/accounts/list", "jara/accounts/use", "jara/accounts/remove":
+		r.handleAccountRequest(m.ID, m.Method, params)
+		return nil
+	case "jara/login/start", "jara/login/code", "jara/login/cancel", "jara/login/status", "jara/login/token":
+		r.handleClaudeLogin(m.ID, m.Method, params)
+		return nil
 	case "jara/rewind":
 		return r.rewindThread(m.ID, params)
 	case "jara/commands/list":
@@ -376,6 +387,8 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		r.reply(m.ID, map[string]any{})
 	case "turn/steer":
 		thread.claude.steer(m.ID, params)
+	case "mcpServerStatus/list":
+		r.reply(m.ID, thread.claude.mcpStatus())
 	case "thread/settings/update":
 		var request struct {
 			CollaborationMode struct {

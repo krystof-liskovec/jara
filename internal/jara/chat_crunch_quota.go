@@ -3,6 +3,7 @@ package jara
 import (
 	"encoding/json"
 	"fmt"
+	"krystof.liskovec/jara/internal/protocol"
 	"strings"
 	"time"
 )
@@ -20,10 +21,7 @@ type chatCrunchLimitBucket struct {
 }
 
 func chatCrunchIsUsageLimit(info json.RawMessage, message string) bool {
-	lower := strings.ToLower(string(info) + " " + message)
-	compact := strings.NewReplacer("_", "", "-", "", " ", "").Replace(lower)
-	usageLimitMessage := strings.Contains(lower, "usage limit") && (strings.Contains(lower, "exceed") || strings.Contains(lower, "reach") || strings.Contains(lower, "hit"))
-	return strings.Contains(compact, "usagelimitexceeded") || usageLimitMessage
+	return protocol.IsUsageLimit(info, message)
 }
 
 func chatCrunchRateLimitState(result json.RawMessage, now time.Time) (bool, time.Time, error) {

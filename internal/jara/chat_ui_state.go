@@ -118,4 +118,6 @@ type chatExtras struct {
 	mentions       chatMentionSearch        // @file completion
 	images         map[int]string           // [Image #N] placeholders → data URLs
 	customCommands []protocol.CustomCommand // prompt files usable as slash commands
+	login          chatLoginState
+	backgroundRuns chan chatBackgroundNote // the output of /mcp changes or /usage while it runs; nil otherwise
 }

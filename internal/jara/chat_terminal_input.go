@@ -10,6 +10,22 @@ import (
 // handleKey applies one key or paste event; done means the interface exits.
 func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err error) {
 	u := t.u
+	if event.leave {
+		// Ctrl+D on an empty input box detaches: the window closes and the
+		// session keeps running, idle or not, to come back to later. With
+		// text typed it deletes the character at the cursor.
+		if t.editor.Text() == "" {
+			t.dirty = true
+			if u.persistentSession {
+				return t.submit("/detach")
+			}
+			return t.submit("/quit")
+		}
+		event.input = &chatEditorInput{Key: chatEditorDelete}
+	}
+	if event.input != nil && event.input.Key == chatEditorEscape && !u.diff.fullScreen() {
+		return false, t.handleEscape(*event.input)
+	}
 	if u.diff.fullScreen() && t.handleFullScreenDiffKey(event) {
 		return false, nil
 	}
@@ -87,8 +103,9 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 		t.dirty = true
 		return false, nil
 	}
+	t.editor.private = u.login.secret != ""
 	result := t.editor.Apply(*input)
-	if result.Changed {
+	if result.Changed && !t.editor.private {
 		u.noteChatComposer(t.editor.Text(), t.editor.CursorByte())
 	}
 	if result.LimitReached || event.limitReached {
@@ -112,6 +129,41 @@ func (t *chatTerminal) openPicker(kind string) {
 		t.transcript.append("system", chatPickerErrorText("Could not open picker", err)+"\n")
 	}
 	t.dirty = true
+}
+
+// handleEscape applies Escape: it closes or steps back out of whatever is
+// open, the innermost first; with nothing open it stops a running turn, as
+// Ctrl+C does. A waiting question is left alone, so a stray Escape does not
+// throw it away.
+func (t *chatTerminal) handleEscape(input chatEditorInput) error {
+	u := t.u
+	t.dirty = true
+	switch {
+	case u.diff.fullScreen():
+		u.diff.hideOnScreen()
+		return nil
+	case t.queueEditor.active():
+		t.queueEditor.cancel(u, t.editor)
+		t.scroll(0)
+		return nil
+	case t.handlePickerKey(input) || t.handleSessionPickerKey(input):
+		return nil
+	case u.login.secret != "":
+		t.editor.SetText("")
+		u.stopSecretEntry("Sign-in cancelled.")
+		return nil
+	}
+	if handled, err := t.handleQuestionKey(input); handled || err != nil {
+		return err // a note being written stops
+	}
+	if t.escapeAgent() || len(t.editor.Completions()) > 0 {
+		t.editor.Apply(input) // back from a subagent, or suggestions hidden
+		return nil
+	}
+	if _, asking := t.questionChoices(); asking || !u.agentTurnActive() {
+		return nil
+	}
+	return u.interrupt()
 }
 
 // leftOpensSessions reports whether Left should open the recent sessions:
@@ -218,6 +270,10 @@ func (t *chatTerminal) submit(value string) (done bool, err error) {
 	if t.queueEditor.active() {
 		t.queueEditor.save(u, editor, value)
 		return false, nil
+	}
+	if u.login.secret != "" { // a key or token goes to the sign-in, never to an agent
+		_, err := u.line(value)
+		return false, err
 	}
 	if sent, err := t.submitToAgent(value); sent || err != nil {
 		return false, err

@@ -94,7 +94,8 @@ func paintChatShimmer(text string, tick int, base, glow, bg, bold string) string
 // The activity row shows an animated glyph, the label with a trailing
 // ellipsis under a sweeping shimmer, and muted details in parentheses, e.g.
 // "✿ Thinking… (12s · ctrl+c to interrupt)". Each turn picks one animation;
-// JARA_SPINNER=flower, sun, explosion, fish, chomper or visualizer keeps one. An animation's
+// JARA_SPINNER=flower, sun, explosion, comet, chomper, snake, pi or
+// visualizer keeps one. An animation's
 // frames are all as wide and have no emoji presentation, so the row never
 // shifts.
 type chatSpinner struct {
@@ -108,11 +109,50 @@ var chatSpinners = []chatSpinner{
 	{name: "flower", frames: []string{"·", "∘", "✾", "❀", "✿"}, bounce: true},               // a bud opens and closes
 	{name: "sun", frames: []string{"◡", "◒", "●", "☼"}, bounce: true},                       // rises, shines, sets
 	{name: "explosion", frames: []string{"·", "•", "✦", "✸", "✹", "✺", "❋", "⁙", "⁘", "∙"}}, // bursts, scatters
-	// A fish swims across its pond, turns, and swims back.
-	{name: "fish", frames: []string{"><>  ", " ><> ", "  ><>", "  <><", " <>< ", "<><  "}, hold: 2},
-	// A mouth chomps its way along a row of dots, then starts again.
-	{name: "chomper", frames: []string{"C····", "O····", " C···", " O···", "  C··", "  O··", "   C·", "   O·", "    C", "    O"}},
+	// A comet streaks across the row, its tail fading behind it.
+	{name: "comet", frames: []string{"●     ", "•●    ", "·•●   ", " ·•●  ", "  ·•● ", "   ·•●", "    ·•", "     ·"}},
+	// A mouth eats an endless row of dots: open as one arrives, closed once
+	// it is eaten while the rest move up, so the loop never jumps.
+	{name: "chomper", frames: []string{"C· · ·", "O · · "}, hold: 2},
+	{name: "snake", frames: chatSnakeFrames(), hold: 2},
+	{name: "pi", frames: chatPiFrames(), hold: 2},
 	{name: "visualizer", frames: chatVisualizerFrames()}, // bars dance like an audio visualizer
+}
+
+// chatPiFrames estimates π with the Nilakantha series, 3 + 4/(2·3·4) −
+// 4/(4·5·6) + …, whose estimates land above and below π ever closer. From the
+// 18th it shows 3.1416, which it holds before starting over.
+func chatPiFrames() []string {
+	const steps = 24
+	frames := make([]string, steps)
+	sum := 3.0
+	for step := range frames {
+		frames[step] = fmt.Sprintf("π≈%.4f", sum)
+		n := float64(2 * (step + 1))
+		if term := 4 / (n * (n + 1) * (n + 2)); step%2 == 0 {
+			sum += term
+		} else {
+			sum -= term
+		}
+	}
+	return frames
+}
+
+// chatSnakeFrames slithers a snake across a row and through its edge, back
+// in on the other side, so the loop never jumps; its body wiggles as it goes.
+func chatSnakeFrames() []string {
+	const width = 8
+	bodies := []string{"~-~", "-~-"}
+	frames := make([]string, width) // an even count keeps the wiggle in step
+	for step := range frames {
+		snake := []rune(bodies[step%2] + ">")
+		row := []rune(strings.Repeat(" ", width))
+		for i, r := range snake {
+			row[(i+step)%width] = r
+		}
+		frames[step] = string(row)
+	}
+	return frames
 }
 
 // chatVisualizerFrames draws five bars that rise and fall at their own pace.

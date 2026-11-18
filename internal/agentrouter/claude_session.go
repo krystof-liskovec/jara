@@ -18,24 +18,26 @@ import (
 // prompts and control requests go to stdin, events come from stdout, and
 // permission checks arrive as can_use_tool control requests.
 type claudeSession struct {
-	r         *agentRouter
-	thread    *Thread
-	backendID string
-	resume    bool
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	stderr    *tailBuffer
-	model     string
-	effort    string
-	plan      bool
-	mode      string // permission mode the running process uses
+	r           *agentRouter
+	thread      *Thread
+	backendID   string
+	resume      bool
+	cmd         *exec.Cmd
+	stdin       io.WriteCloser
+	stderr      *tailBuffer
+	model       string
+	effort      string
+	plan        bool
+	mode        string // permission mode the running process uses
+	credentials string // the sign-in the running process started with
 
 	compacting    bool  // the running turn is Claude Code's /compact
 	contextTokens int64 // tokens in context after the latest model call
 	contextWindow int64 // model context window Claude Code reported
 	images        []map[string]any
 
-	resolvedModel string // concrete model Claude Code reported at startup
+	resolvedModel string            // concrete model Claude Code reported at startup
+	mcpServers    []claudeMCPStatus // the MCP servers it reported at startup
 
 	turnID       string
 	turnCount    int
@@ -123,7 +125,8 @@ func (s *claudeSession) startProcess() error {
 	cmd.Dir = s.thread.CWD
 	// Forward subagents' messages so they can be viewed. An environment
 	// variable, unlike the matching flag, is ignored by older Claude Code.
-	cmd.Env = append(os.Environ(), "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT=1")
+	cmd.Env = append(claudeEnv(os.Environ()), "CLAUDE_CODE_FORWARD_SUBAGENT_TEXT=1")
+	s.credentials = claudeCredentialStamp()
 	s.stderr = &tailBuffer{}
 	cmd.Stderr = s.stderr
 	stdin, err := cmd.StdinPipe()
@@ -175,7 +178,7 @@ func (s *claudeSession) control(subtype string, fields map[string]any) {
 // restarts the process on the same session.
 func (s *claudeSession) ensureProcess() error {
 	model, effort := protocol.ClaudeCLIModel(s.thread.Model), s.thread.Effort
-	if s.cmd != nil && (effort != s.effort || model == "" && s.model != "") {
+	if s.cmd != nil && (effort != s.effort || model == "" && s.model != "" || s.credentials != claudeCredentialStamp()) {
 		s.stop()
 	}
 	if s.cmd == nil {

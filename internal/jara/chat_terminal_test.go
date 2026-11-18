@@ -213,3 +213,103 @@ func TestSessionStartedPromptsLookTyped(t *testing.T) {
 		t.Fatalf("rows %q, prompts %+v", got, u.promptLog)
 	}
 }
+
+func TestCtrlDDetachesOnAnEmptyInputBox(t *testing.T) {
+	term, wire := newTestChatTerminal(t)
+	term.u.persistentSession = true
+	// With text typed, Ctrl+D deletes the character at the cursor.
+	if done := typeChatKeys(t, term, "abc\x1b[D\x04"); done || term.editor.Text() != "ab" {
+		t.Fatalf("delete: done %v, text %q", done, term.editor.Text())
+	}
+	term.editor.SetText("")
+	// On an empty box it detaches: the session keeps running, even idle.
+	if done := typeChatKeys(t, term, "\x04"); !done || !strings.Contains(wire.String(), `"jara/detach"`) {
+		t.Fatalf("detach: done %v, wire %s", done, wire.String())
+	}
+	// During a turn the window leaves and the agent keeps working.
+	term, wire = newTestChatTerminal(t)
+	term.u.persistentSession, term.u.busy, term.u.turn = true, true, "turn-1"
+	if done := typeChatKeys(t, term, "\x04"); !done || !strings.Contains(wire.String(), `"jara/detach"`) {
+		t.Fatalf("leave during a turn: done %v, wire %s", done, wire.String())
+	}
+}
+
+func TestIdleCtrlCFinishesTheConversation(t *testing.T) {
+	t.Setenv("JARA_DATA", t.TempDir())
+	t.Cleanup(func() { chatPlace = chatPlacement{} })
+	open := func() *chatTerminal {
+		term, _ := newTestChatTerminal(t)
+		term.u.persistentSession, term.u.thread = true, "th"
+		chatPlace = chatPlacement{root: "/work/project", session: "s1"}
+		return term
+	}
+	plain := func() Request {
+		q := Request{}
+		applyChatFinished("/work/project", &q)
+		return q
+	}
+	// Ctrl+C on an idle conversation: the next plain jara starts anew, once.
+	if done := typeChatKeys(t, open(), "\x03"); !done {
+		t.Fatal("idle Ctrl+C keeps the window")
+	}
+	if q := plain(); !q.New {
+		t.Fatal("the next jara resumed the finished conversation")
+	}
+	if q := plain(); q.New {
+		t.Fatal("the marker outlived its first use")
+	}
+	// An explicit resume keeps its choice and clears the marker too.
+	typeChatKeys(t, open(), "\x03")
+	q := Request{ResumeLatest: true}
+	applyChatFinished("/work/project", &q)
+	if q.New || plain().New {
+		t.Fatalf("resume --latest: %+v", q)
+	}
+	// Ctrl+D leaves without finishing; Ctrl+C during a turn only cancels it.
+	typeChatKeys(t, open(), "\x04")
+	busy := open()
+	busy.u.busy, busy.u.turn = true, "turn-1"
+	typeChatKeys(t, busy, "\x03")
+	if plain().New {
+		t.Fatal("Ctrl+D or a cancelled turn finished the conversation")
+	}
+}
+
+func TestEscapeStopsARunningTurn(t *testing.T) {
+	escape := func(term *chatTerminal) {
+		t.Helper()
+		term.parser.feed([]byte("\x1b")) // a lone Escape resolves on the next tick
+		if err := term.tick(time.Now().Add(time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	interrupts := func(wire *bytes.Buffer) int { return strings.Count(wire.String(), `"turn/interrupt"`) }
+	// Idle, Escape does nothing.
+	term, wire := newTestChatTerminal(t)
+	escape(term)
+	if interrupts(wire) != 0 {
+		t.Fatal("Escape on an idle conversation sent an interrupt")
+	}
+	// During a turn it stops it, through either way a key arrives.
+	term.u.busy, term.u.turn = true, "turn-1"
+	escape(term)
+	if interrupts(wire) != 1 {
+		t.Fatalf("lone Escape: %s", wire.String())
+	}
+	if _, err := term.handleKey(chatTerminalKeyEvent{input: &chatEditorInput{Key: chatEditorEscape}}); err != nil || interrupts(wire) != 2 {
+		t.Fatalf("Escape key event: %v %s", err, wire.String())
+	}
+	// With a menu open, Escape closes the menu and the turn goes on.
+	term.u.models = testModelBrowser(protocol.CodexModel{ID: "gpt-5.5", Model: "gpt-5.5", DisplayName: "GPT-5.5"})
+	term.openPicker("reasoning")
+	escape(term)
+	if term.picker.active() || interrupts(wire) != 2 {
+		t.Fatalf("menu: open %v, %s", term.picker.active(), wire.String())
+	}
+	// A waiting question is not thrown away by a stray Escape.
+	askChatTerminalQuestion(t, term, `[{"id":"q","question":"Which?","options":[{"label":"A"}]}]`)
+	escape(term)
+	if interrupts(wire) != 2 || len(term.u.questionRequests) != 1 {
+		t.Fatalf("question: %s", wire.String())
+	}
+}

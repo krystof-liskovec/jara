@@ -2,6 +2,7 @@ package jara
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,7 +173,7 @@ cat > "$CAPTURE/$host.$(ls "$CAPTURE" | wc -l)"
 		if err != nil {
 			t.Fatal(err)
 		}
-		return mcpConfigCommand(&config, args)
+		return mcpConfigCommand(&config, args, io.Discard)
 	}
 	received := func(host string) []string {
 		t.Helper()

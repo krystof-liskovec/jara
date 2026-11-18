@@ -59,6 +59,89 @@ servers are not supported. Agents started afterwards use the new list. Codex
 overrides sit on its command line, so header and env values there are visible
 to other processes on the same host.
 
+In a conversation, `/mcp` shows the shared list and which servers the agent
+has loaded, with their state and tool count (Claude Code reports its servers
+once the first turn starts it). `/mcp add`, `where`, `remove`, `import` and
+`sync` take the same arguments as `jara config mcp`.
+
+## Signing in from a conversation
+
+`/login` shows whether Codex and Claude Code are signed in where the
+conversation's agent runs (this device or its host), and how: an account, an
+API key, a token Jara stored or one from the environment. Choose an agent,
+then a method:
+
+| Command | How it signs in |
+| --- | --- |
+| `/login codex device` | a code to enter at auth.openai.com, from any device (the default) |
+| `/login codex browser` | a browser on the machine the agent runs on |
+| `/login codex key` | an OpenAI API key |
+| `/login codex add everywhere` | one more ChatGPT account on each host, for the account pool |
+| `/login codex device everywhere` | your ChatGPT account on this device and each remote, one device code each |
+| `/login codex key everywhere` | one OpenAI API key saved on this device and every remote |
+| `/login claude browser` | a Claude account: open the URL, paste back the code it shows (the default) |
+| `/login claude console` | the same for an Anthropic Console account, billed per use |
+| `/login claude token` | a token from `claude setup-token` or an `sk-ant-api` key |
+| `/login claude token everywhere` | the same, saved on this device and every remote at once |
+
+Keys and tokens are typed hidden, stay out of the input history and are saved
+on the agent's machine, as `jara auth claude` saves them. `/login cancel` or
+Esc stops. A Claude sign-in replaces a token Jara stored earlier, and running
+Claude Code conversations switch to new credentials on their next turn.
+`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` set where Jara runs still
+take precedence; `/login` names them when they are used.
+
+Sign-ins belong to one machine: one made on this device does not reach a
+remote. A token from `claude setup-token` is made to be shared, so
+`/login claude token everywhere`, or `jara auth claude --all` from a shell,
+saves it here and sends it to every remote over SSH standard input; hosts
+that could not be reached are listed, and running it again catches them up.
+A browser sign-in is not copied, as Claude Code renews it on its own.
+
+For Codex, `/login codex device everywhere` (or `jara auth codex --all`)
+goes through the hosts in turn and shows a device code for each, so every host
+keeps its own login; hosts already signed in to an account are skipped.
+`/login codex key everywhere` (or `jara auth codex --all --api-key`) saves
+one OpenAI API key on all of them at once. Both work through each host's
+Codex directly, and Codex sessions already running there pick the sign-in up.
+
+Signed out, the conversation still opens and Jara's own commands work; a turn
+that fails because the agent is signed out says how to sign in.
+
+## Several accounts as one
+
+Every account signed in on a machine stays in its account pool, for Codex
+and Claude Code alike: a new sign-in adds one rather than dropping the one
+before. When the account in use runs out of usage, Jara puts the next one with
+usage left in its place and the turn goes on, also with no window attached
+(`/crunch`, scheduled prompts); the conversation says which account took over.
+Conversations live on the machine, not with an account, so any account
+continues any of them. An account that ran out is skipped until its usage
+returns, and when every account is out the turn fails as before, so `/crunch`
+waits for the earliest reset.
+
+`/accounts` lists the pool where the conversation runs, numbered, with the one
+in use and those out of usage; `/accounts use N` switches by hand and
+`/accounts remove N` drops one. `/usage` and `jara usage` list each host's pool
+under its limits. Codex accounts are kept as copies of `~/.codex/auth.json`,
+refreshed from the live file before each switch so renewed logins are kept;
+Claude Code accounts are the tokens Jara stores plus Claude Code's own login.
+To add a Codex account on every host, use `/login codex add everywhere` or
+`jara auth codex --all --add`; for Claude Code, `/login claude token
+everywhere` with each account's token. The pool is
+`~/.local/share/jara/accounts.json`, readable only by you.
+
+Using several accounts to get past usage limits may be against the
+providers' terms; that is your call.
+
+## Usage limits
+
+`jara usage` (or `/usage` in a conversation) lists the usage limits of the
+Codex and Claude Code accounts on this device and on every remote, one host
+after another; `--remote NAME` (or `/usage NAME`) shows one host. Codex
+answers live. Claude Code only reports usage while it runs a turn, so each
+host shows its newest report with its age.
+
 ```sh
 jara --agent claude                       # open or create a Claude Code session
 jara new --agent claude -- --model opus   # pass arguments after -- to Claude Code
@@ -93,7 +176,9 @@ agent's persistent home with mode `0600`. Rerun the command to replace it.
 Jara also sets `hasCompletedOnboarding` in `~/.claude.json`, keeping existing
 settings, so Claude Code does not start its browser login wizard.
 
-The `claude` launcher exports the stored value as `CLAUDE_CODE_OAUTH_TOKEN`.
+Jara exports the stored value as `CLAUDE_CODE_OAUTH_TOKEN` when it starts
+Claude Code, on any host or device (the Docker image's `claude` launcher does
+too).
 A value starting with `sk-ant-api` is exported as `ANTHROPIC_API_KEY` instead,
 so an Anthropic API key also works. Credentials already present in the
 environment take precedence. You can also SSH in and log in interactively with

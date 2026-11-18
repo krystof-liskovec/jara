@@ -3,6 +3,8 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -12,6 +14,8 @@ import (
 	"strings"
 	"time"
 )
+
+const stampRel = "internal/jara/build_stamp.json"
 
 func main() {
 	if len(os.Args) != 2 {
@@ -39,7 +43,7 @@ func main() {
 				return e
 			}
 			rel = filepath.ToSlash(rel)
-			if strings.HasSuffix(rel, "_test.go") || rel == "internal/jara/deploy_bundle.tar.gz" || rel == "deploy/.jara-native.json" || strings.HasPrefix(rel, "deploy/.env") || strings.HasPrefix(rel, "deploy/authorized_keys") {
+			if strings.HasSuffix(rel, "_test.go") || rel == "internal/jara/deploy_bundle.tar.gz" || rel == stampRel || rel == "deploy/.jara-native.json" || strings.HasPrefix(rel, "deploy/.env") || strings.HasPrefix(rel, "deploy/authorized_keys") {
 				return nil
 			}
 			files = append(files, rel)
@@ -49,6 +53,34 @@ func main() {
 			fail(err.Error())
 		}
 	}
+	sort.Strings(files)
+	// The build stamp identifies this source and when it was bundled: the
+	// client embeds it, and so does a host's Jara built from the bundle, so
+	// a client can tell a host runs an older build.
+	source := sha256.New()
+	for _, rel := range files {
+		data, e := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if e != nil {
+			fail(e.Error())
+		}
+		fmt.Fprintf(source, "%s\x00%d\x00", rel, len(data))
+		source.Write(data)
+	}
+	stamp, err := json.Marshal(map[string]any{"time": time.Now().Unix(), "source": hex.EncodeToString(source.Sum(nil))})
+	if err != nil {
+		fail(err.Error())
+	}
+	stampPath := os.Getenv("JARA_DEPLOY_STAMP_OUTPUT")
+	if stampPath == "" {
+		stampPath = filepath.Join(root, filepath.FromSlash(stampRel))
+	}
+	if stampPath, err = filepath.Abs(stampPath); err != nil {
+		fail(err.Error())
+	}
+	if err = os.WriteFile(stampPath, append(stamp, '\n'), 0644); err != nil {
+		fail(err.Error())
+	}
+	files = append(files, stampRel)
 	sort.Strings(files)
 	bundlePath := os.Getenv("JARA_DEPLOY_BUNDLE_OUTPUT")
 	if bundlePath == "" {
@@ -72,7 +104,11 @@ func main() {
 	zipper.Header.ModTime = time.Unix(0, 0)
 	archive := tar.NewWriter(zipper)
 	for _, rel := range files {
-		data, e := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if rel == stampRel {
+			path = stampPath
+		}
+		data, e := os.ReadFile(path)
 		if e != nil {
 			fail(e.Error())
 		}
@@ -102,9 +138,13 @@ func main() {
 		if e != nil {
 			fail(e.Error())
 		}
+		stampSource, e := filepath.Abs(filepath.Join(root, filepath.FromSlash(stampRel)))
+		if e != nil {
+			fail(e.Error())
+		}
 		data, e := json.Marshal(struct {
 			Replace map[string]string `json:"Replace"`
-		}{Replace: map[string]string{sourcePath: bundlePath}})
+		}{Replace: map[string]string{sourcePath: bundlePath, stampSource: stampPath}})
 		if e != nil {
 			fail(e.Error())
 		}

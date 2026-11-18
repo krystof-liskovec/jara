@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -180,6 +181,7 @@ func runClaudeBtw(cwd string, args []string, question string) (string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, protocol.ClaudeExecutable(), args...)
 	cmd.Dir = cwd
+	cmd.Env = claudeEnv(os.Environ())
 	cmd.Stdin = strings.NewReader(question)
 	stderr := &tailBuffer{}
 	cmd.Stderr = stderr

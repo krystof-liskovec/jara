@@ -29,11 +29,32 @@ func authCommand(c Config, args []string) error {
 	server := f.String("url", "", "Gitea HTTPS URL")
 	username := f.String("username", "", "Git username for --token-stdin")
 	stdin := f.Bool("token-stdin", false, "read token from standard input")
+	all := f.Bool("all", false, "sign in on this device and every remote")
+	apiKey := f.Bool("api-key", false, "codex: an OpenAI API key instead of a ChatGPT account")
+	add := f.Bool("add", false, "codex --all: add a further account on every host, keeping the others")
 	if err := f.Parse(args[1:]); err != nil {
 		return err
 	}
 	if f.NArg() != 0 {
 		return fmt.Errorf("unexpected auth argument")
+	}
+	if *all && provider == "codex" {
+		return codexAuthEverywhere(c, *apiKey, *stdin, *add)
+	}
+	if *all {
+		if provider != protocol.AgentClaude {
+			return fmt.Errorf("--all works with jara auth codex and jara auth claude")
+		}
+		secret, err := readClaudeSecret(*stdin, "It is saved on this device and every remote.")
+		if err != nil {
+			return err
+		}
+		report := shareClaudeToken(c, secret)
+		fmt.Print(report)
+		if strings.Contains(report, "not saved") {
+			return fmt.Errorf("some hosts were not saved")
+		}
+		return nil
 	}
 	r, ok := c.Remotes[*name]
 	if !ok {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"os"
 
 	"krystof.liskovec/jara/internal/protocol"
 )
@@ -105,7 +106,7 @@ func configCommand(c *Config, args []string) error {
 		return agentArgsConfigCommand(*c, protocol.AgentClaude, args[1:])
 	}
 	if len(args) > 0 && args[0] == "mcp" {
-		return mcpConfigCommand(c, args[1:])
+		return mcpConfigCommand(c, args[1:], os.Stdout)
 	}
 	if len(args) >= 3 && args[0] == "set" && args[1] == "agent" {
 		return agentConfigCommand(c, args[2:])

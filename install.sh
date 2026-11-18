@@ -19,6 +19,7 @@ build_and_install() {
   install_tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/jara-install.XXXXXX")
   trap 'rm -rf "$install_tmp_dir"' EXIT
   JARA_DEPLOY_BUNDLE_OUTPUT="$install_tmp_dir/deploy_bundle.tar.gz" \
+    JARA_DEPLOY_STAMP_OUTPUT="$install_tmp_dir/build_stamp.json" \
     JARA_DEPLOY_OVERLAY_OUTPUT="$install_tmp_dir/overlay.json" \
     go generate ./internal/jara
   GOBIN="$install_bin_dir" go install -overlay="$install_tmp_dir/overlay.json" ./cmd/jara

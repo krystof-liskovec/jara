@@ -25,6 +25,7 @@ type chatTerminalKeyEvent struct {
 	reasoningStep int
 	autoMode      bool // Shift+Tab toggles auto mode
 	interrupt     bool
+	leave         bool    // Ctrl+D: leave on an empty input box, else delete
 	tap           *[2]int // column and row of a left click or tap, from zero
 	limitReached  bool
 }
@@ -82,6 +83,9 @@ func (p *chatTerminalKeyParser) feed(data []byte) []chatTerminalKeyEvent {
 			p.buffer = p.buffer[1:]
 		case 0x03:
 			events = append(events, chatTerminalKeyEvent{interrupt: true})
+			p.buffer = p.buffer[1:]
+		case 0x04:
+			events = append(events, chatTerminalKeyEvent{leave: true})
 			p.buffer = p.buffer[1:]
 		case 0x16: // Ctrl+V attaches an image from the clipboard
 			events = append(events, editorEvent(chatEditorClipboardImage))
