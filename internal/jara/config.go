@@ -62,7 +62,11 @@ type Config struct {
 	Associations    map[string]Binding        `json:"associations"`
 	HostDeployments map[string]HostDeployment `json:"host_deployments,omitempty"`
 	EditorCommands  map[string][]string       `json:"editor_commands,omitempty"`
-	original        [32]byte
+	// MCPServers is the MCP server list Jara shares with this device and
+	// every remote; MCPSynced remembers what each remote last received.
+	MCPServers map[string]sharedMCPServer `json:"mcp_servers,omitempty"`
+	MCPSynced  map[string]string          `json:"mcp_synced,omitempty"`
+	original   [32]byte
 }
 
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)

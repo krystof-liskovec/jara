@@ -46,6 +46,14 @@ func init() {
 		options:  []string{"--remote NAME   Select a configured host."},
 		examples: []string{"jara config claude-args set --remote work -- --model opus", "jara config claude-args show"},
 	}
+	commandHelp["config mcp"] = helpEntry{
+		usage:   "jara config mcp list | add NAME [--on PLACE]... (--url URL [--header K=V]... | [--env K=V]... -- COMMAND [ARGS...]) | where NAME everywhere|PLACE... | remove NAME | import [--from claude|codex] | sync",
+		summary: "Keep one list of MCP servers, shared by this device and every remote, that Jara gives both Codex and Claude Code whenever it starts them; their own config files stay untouched. A server runs everywhere unless --on or where limits it to places: local for this device, or remote names. Each remote receives its share after a change, or before its next session when it was offline. import copies the servers this machine's Claude Code and Codex already have. Codex receives the servers as -c overrides, so their header and env values are visible to other processes on a host.",
+		options: []string{"--on PLACE      Run only here: local or a remote name; repeatable.", "--url URL       A streamable HTTP server.", "--header K=V    An HTTP header, such as a token; repeatable.",
+			"--env K=V       An environment variable for a command server; repeatable.", "--from AGENT    Import only from claude or codex."},
+		examples: []string{"jara config mcp import", "jara config mcp add docs --url https://docs.example/mcp --header x-token=TOKEN",
+			"jara config mcp add files --on local -- npx -y @modelcontextprotocol/server-filesystem /work", "jara config mcp where docs work local", "jara config mcp list"},
+	}
 	commandHelp["handoff"] = helpEntry{
 		usage:    "jara handoff [--agent codex|claude] [--note TEXT] [WORKSPACE OPTIONS] [-- AGENT_ARGS...]",
 		summary:  "Continue the current workspace with another agent. Jara starts it with a briefing built from the Git state, pending delegated tasks and your note. Without --agent it picks the agent that did not run most recently.",

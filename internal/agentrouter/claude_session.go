@@ -46,6 +46,8 @@ type claudeSession struct {
 	usageLimited bool
 	queued       []queuedClaudeTurn
 	interrupted  bool
+	unanswered   bool   // a steered message no model call has started after
+	steerText    string // that message
 	reply        strings.Builder
 	textItem     string
 	blockText    strings.Builder
@@ -208,6 +210,18 @@ func (s *claudeSession) startTurn(id json.RawMessage, message string) error {
 		}
 		return nil
 	}
+	s.openTurn(id)
+	content := append([]map[string]any{{"type": "text", "text": message}}, s.images...)
+	s.images = nil
+	if err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}}); err != nil {
+		s.finishTurn("failed", "send prompt to Claude Code: "+err.Error())
+	}
+	return nil
+}
+
+// openTurn starts tracking a turn and announces it; a nil id answers no
+// request, as for a turn Claude Code started by itself.
+func (s *claudeSession) openTurn(id json.RawMessage) {
 	s.turnCount++
 	s.turnID = s.backendID + "-turn-" + strconv.Itoa(s.turnCount)
 	s.interrupted = false
@@ -224,12 +238,6 @@ func (s *claudeSession) startTurn(id json.RawMessage, message string) error {
 		}
 	}
 	s.thread.Save()
-	content := append([]map[string]any{{"type": "text", "text": message}}, s.images...)
-	s.images = nil
-	if err := s.write(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}}); err != nil {
-		s.finishTurn("failed", "send prompt to Claude Code: "+err.Error())
-	}
-	return nil
 }
 
 func (s *claudeSession) interrupt() {
@@ -294,6 +302,10 @@ func (s *claudeSession) processExited(err error) {
 func (s *claudeSession) finishTurn(status, message string) {
 	if s.turnID == "" {
 		return
+	}
+	if s.unanswered {
+		// Claude Code runs the message next; follow it as a new turn.
+		defer s.continueSteeredTurn()
 	}
 	s.closeTextItem()
 	compacted := s.compacting

@@ -269,9 +269,11 @@ func (u *chatUI) line(line string) (bool, error) {
 		return false, u.runChatShellCommand(line[1:])
 	case u.chatOffline() && line != "" && !strings.HasPrefix(line, "/"):
 		return false, u.sendPrompt(line) // queued until the session reconnects
-	case u.busy:
+	case u.busy && strings.HasPrefix(line, "/"): // /new and /resume wait for the turn
 		u.print("A turn is running. Use /cancel or wait for it to finish.\n")
 		return false, nil
+	case u.busy:
+		return false, u.steerPrompt(line) // into the running turn, or right after it
 	case strings.HasPrefix(line, "/resume "):
 		target := strings.TrimSpace(strings.TrimPrefix(line, "/resume "))
 		if target == "" {

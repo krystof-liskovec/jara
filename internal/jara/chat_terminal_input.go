@@ -239,7 +239,9 @@ func (t *chatTerminal) submit(value string) (done bool, err error) {
 		if line == "/resume" && u.sessions == previousSessions {
 			t.resumePickerPending, t.sessionPicker = false, false
 		}
-		if (!isCommand || busyControl) && (wasBusy || !wasReady) && !queuedOffline {
+		// A prompt typed during a turn steers it or queues; only one typed
+		// before a conversation opens, or a refused busy command, stays.
+		if (busyControl || !isCommand && !wasReady) && !queuedOffline {
 			editor.SetText(value) // not sent; keep it to send later
 		}
 	}

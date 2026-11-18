@@ -302,8 +302,8 @@ var commandHelp = map[string]helpEntry{
 		examples: []string{"jara workspace delete --remote jellyfish w-0123456789abcdef01234567"},
 	},
 	"config": {
-		usage:   "jara config set|codex-args ...",
-		summary: "Configure client preferences and host-level Codex defaults.",
+		usage:   "jara config set|codex-args|claude-args|mcp ...",
+		summary: "Configure client preferences, host-level agent defaults, and the MCP servers Jara gives both agents.",
 		examples: []string{
 			"jara config set editor nvim",
 			"jara config codex-args show --remote jellyfish",

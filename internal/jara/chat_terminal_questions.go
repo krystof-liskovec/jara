@@ -215,6 +215,6 @@ func (t *chatTerminal) answerQuestion(number int, values []string, note string) 
 		shown += " — note: " + note
 		values = append(values, chatQuestionNotePrefix+note)
 	}
-	t.u.print(chatWrappedLines("› ", shown, chatQuestionLineWidth))
+	t.u.print("› " + shown + "\n") // the conversation view wraps it
 	return t.u.recordQuestionAnswer(number, values)
 }

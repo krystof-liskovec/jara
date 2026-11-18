@@ -360,6 +360,9 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 	}
 	thread := r.claudeThreadFor(params)
 	if thread == nil {
+		if m.Method == "turn/steer" {
+			r.noteSteer(params)
+		}
 		return r.callCodex(codexCall{uiID: m.ID, method: m.Method}, r.codexParams(params))
 	}
 	if thread.claude == nil { // released by /rewind
@@ -371,6 +374,8 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 	case "turn/interrupt":
 		thread.claude.interrupt()
 		r.reply(m.ID, map[string]any{})
+	case "turn/steer":
+		thread.claude.steer(m.ID, params)
 	case "thread/settings/update":
 		var request struct {
 			CollaborationMode struct {
@@ -392,6 +397,25 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		}
 	}
 	return nil
+}
+
+// noteSteer adds a message sent into a running Codex turn to the transcript,
+// so replayed history and agent switches keep it.
+func (r *agentRouter) noteSteer(params json.RawMessage) {
+	var request struct {
+		ThreadID string `json:"threadId"`
+	}
+	_ = json.Unmarshal(params, &request)
+	thread := r.threads[request.ThreadID]
+	if thread == nil {
+		return
+	}
+	if turn := thread.lastTurn(); turn != nil {
+		if text := turnText(params); text != "" {
+			turn.User = strings.TrimSpace(turn.User + "\n\n" + text)
+			thread.Save()
+		}
+	}
 }
 
 // codexParams replaces the UI's thread ID with the Codex thread ID for

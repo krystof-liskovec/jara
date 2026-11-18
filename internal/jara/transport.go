@@ -157,6 +157,7 @@ func rpcStream(r Remote, q Request, input io.Reader, out io.Writer) error {
 }
 
 func openRemote(r Remote, q Request) error {
+	syncMCPToRemote(r)
 	if q.Background {
 		wire := q
 		wire.Prompt = ""

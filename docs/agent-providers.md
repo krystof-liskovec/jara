@@ -29,6 +29,36 @@ whichever agent starts.
 Switch agents on a workspace with `jara handoff`, and let agents call each
 other through [agent delegation](agent-delegation.md).
 
+## Shared MCP servers
+
+Jara keeps one list of MCP servers, shared by this device and every remote,
+and gives it to whichever agent it starts. You configure each server once
+instead of in both Codex and Claude Code. Claude Code receives a generated
+`--mcp-config` file and Codex receives `-c mcp_servers.NAME…` overrides; the
+agents' own configuration files are not changed, and servers configured
+there keep working alongside.
+
+A server runs everywhere unless you limit it to some places: `local` for
+this device, or remote names. After every change each remote receives its
+share; a remote that is offline gets it before its next session opens there.
+
+```sh
+jara config mcp import                    # copy this machine's Claude Code and Codex servers
+jara config mcp add docs --url https://docs.example/mcp --header x-token=TOKEN
+jara config mcp add files --on local -- npx -y @modelcontextprotocol/server-filesystem /work
+jara config mcp where docs work local     # docs only on the remote work and this device
+jara config mcp where docs everywhere
+jara config mcp list                      # where each runs; header and env values stay hidden
+jara config mcp remove files
+jara config mcp sync                      # send every remote its share now
+```
+
+The list, tokens included, is stored in this device's Jara configuration.
+Servers run a command (stdio) or are reached over streamable HTTP; SSE
+servers are not supported. Agents started afterwards use the new list. Codex
+overrides sit on its command line, so header and env values there are visible
+to other processes on the same host.
+
 ```sh
 jara --agent claude                       # open or create a Claude Code session
 jara new --agent claude -- --model opus   # pass arguments after -- to Claude Code

@@ -150,3 +150,32 @@ func TestChatTerminalQuestionNoteCanBeAbandoned(t *testing.T) {
 		t.Fatalf("reply %q", wire.String())
 	}
 }
+
+func TestQuestionsReadCleanlyInTheConversation(t *testing.T) {
+	term, _ := newTestChatTerminal(t)
+	long := "Jara passes the servers as launch flags each time it starts an agent; the config files stay untouched."
+	askChatTerminalQuestion(t, term, `[
+		{"id":"delivery","header":"Delivery","question":"How should Jara hand over its MCP servers?","options":[{"label":"At launch","description":"`+long+`"},{"label":"Write configs"}]},
+		{"id":"scope","header":"Scope","question":"Per host or per workspace?","options":[{"label":"Per host"},{"label":"Per workspace"}]}]`)
+	typeChatKeys(t, term, "\r")
+	typeChatKeys(t, term, "\r")
+	var rows []string
+	for _, line := range term.transcript.transcriptLines(100) {
+		if text := strings.TrimSpace(line.text); text != "" && !strings.HasPrefix(text, "•") {
+			rows = append(rows, text)
+		}
+	}
+	want := []string{
+		"Delivery · question 1 of 2", "How should Jara hand over its MCP servers?", "› At launch",
+		"Scope · question 2 of 2", "Per host or per workspace?", "› Per host",
+		"Answers sent to the agent.",
+	}
+	if got := strings.Join(rows, "\n"); got != strings.Join(want, "\n") {
+		t.Fatalf("conversation:\n%s", got)
+	}
+	// Without the menu, plain output lists the options; long ones wrap
+	// under their text instead of repeating the number.
+	if wrapped := chatWrappedLines("  1) ", long, 40); strings.Count(wrapped, "1)") != 1 || !strings.Contains(wrapped, "\n     ") {
+		t.Fatalf("wrapped option:\n%s", wrapped)
+	}
+}

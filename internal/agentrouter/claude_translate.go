@@ -82,6 +82,8 @@ func (s *claudeSession) handleLine(raw []byte) {
 			return
 		}
 		switch line.Event.Type {
+		case "message_start":
+			s.unanswered = false // this model call sees any steered message
 		case "content_block_start":
 			if line.Event.ContentBlock.Type == "text" {
 				s.openTextItem()

@@ -199,6 +199,9 @@ func (u *chatUI) response(m appMessage) error {
 		u.acceptChatBtwResponse(m)
 		return nil
 	}
+	if u.acceptChatSteerResponse(m, p) {
+		return nil
+	}
 	if u.acceptChatExtraResponse(m, p) {
 		return nil
 	}

@@ -112,6 +112,10 @@ func renderChatQuestions(u *chatUI) {
 	if len(u.questionRequests) == 0 {
 		return
 	}
+	if chatUIIsInteractive(u) {
+		renderChatQuestion(u)
+		return
+	}
 	request := u.questionRequests[0]
 	if len(u.questionRequests) > 1 {
 		u.print(fmt.Sprintf("Input request 1/%d\n", len(u.questionRequests)))
@@ -142,9 +146,6 @@ func renderChatQuestions(u *chatUI) {
 			prefix := fmt.Sprintf("  %d) ", optionIndex+1)
 			u.print(chatWrappedLines(prefix, label, chatQuestionLineWidth))
 		}
-		if chatUIIsInteractive(u) {
-			continue // the menu above the input box answers it
-		}
 		if question.MultiSelect {
 			u.print(fmt.Sprintf("Answer: /answer %d <numbers, such as 1,3>\n", i+1))
 		} else {
@@ -154,14 +155,36 @@ func renderChatQuestions(u *chatUI) {
 			u.print(fmt.Sprintf("Other: /answer %d <text>\n", i+1))
 		}
 	}
-	if chatUIIsInteractive(u) {
-		u.print(chatWrappedLines("", "Choose with ↑↓ and Enter below, or type your own answer.", chatQuestionLineWidth))
-	}
 	if len(u.questionRequests[0].params.Questions) > len(u.questionRequests[0].answers) {
 		u.print(chatWrappedLines("", "/cancel rejects questions and stops the turn.", chatQuestionLineWidth))
 	}
 }
 
+// renderChatQuestion shows the next unanswered question in the
+// conversation; the menu above the input box holds its options, and the
+// answer follows as "› answer" once chosen.
+func renderChatQuestion(u *chatUI) {
+	request := u.questionRequests[0]
+	for i, question := range request.params.Questions {
+		if _, answered := request.answers[question.ID]; answered {
+			continue
+		}
+		title := strings.TrimSpace(question.Header)
+		if count := len(request.params.Questions); count > 1 {
+			title = strings.TrimSpace(fmt.Sprintf("%s · question %d of %d", title, i+1, count))
+			title = strings.TrimPrefix(title, "· ")
+		}
+		text := strings.TrimSpace(question.Question)
+		if title != "" {
+			text = "**" + title + "**\n" + text
+		}
+		u.print(text + "\n")
+		return
+	}
+}
+
+// chatWrappedLines wraps text after prefix; continuation lines are indented
+// to line up with the text.
 func chatWrappedLines(prefix, text string, width int) string {
 	prefixWidth := uniseg.StringWidth(prefix)
 	if width <= prefixWidth {
@@ -187,7 +210,7 @@ func chatWrappedLines(prefix, text string, width int) string {
 		}
 		if lineWidth > prefixWidth {
 			lines = append(lines, line)
-			line, lineWidth = prefix, prefixWidth
+			line, lineWidth = strings.Repeat(" ", prefixWidth), prefixWidth
 		}
 		if wordWidth <= width-prefixWidth {
 			line += word
@@ -200,7 +223,7 @@ func chatWrappedLines(prefix, text string, width int) string {
 			partWidth := uniseg.StringWidth(part)
 			if lineWidth+partWidth > width {
 				lines = append(lines, line)
-				line, lineWidth = prefix, prefixWidth
+				line, lineWidth = strings.Repeat(" ", prefixWidth), prefixWidth
 			}
 			line += part
 			lineWidth += partWidth
@@ -255,7 +278,9 @@ func (u *chatUI) recordQuestionAnswer(questionNumber int, values []string) error
 	}
 	request.answers[question.ID] = values
 	if len(request.answers) < len(request.params.Questions) {
-		u.print(fmt.Sprintf("Saved answer for question %d of %d.\n", questionNumber, len(request.params.Questions)))
+		if !chatUIIsInteractive(u) { // in the terminal the next question says enough
+			u.print(fmt.Sprintf("Saved answer for question %d of %d.\n", questionNumber, len(request.params.Questions)))
+		}
 		renderChatQuestions(u)
 		return nil
 	}

@@ -30,8 +30,10 @@ func validPermission(p string) bool {
 // delegatedCommand builds the non-interactive command for one run. The prompt
 // is always written to standard input.
 func delegatedCommand(task delegatedTask, run int) []string {
+	// Jara's MCP servers come along; a broken list only leaves them out.
+	servers, _ := mcpLaunchArgs(task.Agent)
 	if task.Agent == protocol.AgentClaude {
-		command := []string{protocol.ClaudeBinary, "--print", "--output-format", "text", "--permission-prompts", "none"}
+		command := append([]string{protocol.ClaudeBinary, "--print", "--output-format", "text", "--permission-prompts", "none"}, servers...)
 		switch task.Permission {
 		case permissionReadOnly:
 			command = append(command, "--permission-mode", "plan")
@@ -48,7 +50,7 @@ func delegatedCommand(task delegatedTask, run int) []string {
 		}
 		return append(command, "--resume", task.Session)
 	}
-	command := []string{protocol.CodexBinary, "exec"}
+	command := append(append([]string{protocol.CodexBinary}, servers...), "exec")
 	if run > 1 {
 		command = append(command, "resume")
 	}

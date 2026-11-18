@@ -92,9 +92,24 @@ func configuredCodexArgs(extra []string) ([]string, error) {
 	return configuredAgentArgs(protocol.AgentCodex, extra)
 }
 
-// configuredAgentArgs returns deployment defaults, replaced by a saved host
-// override when present, followed by per-invocation arguments.
+// configuredAgentArgs returns the arguments an agent starts with: Jara's MCP
+// servers, then the saved arguments. Later Codex overrides win, so saved
+// arguments can still change a server.
 func configuredAgentArgs(runtime string, extra []string) ([]string, error) {
+	args, err := savedAgentArgs(runtime, extra)
+	if err != nil {
+		return nil, err
+	}
+	servers, err := mcpLaunchArgs(runtime)
+	if err != nil {
+		return nil, fmt.Errorf("MCP servers: %w", err)
+	}
+	return append(servers, args...), nil
+}
+
+// savedAgentArgs returns deployment defaults, replaced by a saved host
+// override when present, followed by per-invocation arguments.
+func savedAgentArgs(runtime string, extra []string) ([]string, error) {
 	raw, present := os.LookupEnv(agentArgsEnv(runtime))
 	if !present {
 		data, err := os.ReadFile(agentArgsFile(runtime))
@@ -143,7 +158,7 @@ func clearAgentArgsOverride(runtime string) error {
 func agentArgsRPC(runtime, action string, input io.Reader, output io.Writer) error {
 	switch action {
 	case "show":
-		args, err := configuredAgentArgs(runtime, nil)
+		args, err := savedAgentArgs(runtime, nil)
 		if err != nil {
 			return err
 		}

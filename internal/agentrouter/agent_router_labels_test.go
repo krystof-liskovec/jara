@@ -48,3 +48,14 @@ func TestTranscriptRemembersTheModelBehindEachReply(t *testing.T) {
 		t.Fatalf("settings %q %q", thread.CodexModel, thread.CodexEffort)
 	}
 }
+
+func TestSteeredMessagesJoinTheTurnTranscript(t *testing.T) {
+	t.Setenv("JARA_DATA", t.TempDir())
+	thread := &Thread{ID: "th", Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: "th", StartTurn: 1}}}
+	r := &agentRouter{threads: map[string]*Thread{"th": thread}}
+	thread.beginTurn("fix the tests", protocol.AgentCodex)
+	r.noteSteer(json.RawMessage(`{"threadId":"th","expectedTurnId":"t1","input":[{"type":"text","text":"and the docs"}]}`))
+	if got := thread.Turns[0].User; got != "fix the tests\n\nand the docs" {
+		t.Fatalf("turn text %q", got)
+	}
+}
