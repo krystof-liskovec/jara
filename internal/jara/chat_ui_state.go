@@ -37,6 +37,8 @@ type chatSessionOptions struct {
 	workspaceLabel    string
 	trackAgentState   bool
 	persistentSession bool
+	remotePlaces      []string // /remote's choices: "" for this device, then remotes
+	pendingLine       string   // a command a menu choice runs, such as /remote NAME
 	resumeAtStart     bool
 	resumeLatest      bool
 	lastAgentState    string

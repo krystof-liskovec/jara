@@ -90,12 +90,22 @@ func chatToolFailure(status string) string {
 }
 
 func (o *chatTerminalOutput) StartChatTool(key, title, body string, countLines bool, at time.Time) {
+	o.startFold("tool", key, title, body, countLines, at)
+}
+
+// StartChatFold adds text to a message of role, folded behind a row with
+// title that a click opens, such as the rest of a long command.
+func (o *chatTerminalOutput) StartChatFold(role, key, title, body string) {
+	o.startFold(role, key, title, body, false, time.Now())
+}
+
+func (o *chatTerminalOutput) startFold(role, key, title, body string, countLines bool, at time.Time) {
 	if key == "" {
 		o.toolSeq++
 		key = "#" + strconv.Itoa(o.toolSeq)
 	}
 	title = strings.Join(strings.Fields(chatText(title)), " ")
-	entry := &chatTerminalEntry{role: "tool", agent: o.agent, at: at, tool: &chatToolCall{key: key, title: title, countLines: countLines}}
+	entry := &chatTerminalEntry{role: role, agent: o.agent, at: at, tool: &chatToolCall{key: key, title: title, countLines: countLines}}
 	o.entries = append(o.entries, entry)
 	o.viewDirty = true
 	o.appendTo(entry, chatText(body))

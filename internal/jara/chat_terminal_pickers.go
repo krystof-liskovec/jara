@@ -2,6 +2,7 @@ package jara
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -72,7 +73,11 @@ func (p *chatTerminalPicker) sync(u *chatUI) {
 		p.kind, p.selected, u.pickerRequested = "rewind", max(0, len(u.promptLog)-1), ""
 		return
 	}
-	if p.kind == "rewind" {
+	if u.pickerRequested == "remote" { // lists places from the configuration
+		p.kind, p.selected, u.pickerRequested = "remote", max(0, slices.Index(u.remotePlaces, chatPlace.remote)), ""
+		return
+	}
+	if p.kind == "rewind" || p.kind == "remote" {
 		return
 	}
 	if u.pickerRequested != "" {
@@ -137,6 +142,8 @@ func (p *chatTerminalPicker) choices(u *chatUI) []chatCompletionChoice {
 		return chatReasoningPickerChoices(u, p.selected)
 	case "rewind":
 		return chatRewindPickerChoices(u, p.selected)
+	case "remote":
+		return chatRemotePickerChoices(u, p.selected)
 	default:
 		return nil
 	}
@@ -163,6 +170,11 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 		index := p.selected
 		p.close()
 		return u.rewindTo(index)
+	case "remote":
+		if p.selected < len(u.remotePlaces) {
+			u.pendingLine = "/remote " + textOr(u.remotePlaces[p.selected], "here")
+		}
+		p.close()
 	case "model":
 		return p.chooseModel(u)
 	case "default", "fallback":

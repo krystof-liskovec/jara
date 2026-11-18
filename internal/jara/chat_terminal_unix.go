@@ -287,6 +287,16 @@ func readChatTerminal(input *os.File, chunks chan<- []byte, errors chan<- error,
 	}
 }
 
+// menuWidthForChatTerminal is the width menus above the input box get: the
+// terminal's, less the changes pane when it shows.
+func (t *chatTerminal) menuWidth() int {
+	width, height, err := term.GetSize(int(t.output.Fd()))
+	if err != nil || width < 1 {
+		width, height = 80, 24
+	}
+	return width - chatDiffPaneWidth(&t.u.diff, width, height)
+}
+
 func heightForChatTerminal(output *os.File) int {
 	_, height, err := term.GetSize(int(output.Fd()))
 	if err != nil || height < 1 {

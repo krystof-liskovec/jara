@@ -56,7 +56,10 @@ func (u *chatUI) event(m appMessage) error {
 			if !u.manualApprovals {
 				hint = fmt.Sprintf(" Auto mode allows it after %s without an answer.", formatChatAutoApproveDelay(chatAutoApproveDelay))
 			}
-			u.print(fmt.Sprintf("\nApproval required (%d pending)\n%s%s to allow once or n to deny (or /approve, /deny).%s\n", len(u.approvals), formatChatApproval(m, u.items[p.ItemID]), keys, hint))
+			if len(u.approvals) > 1 {
+				hint += fmt.Sprintf(" %d approvals are waiting.", len(u.approvals))
+			}
+			u.printApproval(m, u.items[p.ItemID], keys+" to allow once or n to deny (or /approve, /deny)."+hint+"\n")
 			return nil
 		case "item/tool/requestUserInput":
 			u.alertUser("Question waiting for an answer")

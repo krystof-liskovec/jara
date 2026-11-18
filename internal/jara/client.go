@@ -11,7 +11,18 @@ import (
 	"strings"
 )
 
+// Run runs a jara command; when /remote moved the conversation, it then
+// opens Jara where the conversation now runs.
 func Run(args []string) error {
+	err := run(args)
+	if move := chatMove; move != nil && err == nil {
+		chatMove = nil
+		return move.reopen()
+	}
+	return err
+}
+
+func run(args []string) error {
 	if showCommandHelp(args) {
 		return nil
 	}
@@ -304,6 +315,7 @@ func Run(args []string) error {
 			note: *note, prompt: prompt, root: root, rel: rel, codexArgs: codexArgs,
 			latest: *latest, resumeLatest: *resumeLatest, worktree: *newTree})
 	}
+	chatPlace.root = root // /remote moves this folder's conversation
 	chosen := *remoteName
 	if chosen == "" {
 		chosen = c.Bindings[root].Remote

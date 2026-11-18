@@ -138,7 +138,7 @@ func TestChatApprovalDisplaysRequestAndItemScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Request scope:", "grantRoot", "Apply requested patch", "Requested item and changes:", "config.toml", "- old"} {
+	for _, want := range []string{"Apply these file changes?", "grantRoot: /workspace", "Reason: Apply requested patch", "config.toml", "- old", "comment: escape"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("approval output missing %q: %s", want, out.String())
 		}

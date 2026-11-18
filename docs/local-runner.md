@@ -37,6 +37,15 @@ jara runner prefer laptop desktop  # who gets a conversation back first
 jara remote order jellyfish backup # rank remote hosts; the first is the default
 ```
 
+Inside a conversation, `/remote` moves it without leaving the window: it lists
+this device and your remote hosts, and choosing one closes the window, hands
+the workspace over, and opens Jara again where the conversation now runs.
+Moving to the folder's host or back to this device continues the conversation.
+Choosing a host the folder is not attached to attaches it there first (the
+conversations go along) while the agent keeps running here; choose it again to
+run there. A conversation running on one host comes back to this device before
+it moves to another, and a running turn is never moved.
+
 `JARA_DEVICE` overrides the device name used in leases (the host name by
 default). Several projects, or several Git worktrees of one project, are
 independent workspaces: each runs wherever it was last opened. A folder's session

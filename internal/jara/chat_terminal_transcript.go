@@ -207,16 +207,20 @@ func (o *chatTerminalOutput) transcriptLines(width int) []chatViewLine {
 		)
 		previousRole = "system"
 	}
+	previousAgent := ""
 	for _, entry := range o.entries {
-		if chatViewNeedsMessageGap(previousRole, entry.role) {
+		// Entries of one message share its header: tool calls in a row, or
+		// a message around a folded row. Other entries of a role always
+		// start a new message, since text of the same role joins the last.
+		continued := entry.role == previousRole && (entry.role == "tool" || entry.agent == previousAgent)
+		if !continued && chatViewNeedsMessageGap(previousRole, entry.role) {
 			lines = append(lines, chatViewLine{kind: "message-gap"})
 		}
-		// Tool calls in a row share one header.
-		if entry.role != "tool" || previousRole != "tool" {
+		if !continued {
 			header := expandChatTranscript([]chatViewMessage{{Role: entry.role, At: entry.at, Agent: entry.agent}}, width)
 			lines = append(lines, header...)
 		}
-		previousRole = entry.role
+		previousRole, previousAgent = entry.role, entry.agent
 		if entry.tool != nil {
 			lines = append(lines, o.toolLines(entry, width)...)
 			continue

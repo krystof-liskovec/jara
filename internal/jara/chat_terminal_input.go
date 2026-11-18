@@ -68,6 +68,10 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 	}
 	if t.handlePickerKey(*input) || t.handleSessionPickerKey(*input) {
 		t.dirty = true
+		if line := u.pendingLine; line != "" { // a menu choice that runs a command
+			u.pendingLine = ""
+			return t.submit(line)
+		}
 		return false, nil
 	}
 	if t.leftOpensSessions(*input) {

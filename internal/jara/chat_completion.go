@@ -65,6 +65,7 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/cancel", description: "Stop the current turn"},
 	{name: "/approve", description: "Approve the oldest pending request"},
 	{name: "/deny", description: "Reject the oldest pending request"},
+	{name: "/remote", description: "Move this conversation to this device or a remote host", arguments: true},
 	{name: "/detach", description: "Disconnect and leave the remote session running"},
 	{name: "/quit", description: "Stop an idle session; leave an active agent running"},
 	{name: "/stop", description: "Stop the remote session and release the workspace"},

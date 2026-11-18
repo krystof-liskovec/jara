@@ -61,6 +61,9 @@ type chatViewLine struct {
 
 const chatQueueViewRowLimit = 8
 
+// chatMenuRows is the most rows a menu above the input box takes.
+const chatMenuRows = 10
+
 // chatPromptMarker starts the input prompt.
 const chatPromptMarker = "❯"
 
@@ -125,7 +128,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	// Keep at least three transcript rows for the strip to sit above.
 	agentRows := min(agentLimit, max(0, spare-queueRows-3))
 	queueRows += agentRows // the strip shares the queue's place in the layout
-	completionRows := min(min(6, len(model.Suggestions)), max(0, spare-queueRows))
+	completionRows := min(min(chatMenuRows, len(model.Suggestions)), max(0, spare-queueRows))
 	activityRows := 0
 	if model.Activity != "" && spare > queueRows+completionRows {
 		activityRows = 1

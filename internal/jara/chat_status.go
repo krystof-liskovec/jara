@@ -1,7 +1,6 @@
 package jara
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -80,60 +79,6 @@ func (u *chatUI) status() string {
 	return b.String()
 }
 
-func (u *chatUI) help() string {
-	return `Commands
-/new             Start a new conversation
-/sessions [query] Browse saved sessions in this folder
-/resume [N or ID]  Browse recent sessions or resume an ID
-/models          Browse and select available models
-/model [ID or N] Browse models or select one directly
-/reasoning [EFFORT] Select reasoning or browse supported efforts
-/compose         Write a multi-line message
-/send            Send the composed message
-/discard         Discard the composed message
-/goal [ARGS]     Set or manage a persistent goal for this conversation
-/plan [PROMPT|off|status] Use Plan mode for this and later turns
-/auto [on|off|status] Let an automatic reviewer handle approvals (default on)
-/btw QUESTION    Ask a side question; works during a turn and is not saved
-/agents [N]      List subagents, or view subagent N (Ctrl+↓/↑ switch, Esc returns)
-/compact [idle ...] Compact now; /compact idle on|off|DURATION sets idle compaction
-/clear           Start a new conversation with an empty transcript
-/rewind [N]      Go back to before prompt N and edit it (files are not reverted)
-/diff            Show or hide the changes pane; lists changes on narrow terminals
-/export [PATH]   Save the conversation as Markdown
-/image PATH      Attach an image; Ctrl+V pastes one from the clipboard
-/alerts [on|off] Bell and desktop alerts for long turns and pending requests
-/notify [URL|off|test] Push notifications to a phone (ntfy.sh topic or webhook)
-/default [ID|N]  Set the default model (and provider) for new conversations
-/fallback [ID|N|off] Continue on another model when a usage limit is reached
-/goalcrunch ...  Run a goal through usage-limit pauses
-/schedule ...    Schedule a prompt for this conversation
-/crunch ...      Run a prompt through usage-limit pauses
-/queue [run|clear|edit N] Inspect or manage queued prompts
-/status          Show connection, runtime, and turn state
-/answer N X      Answer question N with option X or text
-/cancel          Stop the current turn
-/approve         Allow the oldest pending request
-/deny            Reject the oldest pending request
-/detach          Disconnect and leave the remote session running
-/quit            Stop idle sessions; leave active agents running
-/stop            Stop the remote session and release the workspace
-/help            Show available commands
-!COMMAND         Run a shell command in this workspace
-@PATH            Mention a workspace file; typing @ lists matches
-
-Use /crunch PROMPT to work until the task is complete. Normal completion stops it; a usage-limit interruption waits for reset and resumes. /goalcrunch OBJECTIVE stops when Codex marks its goal complete. Both require a persistent Jara session. Use /crunch status or /crunch stop to manage the active crunch task.
-Use /schedule in 30m PROMPT, /schedule at RFC3339 PROMPT, /schedule list, or /schedule cancel ID. Scheduled prompts run when this conversation is idle and continue after you disconnect.
-While a turn is running, type a follow-up and press Tab to queue it. Queued prompts run in order after the current turn; use /queue to inspect them, /queue run to start one when idle, /queue edit N to edit one in the interactive interface, or /queue clear to remove this conversation's queued prompts.
-F2 opens model selection; F3 opens reasoning selection. Choices apply to this and future turns in this conversation; they do not change Codex defaults.
-Shift+Up raises reasoning effort and Shift+Down lowers it between turns.
-Shift+Tab toggles auto mode, like /auto; the controls under the input show whether it is on.
-Prompt files in ~/.codex/prompts, ~/.claude/commands, and the project's .claude/commands work as custom slash commands with either provider; $ARGUMENTS and $1…$9 are filled in.
-Hold Shift while dragging over chat history to select text with your terminal, then use its copy shortcut.
-Type a message to send it to the agent. In /compose, prefix a literal slash line with //.
-`
-}
-
 func chatApprovalSummary(m appMessage) (itemID, command string) {
 	var request struct {
 		ItemID  string `json:"itemId"`
@@ -149,39 +94,4 @@ func chatItemCommand(raw json.RawMessage) string {
 	}
 	_ = json.Unmarshal(raw, &item)
 	return item.Command
-}
-
-// Approval requests can include safety-relevant scope and diffs. Keep both
-// the request and referenced item visible, with JSON indentation for phones.
-func formatChatApproval(m appMessage, item json.RawMessage) string {
-	kind := "File change"
-	if m.Method == "item/commandExecution/requestApproval" {
-		kind = "Command"
-	}
-	var b strings.Builder
-	b.WriteString(kind + " approval\n")
-	itemID, command := chatApprovalSummary(m)
-	if command == "" {
-		command = chatItemCommand(item)
-	}
-	if command != "" {
-		b.WriteString("Command: " + command + "\n")
-	}
-	if len(m.Params) > 0 {
-		b.WriteString("Request scope:\n" + prettyChatJSON(m.Params) + "\n")
-	}
-	if len(item) > 0 {
-		b.WriteString("Requested item and changes:\n" + prettyChatJSON(item) + "\n")
-	} else if itemID != "" {
-		b.WriteString("Requested item: " + itemID + " (details not received)\n")
-	}
-	return b.String()
-}
-
-func prettyChatJSON(raw json.RawMessage) string {
-	var indented bytes.Buffer
-	if err := json.Indent(&indented, raw, "", "  "); err == nil {
-		return indented.String()
-	}
-	return string(raw)
 }

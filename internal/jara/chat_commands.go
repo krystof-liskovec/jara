@@ -85,6 +85,8 @@ func (u *chatUI) line(line string) (bool, error) {
 			return false, err
 		}
 		return true, u.sendPersistentExit("jara/stop")
+	case line == "/remote" || strings.HasPrefix(line, "/remote "):
+		return u.remoteCommand(strings.TrimSpace(strings.TrimPrefix(line, "/remote")))
 	case line == "/detach":
 		if !u.persistentSession {
 			u.print("This conversation cannot be detached from its current session.\nYou> ")

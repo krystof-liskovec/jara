@@ -17,10 +17,11 @@ func TestChatCompletionCatalogMatchesHelpCommands(t *testing.T) {
 		got[choice.Value] = true
 	}
 	want := map[string]bool{}
-	for _, line := range strings.Split((&chatUI{}).help(), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) > 0 && strings.HasPrefix(fields[0], "/") {
-			want[fields[0]] = true
+	for _, section := range chatHelpSections {
+		for _, entry := range section.entries {
+			if strings.HasPrefix(entry.command, "/") {
+				want[entry.command] = true
+			}
 		}
 	}
 	if len(got) != len(want) {

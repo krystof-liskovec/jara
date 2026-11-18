@@ -184,7 +184,7 @@ func TestChatMobileConversationOn40ColumnPTY(t *testing.T) {
 	session.waitCount(t, "[completed]", 1)
 
 	session.sendLine(t, "Need approval")
-	session.wait(t, "Approval required (1 pending)")
+	session.wait(t, "Run this command?")
 	session.waitNoMarker(t, "APPROVED_OK", 150*time.Millisecond)
 	session.sendLine(t, "/approve")
 	session.wait(t, "APPROVED_OK")

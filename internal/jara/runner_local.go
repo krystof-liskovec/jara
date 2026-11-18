@@ -97,6 +97,7 @@ func openLocalRunner(o localRunnerOpen, q Request) error {
 	}
 	q.UserInterface, q.ID, q.Root, q.RemoteName, q.Workspace, q.Runner =
 		"jara", id, o.root, o.remoteName, o.binding.Workspace, runnerDeviceName()
+	chatPlace = chatPlacement{root: o.root, session: id} // the agent runs here
 	connection, ready, err := connectLocalRunner(o, q, true)
 	if err != nil {
 		return err

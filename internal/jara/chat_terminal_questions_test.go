@@ -31,7 +31,8 @@ func TestChatTerminalQuestionArrowsChooseAnOption(t *testing.T) {
 	term, wire := newTestChatTerminal(t)
 	askChatTerminalQuestion(t, term, `[{"id":"db","header":"DB","question":"Which database?","isOther":true,"options":[{"label":"Postgres","description":"relational"},{"label":"SQLite"}]}]`)
 	choices := term.suggestions()
-	if len(choices) != 4 || choices[0].Value != "DB" || choices[1].Value != "1. Postgres" || !choices[1].Selected || choices[3].Value != "✎ Type your own answer" {
+	if len(choices) != 5 || choices[0].Value != "DB" || choices[1].Value != "1. Postgres" || choices[1].Description != "" || !choices[1].Selected ||
+		choices[3].Value != "✎ Type your own answer" || choices[4].Value != "↳ relational" || choices[4].Total != 0 {
 		t.Fatalf("menu %+v", choices)
 	}
 	typeChatKeys(t, term, "\x1b[B\x1b[B\x1b[B\x1b[A") // down past the end, then back up
@@ -105,15 +106,17 @@ func TestChatTerminalQuestionNoteGoesWithTheOption(t *testing.T) {
 	term, wire := newTestChatTerminal(t)
 	askChatTerminalQuestion(t, term, `[{"id":"db","question":"Which database?","isOther":true,"options":[{"label":"Postgres"},{"label":"SQLite"}]},`+
 		`{"id":"x","question":"Which extras?","multiSelect":true,"options":[{"label":"Cache"},{"label":"Search"}]}]`)
-	if hint := term.suggestions()[0].Description; !strings.Contains(hint, "then n adds a note") {
+	if hint := term.suggestions()[0].Description; !strings.Contains(hint, "· n add a note") {
 		t.Fatalf("hint %q", hint)
 	}
-	// After choosing with ↓, n starts a note; Enter sends the option with
-	// it, not the text alone.
-	typeChatKeys(t, term, "\x1b[B")
-	if hint := term.suggestions()[0].Description; !strings.Contains(hint, "· n add a note") {
-		t.Fatalf("hint after choosing %q", hint)
+	// On "Type your own answer" n is just a letter, so the hint drops it.
+	typeChatKeys(t, term, "\x1b[B\x1b[B")
+	if hint := term.suggestions()[0].Description; strings.Contains(hint, "note") {
+		t.Fatalf("hint on own answer %q", hint)
 	}
+	// On an option n starts a note; Enter sends the option with it, not the
+	// text alone.
+	typeChatKeys(t, term, "\x1b[A")
 	typeChatKeys(t, term, "nmust run on a phone\r")
 	request := term.u.questionRequests[0]
 	if got := request.answers["db"]; len(got) != 2 || got[0] != "SQLite" || got[1] != "user_note: must run on a phone" {
@@ -133,20 +136,27 @@ func TestChatTerminalQuestionNoteGoesWithTheOption(t *testing.T) {
 func TestChatTerminalQuestionNoteCanBeAbandoned(t *testing.T) {
 	term, wire := newTestChatTerminal(t)
 	askChatTerminalQuestion(t, term, `[{"id":"db","question":"Which database?","isOther":true,"options":[{"label":"Postgres"}]}]`)
-	// Typed straight away, an answer starting with n stays the user's own.
-	typeChatKeys(t, term, "no\r")
+	// On the first option, highlighted from the start, n starts a note.
+	typeChatKeys(t, term, "nquick\r")
+	if reply := chatQuestionReply(t, wire); !strings.Contains(reply, `"db":{"answers":["Postgres","user_note: quick"]}`) {
+		t.Fatalf("note on the default option %q", wire.String())
+	}
+	// An own answer starting with n is typed on "Type your own answer".
+	wire.Reset()
+	askChatTerminalQuestion(t, term, `[{"id":"db","question":"Which database?","isOther":true,"options":[{"label":"Postgres"}]}]`)
+	typeChatKeys(t, term, "\x1b[Bno\r")
 	if reply := chatQuestionReply(t, wire); !strings.Contains(reply, `"db":{"answers":["no"]}`) {
 		t.Fatalf("own answer %q", wire.String())
 	}
 	wire.Reset()
-	askChatTerminalQuestion(t, term, `[{"id":"db","question":"Which database?","isOther":true,"options":[{"label":"Postgres"}]}]`)
+	askChatTerminalQuestion(t, term, `[{"id":"store","question":"Which store?","isOther":true,"options":[{"label":"Postgres"}]}]`)
 	// Esc stops a note: the text is the user's own answer again.
-	typeChatKeys(t, term, "\x1b[A\x1b[AnDuckDB")
+	typeChatKeys(t, term, "nDuckDB")
 	if _, err := term.handleKey(chatTerminalKeyEvent{input: &chatEditorInput{Key: chatEditorEscape}}); err != nil {
 		t.Fatal(err)
 	}
 	typeChatKeys(t, term, "\r")
-	if reply := chatQuestionReply(t, wire); !strings.Contains(reply, `"db":{"answers":["DuckDB"]}`) {
+	if reply := chatQuestionReply(t, wire); !strings.Contains(reply, `"store":{"answers":["DuckDB"]}`) {
 		t.Fatalf("reply %q", wire.String())
 	}
 }
@@ -177,5 +187,21 @@ func TestQuestionsReadCleanlyInTheConversation(t *testing.T) {
 	// under their text instead of repeating the number.
 	if wrapped := chatWrappedLines("  1) ", long, 40); strings.Count(wrapped, "1)") != 1 || !strings.Contains(wrapped, "\n     ") {
 		t.Fatalf("wrapped option:\n%s", wrapped)
+	}
+}
+
+func TestQuestionOptionDescriptionsWrapUnderTheMenu(t *testing.T) {
+	long := strings.Repeat("This folder's conversation keeps going on the chosen host. ", 3)
+	rows := chatQuestionDetail(long, 60)
+	if len(rows) < 3 || !strings.HasPrefix(rows[0].Value, "↳ This folder's") || !strings.HasPrefix(rows[1].Value, "  ") {
+		t.Fatalf("rows %+v", rows)
+	}
+	for _, row := range rows {
+		if len([]rune(row.Value)) > 60 || strings.Contains(row.Value, "…") && row != rows[len(rows)-1] || row.Total != 0 {
+			t.Fatalf("row %q", row.Value)
+		}
+	}
+	if rows := chatQuestionDetail(strings.Repeat("word ", 200), 60); len(rows) != chatQuestionDetailRows || !strings.HasSuffix(rows[len(rows)-1].Value, "…") {
+		t.Fatalf("a very long description is not capped: %d rows", len(rows))
 	}
 }
