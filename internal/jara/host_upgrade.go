@@ -280,6 +280,9 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	if err != nil || strings.TrimSpace(string(builtVersion)) != desiredVersion {
 		return fmt.Errorf("candidate Jara version does not match this CLI (%s)", desiredVersion)
 	}
+	if err = checkCandidateBuild(runDocker, candidate); err != nil {
+		return err
+	}
 	envNow, err := readHostFile(runner, envPath)
 	if err != nil {
 		return err

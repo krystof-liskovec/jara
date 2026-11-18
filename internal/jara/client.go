@@ -58,7 +58,7 @@ func run(args []string) error {
 			}
 			return checkUpdates(c, true, bufio.NewReader(os.Stdin), os.Stdout)
 		case "version", "--version":
-			fmt.Println(Version + thisBuild().describe())
+			fmt.Println(versionText(args[1:]))
 			return nil
 		case "connect":
 			return connectCommand(args[1:])

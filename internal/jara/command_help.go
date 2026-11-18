@@ -495,5 +495,5 @@ var commandHelp = map[string]helpEntry{
 		},
 	},
 	"migrate": {usage: "jara migrate", summary: "Show migration availability for native Codex conversations.", examples: []string{"jara migrate"}},
-	"version": {usage: "jara version", summary: "Print the Jara version.", examples: []string{"jara version"}},
+	"version": {usage: "jara version [--build]", summary: "Print the Jara version; --build adds when and from what source this build was made.", examples: []string{"jara version", "jara version --build"}},
 }

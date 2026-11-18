@@ -72,7 +72,7 @@ Opening a conversation in a terminal (`jara`, `jara new`, `jara resume`,
 
 - **Jara on remotes older than this client.** A remote is older when it runs
   an earlier version or an earlier build of the same version: `install.sh`
-  stamps each build with its source and time (`jara version` shows it), and a
+  stamps each build with its source and time (`jara version --build` shows it), and a
   host's Jara built from the client's bundle carries the same stamp.
 - **Newer Codex and Claude Code releases**, offered for this device and the
   remotes: update this device and the remotes, this device only, or not now.
