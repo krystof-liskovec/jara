@@ -119,13 +119,7 @@ func (p *chatTerminalPicker) selectCurrent(u *chatUI) {
 		if model == nil {
 			return
 		}
-		current := u.nextReasoning
-		if current == "" {
-			current = u.effectiveReasoning
-		}
-		if current == "" {
-			current = model.DefaultReasoningEffort
-		}
+		current := u.currentChatReasoning()
 		for index, option := range model.SupportedReasoningEfforts {
 			if option.Value == current {
 				p.selected = index
@@ -252,13 +246,7 @@ func chatReasoningPickerChoices(u *chatUI, selected int) []chatCompletionChoice 
 		return []chatCompletionChoice{{Value: "No reasoning choices", Description: chatModelDisplayName(model)}}
 	}
 	choices := []chatCompletionChoice{{Value: "Reasoning effort", Description: chatModelDisplayName(model)}}
-	active := u.nextReasoning
-	if active == "" {
-		active = u.effectiveReasoning
-	}
-	if active == "" {
-		active = model.DefaultReasoningEffort
-	}
+	active := u.currentChatReasoning()
 	for index, option := range model.SupportedReasoningEfforts {
 		description := strings.TrimSpace(option.Description)
 		if description == "" {

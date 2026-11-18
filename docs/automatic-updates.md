@@ -81,8 +81,10 @@ needs no Git, Compose, or Jara installation. Each upgrade checks npm for a newer
 stable Codex release and pins it in the replacement image and deployment env.
 Pass `--keep-codex-version` to preserve the current Codex pin. Workspace volumes
 remain in place. After success, Jara asks whether to remove the previous image
-tag used for rollback. Manual Compose deployments must be upgraded from their
-host checkout.
+tag used for rollback. Pass `-y` (for example, `jara deployment upgrade jellyfish -y`)
+to answer yes to all upgrade prompts, including previous image removal and
+installation of a newer Jara client when the server offers one. Manual Compose
+deployments must be upgraded from their host checkout.
 
 ## First install
 

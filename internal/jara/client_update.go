@@ -30,7 +30,7 @@ func streamClientBinary() error {
 	return err
 }
 
-func offerServerClientUpdate(run func(time.Duration, []string, bool) ([]byte, error), container, deployment, currentVersion string, log io.Writer) (bool, error) {
+func offerServerClientUpdate(run func(time.Duration, []string, bool) ([]byte, error), container, deployment, currentVersion string, assumeYes bool, log io.Writer) (bool, error) {
 	request := token(Request{Op: "client-version"})
 	data, err := run(20*time.Second, []string{"docker", "exec", "--user", "1001", container, "jara", "_rpc", request}, false)
 	if err != nil {
@@ -40,9 +40,11 @@ func offerServerClientUpdate(run func(time.Duration, []string, bool) ([]byte, er
 	if json.Unmarshal(data, &build) != nil || build.GOOS != runtime.GOOS || build.GOARCH != runtime.GOARCH || !versionNewer(build.Version, currentVersion) {
 		return false, nil
 	}
-	yes, err := confirmWithReader(bufio.NewReader(os.Stdin), fmt.Sprintf("Server has a newer Jara client (%s). Install it before upgrading?", build.Version))
-	if err != nil || !yes {
-		return false, err
+	if !assumeYes {
+		yes, err := confirmWithReader(bufio.NewReader(os.Stdin), fmt.Sprintf("Server has a newer Jara client (%s). Install it before upgrading?", build.Version))
+		if err != nil || !yes {
+			return false, err
+		}
 	}
 	binary, err := run(30*time.Second, []string{"docker", "exec", "--user", "1001", container, "cat", "/opt/jara/bin/jara-client"}, false)
 	if err != nil {

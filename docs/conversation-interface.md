@@ -108,8 +108,8 @@ return to the chat. `/resume ID` still opens a specific conversation directly.
 `/models` and bare `/model` open an interactive model picker. Use F2 from any
 prompt to open it directly. `/reasoning` and F3 open the selected model's
 supported reasoning choices. Use the arrow keys and Enter to choose, or Escape
-to return to the chat. The model and reasoning controls remain visible below
-the composer, and the choices apply to this and later turns in the conversation.
+to close. Between turns, Shift+Up raises reasoning effort and Shift+Down lowers
+it. The controls below the composer show the choices for this conversation.
 The model control names the concrete model: the conversation's model, or before
 a conversation opens, the model a new one would use. For Claude Code's default
 entry it shows the model Claude Code reports once it starts.

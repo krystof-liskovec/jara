@@ -15,28 +15,32 @@ import (
 	"time"
 )
 
+type deploymentUpgradeOptions struct {
+	force            bool
+	forceDowngrade   bool
+	keepCodexVersion bool
+	assumeYes        bool
+}
+
 func deploymentUpgradeCommand(c Config, args []string) error {
 	name := ""
-	forceDowngrade := false
-	keepCodexVersion := false
-	force := false
+	var options deploymentUpgradeOptions
 	for _, arg := range args {
-		if arg == "--force" {
-			force = true
-			continue
+		switch arg {
+		case "--force":
+			options.force = true
+		case "--force-downgrade":
+			options.forceDowngrade = true
+		case "--keep-codex-version":
+			options.keepCodexVersion = true
+		case "-y":
+			options.assumeYes = true
+		default:
+			if name != "" {
+				return fmt.Errorf("use jara deployment upgrade [NAME] [-y] [--force] [--force-downgrade] [--keep-codex-version]")
+			}
+			name = arg
 		}
-		if arg == "--force-downgrade" {
-			forceDowngrade = true
-			continue
-		}
-		if arg == "--keep-codex-version" {
-			keepCodexVersion = true
-			continue
-		}
-		if name != "" {
-			return fmt.Errorf("use jara deployment upgrade [NAME] [--force] [--force-downgrade] [--keep-codex-version]")
-		}
-		name = arg
 	}
 	if len(deploymentBundle()) == 0 {
 		return fmt.Errorf("this Jara CLI does not include the source bundle; reinstall it with install.sh")
@@ -68,10 +72,10 @@ func deploymentUpgradeCommand(c Config, args []string) error {
 	if err := validateRemote(deployment.Admin); err != nil {
 		return fmt.Errorf("invalid saved host connection: %w", err)
 	}
-	return upgradeGuidedHost(name, deployment, deploymentBundle(), Version, forceDowngrade, keepCodexVersion, force, os.Stdout)
+	return upgradeGuidedHost(name, deployment, deploymentBundle(), Version, options, os.Stdout)
 }
 
-func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desiredVersion string, forceDowngrade, keepCodexVersion, force bool, log io.Writer) error {
+func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desiredVersion string, options deploymentUpgradeOptions, log io.Writer) error {
 	name = deploymentName(name, saved)
 	if len(bundle) == 0 {
 		return fmt.Errorf("deployment source bundle is empty")
@@ -142,7 +146,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return err
 	}
 	targetCodexVersion := codexVersion
-	if !keepCodexVersion {
+	if !options.keepCodexVersion {
 		targetCodexVersion, err = newestStableCodex(codexVersion, latestCodex)
 		if err != nil {
 			return err
@@ -177,8 +181,8 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return err
 	}
 	if versionNewer(oldJaraVersion, desiredVersion) {
-		if !forceDowngrade {
-			updated, updateErr := offerServerClientUpdate(runDocker, container, name, desiredVersion, log)
+		if !options.forceDowngrade {
+			updated, updateErr := offerServerClientUpdate(runDocker, container, name, desiredVersion, options.assumeYes, log)
 			if updateErr != nil {
 				return updateErr
 			}
@@ -193,17 +197,23 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	if err != nil {
 		return err
 	}
-	if !admitUpdate(log, busy, force) {
+	if !admitUpdate(log, busy, options.force) {
 		return nil
 	}
-	fmt.Fprintf(log, "Upgrade Jara on %s from %s to this CLI's source bundle (%s)? ", saved.Admin.Host, oldJaraVersion, desiredVersion)
+	fmt.Fprintf(log, "Planned Jara upgrade on %s from %s to %s using this CLI's source bundle. ", saved.Admin.Host, oldJaraVersion, desiredVersion)
 	if targetCodexVersion == codexVersion {
 		fmt.Fprintf(log, "Codex remains pinned at %s.\n", codexVersion)
 	} else {
 		fmt.Fprintf(log, "Codex will update from %s to %s.\n", codexVersion, targetCodexVersion)
 	}
 	promptReader := bufio.NewReader(os.Stdin)
-	confirmed, err := askYes(promptReader, "Continue?", true)
+	confirm := func(prompt string, defaultYes bool) (bool, error) {
+		if options.assumeYes {
+			return true, nil
+		}
+		return askYes(promptReader, prompt, defaultYes)
+	}
+	confirmed, err := confirm("Continue?", true)
 	if err != nil {
 		return err
 	}
@@ -286,7 +296,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return fmt.Errorf("deployment changed during build; refusing to replace it")
 	}
 	lease := "upgrade-" + nonce
-	if admitted, gateErr := gate.beginUpdate(container, lease, force, log); gateErr != nil || !admitted {
+	if admitted, gateErr := gate.beginUpdate(container, lease, options.force, log); gateErr != nil || !admitted {
 		return gateErr
 	}
 	defer func() {
@@ -382,7 +392,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		fmt.Fprintf(log, "Upgraded Jara %s → %s and Codex %s → %s on %s.\n", oldJaraVersion, desiredVersion, codexVersion, targetCodexVersion, saved.Admin.Host)
 	}
 	if previousRemoved {
-		removeImage, promptErr := askYes(promptReader, "Remove previous image "+rollbackTag+"?", false)
+		removeImage, promptErr := confirm("Remove previous image "+rollbackTag+"?", false)
 		if promptErr != nil {
 			fmt.Fprintf(log, "Could not read cleanup choice; previous image retained as %s: %v\n", rollbackTag, promptErr)
 			return nil

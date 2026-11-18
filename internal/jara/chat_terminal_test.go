@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 func newTestChatTerminal(t *testing.T) (*chatTerminal, *bytes.Buffer) {
@@ -37,6 +39,43 @@ func typeChatKeys(t *testing.T, term *chatTerminal, data string) bool {
 		}
 	}
 	return false
+}
+
+func TestChatTerminalShiftArrowsStepReasoning(t *testing.T) {
+	term, wire := newTestChatTerminal(t)
+	term.u.effectiveModel = "test-model"
+	typeChatKeys(t, term, "draft\x1b[1;2A")
+	requests := decodeModelRequests(t, wire)
+	if len(requests) != 1 || requests[0].Method != "model/list" {
+		t.Fatalf("first Shift+Up should load the model catalog: %+v", requests)
+	}
+	models := []protocol.CodexModel{{
+		ID: "test-model", DefaultReasoningEffort: "medium",
+		SupportedReasoningEfforts: []protocol.ReasoningEffortOption{{Value: "low"}, {Value: "medium"}, {Value: "xhigh"}},
+	}}
+	if err := term.handleMessage(appMessage{ID: requests[0].ID, Result: modelPageJSON(t, models, "")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := term.u.nextReasoning; got != "xhigh" {
+		t.Fatalf("Shift+Up from the default selected %q, want xhigh", got)
+	}
+	generation := term.u.reasoningSelectionGeneration
+	typeChatKeys(t, term, "\x1b[1;2A")
+	if term.u.reasoningSelectionGeneration != generation {
+		t.Fatal("Shift+Up at the highest effort should leave the selection alone")
+	}
+	typeChatKeys(t, term, "\x1b[1;2:1B\x1b[57353;2u")
+	if got := term.u.nextReasoning; got != "low" {
+		t.Fatalf("two Shift+Down presses selected %q, want low", got)
+	}
+	if got := term.editor.Text(); got != "draft" {
+		t.Fatalf("shortcut changed the draft to %q", got)
+	}
+	typeChatKeys(t, term, "\r")
+	requests = decodeModelRequests(t, wire)
+	if len(requests) != 2 || requests[1].Method != "turn/start" || string(requests[1].Params["effort"]) != `"low"` {
+		t.Fatalf("expected the draft to start a turn with low effort: %+v", requests)
+	}
 }
 
 func TestChatTerminalRewindPicker(t *testing.T) {

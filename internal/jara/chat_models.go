@@ -241,6 +241,13 @@ func (u *chatUI) acceptChatModelPage(raw json.RawMessage) error {
 		}
 		return nil
 	}
+	if delta := u.pendingReasoningStep; delta != 0 {
+		u.pendingReasoningStep = 0
+		if err := u.stepChatReasoning(delta); err != nil {
+			u.printRole("system", err.Error()+"\n")
+		}
+		return nil
+	}
 	u.printChatModels()
 	return nil
 }
@@ -272,6 +279,7 @@ func (u *chatUI) finishChatModelList(err error) {
 		return
 	}
 	u.pickerRequested = ""
+	u.pendingReasoningStep = 0
 	u.print("\n" + u.models.fail(err))
 	if !u.busy {
 		u.print("You> ")

@@ -66,6 +66,7 @@ type chatConversationState struct {
 	nextModel                string
 	nextModelLabel           string
 	nextReasoning            string
+	pendingReasoningStep     int    // steps requested while the model catalog loads
 	lastPrompt               string // most recent prompt, for a fallback retry
 	fallbackRetried          bool   // lastPrompt was already retried on the fallback
 	promptLog                []chatPromptEntry

@@ -15,17 +15,18 @@ const (
 )
 
 type chatTerminalKeyEvent struct {
-	input        *chatEditorInput
-	diffPane     bool // toggle the changes pane
-	paneScroll   int  // rows to scroll the changes pane; negative scrolls up
-	scroll       int
-	scrollRows   int
-	returnToLive bool
-	agentStep    int  // show the next (1) or previous (-1) agent's transcript
-	autoMode     bool // Shift+Tab toggles auto mode
-	interrupt    bool
-	tap          *[2]int // column and row of a left click or tap, from zero
-	limitReached bool
+	input         *chatEditorInput
+	diffPane      bool // toggle the changes pane
+	paneScroll    int  // rows to scroll the changes pane; negative scrolls up
+	scroll        int
+	scrollRows    int
+	returnToLive  bool
+	agentStep     int // show the next (1) or previous (-1) agent's transcript
+	reasoningStep int
+	autoMode      bool // Shift+Tab toggles auto mode
+	interrupt     bool
+	tap           *[2]int // column and row of a left click or tap, from zero
+	limitReached  bool
 }
 
 type chatTerminalKeyParser struct {
@@ -180,6 +181,10 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		return &chatTerminalKeyEvent{paneScroll: chatDiffPaneScrollStep}
 	}
 	switch sequence {
+	case "\x1b[1;2A", "\x1b[1;2:1A", "\x1b[2A", "\x1b[57352;2u", "\x1b[57352;2:1u": // Shift+Up
+		return &chatTerminalKeyEvent{reasoningStep: 1}
+	case "\x1b[1;2B", "\x1b[1;2:1B", "\x1b[2B", "\x1b[57353;2u", "\x1b[57353;2:1u": // Shift+Down
+		return &chatTerminalKeyEvent{reasoningStep: -1}
 	case "\x1b[1;5B", "\x1b[1;5:1B", "\x1b[5B", "\x1b[57353;5u", "\x1b[57353;5:1u": // Ctrl+Down
 		return &chatTerminalKeyEvent{agentStep: 1}
 	case "\x1b[1;5A", "\x1b[1;5:1A", "\x1b[5A", "\x1b[57352;5u", "\x1b[57352;5:1u": // Ctrl+Up
@@ -210,9 +215,9 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 	}
 	var key chatEditorKey
 	switch sequence {
-	case "\x1b[A", "\x1bOA", "\x1b[1;2A":
+	case "\x1b[A", "\x1bOA":
 		key = chatEditorUp
-	case "\x1b[B", "\x1bOB", "\x1b[1;2B":
+	case "\x1b[B", "\x1bOB":
 		key = chatEditorDown
 	case "\x1b[C", "\x1bOC", "\x1b[1;2C":
 		key = chatEditorRight

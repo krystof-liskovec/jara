@@ -93,12 +93,56 @@ func (u *chatUI) reasoningModel() *protocol.CodexModel {
 	return nil
 }
 
-func (u *chatUI) chooseChatReasoning(value string) error {
+func (u *chatUI) canChooseChatReasoning() error {
 	if u.busy || u.turn != "" {
 		return fmt.Errorf("wait for the current turn to finish before changing reasoning effort")
 	}
 	if !u.threadReady {
 		return fmt.Errorf("open a conversation before selecting reasoning effort")
+	}
+	return nil
+}
+
+func (u *chatUI) stepChatReasoning(delta int) error {
+	if err := u.canChooseChatReasoning(); err != nil {
+		return err
+	}
+	if u.models == nil || u.models.failure != "" {
+		if err := u.startChatModelList(); err != nil {
+			return err
+		}
+	}
+	if !u.models.complete {
+		u.pendingReasoningStep += delta
+		return nil
+	}
+	model := u.reasoningModel()
+	if model == nil || len(model.SupportedReasoningEfforts) == 0 {
+		return fmt.Errorf("the selected model does not advertise reasoning effort choices")
+	}
+	options := model.SupportedReasoningEfforts
+	current := chatNearestReasoning(model, u.currentChatReasoning())
+	index := 0
+	for i, option := range options {
+		if option.Value == current {
+			index = i
+			break
+		}
+	}
+	effort := options[min(len(options)-1, max(0, index+delta))].Value
+	if effort == current {
+		return nil
+	}
+	if err := u.chooseChatReasoning(effort); err != nil {
+		return err
+	}
+	u.printRole("system", "Reasoning set to "+chatReasoningEffortLabel(effort)+" for the next and subsequent turns.\n")
+	return nil
+}
+
+func (u *chatUI) chooseChatReasoning(value string) error {
+	if err := u.canChooseChatReasoning(); err != nil {
+		return err
 	}
 	if u.models == nil || !u.models.complete {
 		return fmt.Errorf("load the model list before selecting reasoning effort")
@@ -139,16 +183,21 @@ func (u *chatUI) modelControlLabel() string {
 	return u.newConversationModelLabel()
 }
 
+func (u *chatUI) currentChatReasoning() string {
+	if u.nextReasoning != "" {
+		return u.nextReasoning
+	}
+	if u.effectiveReasoning != "" {
+		return u.effectiveReasoning
+	}
+	if model := u.reasoningModel(); model != nil {
+		return model.DefaultReasoningEffort
+	}
+	return ""
+}
+
 func (u *chatUI) reasoningControlLabel() string {
-	value := u.nextReasoning
-	if value == "" {
-		value = u.effectiveReasoning
-	}
-	if value == "" {
-		if model := u.reasoningModel(); model != nil {
-			value = model.DefaultReasoningEffort
-		}
-	}
+	value := u.currentChatReasoning()
 	if value == "" {
 		return "Default"
 	}

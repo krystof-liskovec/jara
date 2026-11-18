@@ -77,7 +77,7 @@ func TestUpgradeExplainsMissingHostConnection(t *testing.T) {
 		t.Skip("client deployment bundle required")
 	}
 	c := Config{Default: "jellyfish", Remotes: map[string]Remote{"jellyfish": {Host: "server"}}}
-	for _, args := range [][]string{nil, {"jellyfish"}} {
+	for _, args := range [][]string{nil, {"jellyfish"}, {"jellyfish", "-y"}, {"-y"}} {
 		err := deploymentUpgradeCommand(c, args)
 		if err == nil || !strings.Contains(err.Error(), "run jara setup") ||
 			!strings.Contains(err.Error(), "enable host management") ||
