@@ -87,3 +87,12 @@ func TestRPCCompressionIsTransparentAndCompatible(t *testing.T) {
 		t.Fatal("an older host would receive zstd")
 	}
 }
+
+func TestEverySSHSessionIsCompressed(t *testing.T) {
+	for _, tty := range []bool{false, true} {
+		args := strings.Join(sshArgs(Remote{Host: "work.example"}, tty), " ")
+		if strings.Count(args, "Compression=yes") != 1 {
+			t.Errorf("tty %v: %s", tty, args)
+		}
+	}
+}

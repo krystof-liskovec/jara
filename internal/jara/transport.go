@@ -29,7 +29,11 @@ func decode(s string, v any) error {
 	return json.Unmarshal(b, v)
 }
 func sshArgs(r Remote, tty bool) []string {
-	a := []string{"-o", "StrictHostKeyChecking=ask", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"}
+	// Everything compresses: sync and checkpoints move text, and terminal
+	// sessions stream redraws, while devices may be on slow or metered
+	// connections. SSH compresses packet by packet, so typing waits for
+	// nothing.
+	a := []string{"-o", "StrictHostKeyChecking=ask", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "Compression=yes"}
 	config := os.Getenv("JARA_SSH_CONFIG")
 	if config != "" {
 		a = append(a, "-F", config)
@@ -37,9 +41,7 @@ func sshArgs(r Remote, tty bool) []string {
 	if tty {
 		a = append(a, "-o", "LogLevel=ERROR", "-tt")
 	} else {
-		// Sync and checkpoints move text that compresses well; devices may be
-		// on slow or metered connections.
-		a = append(a, "-T", "-o", "Compression=yes")
+		a = append(a, "-T")
 	}
 	if r.Port != 0 {
 		a = append(a, "-p", strconv.Itoa(r.Port))
