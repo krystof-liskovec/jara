@@ -61,6 +61,7 @@ func remoteOpen(q Request) error {
 	if err := validateChatInterface(q.UserInterface); err != nil {
 		return err
 	}
+	rememberHostName(q.RemoteName)
 	if q.Handoff && q.Runtime == "" {
 		q.Runtime = handoffTarget(q.ID)
 	}

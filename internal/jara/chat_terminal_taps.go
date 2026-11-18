@@ -21,6 +21,8 @@ func (t *chatTerminal) tap(column, row int) (done bool, err error) {
 		t.openPicker(action)
 	case action == "auto":
 		t.u.toggleAutoMode()
+	case action == "remote":
+		return t.submit("/remote") // the menu of places
 	case action == "approve" || action == "deny":
 		return t.u.line("/" + action)
 	case action == "diff":

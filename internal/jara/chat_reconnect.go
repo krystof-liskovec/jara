@@ -26,7 +26,8 @@ type chatReconnectState struct {
 	reconnect     chatReconnector
 	reconnectRuns chan chatReconnectResult // nil while connected
 	reconnectStop chan struct{}
-	sessionEnded  bool // the session stopped on purpose; do not restart it
+	sessionEnded  bool   // the session stopped on purpose; do not restart it
+	moveNotice    string // shown once a move to another place connects
 }
 
 var chatReconnectDelays = []time.Duration{
@@ -67,6 +68,21 @@ func (u *chatUI) connectionLost(cause error) bool {
 	if u.sessionEnded {
 		return false
 	}
+	u.startReconnect(u.reconnect, "Reconnecting", "Connection to the Jara session was lost ("+chatText(cause.Error())+"). Reconnecting; prompts you send wait in the queue. /quit stops waiting.\n")
+	return true
+}
+
+// moveConnection moves the window to another place's session: connect opens
+// it now, and later reconnects use later. The old connection was told to
+// hand over.
+func (u *chatUI) moveConnection(connect, later chatReconnector, label, message, notice string) {
+	u.reconnect, u.moveNotice = later, notice
+	u.startReconnect(connect, label, message)
+}
+
+// startReconnect leaves the current connection and connects again with
+// connect, retrying with backoff.
+func (u *chatUI) startReconnect(connect chatReconnector, label, message string) {
 	old := u.c
 	go old.close()
 	u.c = offlineChatConnection()
@@ -74,13 +90,12 @@ func (u *chatUI) connectionLost(cause error) bool {
 	u.pendingTurnModels = map[string]chatTurnRequest{}
 	u.items = map[string]json.RawMessage{}
 	u.chatTurnState = chatTurnState{busy: true}
-	u.setActivityLabel("Reconnecting")
+	u.setActivityLabel(label)
 	u.setAgentState("starting")
-	u.printRole("system", "Connection to the Jara session was lost ("+chatText(cause.Error())+"). Reconnecting; prompts you send wait in the queue. /quit stops waiting.\n")
+	u.printRole("system", message)
 	u.reconnectRuns = make(chan chatReconnectResult, 1)
 	u.reconnectStop = make(chan struct{})
-	go runChatReconnect(u.reconnect, u.thread, u.reconnectRuns, u.reconnectStop)
-	return true
+	go runChatReconnect(connect, u.thread, u.reconnectRuns, u.reconnectStop)
 }
 
 func runChatReconnect(reconnect chatReconnector, thread string, results chan<- chatReconnectResult, stop <-chan struct{}) {
@@ -118,6 +133,7 @@ func (u *chatUI) acceptReconnect(result chatReconnectResult) error {
 	}
 	u.reconnectRuns, u.reconnectStop = nil, nil
 	u.c = result.conn
+	noteChatRunner(result.ready)
 	u.connected = result.ready.Initialized
 	u.attachedTurnActive = result.ready.ActiveTurn
 	u.resumeAtStart = false
@@ -136,6 +152,9 @@ func (u *chatUI) acceptReconnect(result chatReconnectResult) error {
 	}
 	if result.ready.Notice != "" {
 		u.afterHistory = result.ready.Notice + "\n"
+	}
+	if u.moveNotice != "" {
+		u.afterHistory, u.moveNotice = u.moveNotice+"\n", ""
 	}
 	return u.initializeChatServer()
 }

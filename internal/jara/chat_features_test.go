@@ -189,6 +189,25 @@ func TestModelAndReasoningShareOneControl(t *testing.T) {
 	}
 }
 
+func TestControlsNameTheHostRunningTheAgent(t *testing.T) {
+	model := chatViewModel{ControlModel: "GPT-5.5", ControlReasoning: "High", ControlContext: "75% left"}
+	if screen := strings.Join(renderChatView(model, 120, 20, menuColorsForTerminal(), false).Lines, "\n"); strings.Contains(screen, "⇄") {
+		t.Fatalf("on this device no host shows:\n%s", screen)
+	}
+	model.ControlHost = "jellyfish"
+	frame := renderChatView(model, 120, 20, menuColorsForTerminal(), false)
+	row := len(frame.Lines) - 1
+	line := frame.Lines[row]
+	if !strings.Contains(line, "◔ Context 75% left  ⇄ jellyfish  ⏵⏵ Auto mode on") || frame.target(row, uniseg.StringWidth(line[:strings.Index(line, "jellyfish")])) != "remote" {
+		t.Fatalf("controls %q, targets %+v", line, frame.Targets)
+	}
+	// On a short phone screen it rides in the input border with the rest.
+	short := renderChatView(model, 60, 12, menuColorsForTerminal(), false)
+	if bottom := short.Lines[len(short.Lines)-1]; !strings.Contains(bottom, "⇄ jellyfish") {
+		t.Fatalf("short screen border %q", bottom)
+	}
+}
+
 func TestMenusHaveTheirOwnBackground(t *testing.T) {
 	t.Setenv("NO_COLOR", "")
 	t.Setenv("TERM", "xterm-256color")

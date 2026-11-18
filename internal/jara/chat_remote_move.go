@@ -12,17 +12,20 @@ import (
 )
 
 // /remote moves this folder's conversation to another place: this device or
-// a remote host. The window closes, the old place hands the workspace over,
-// and Jara opens again in the same terminal where the conversation now runs.
+// a remote host. The window stays open: the old place hands the workspace
+// over, and the window reconnects to the new place's session the way it
+// reconnects after a dropped connection, reloading the conversation.
 //
 //   - This device to the folder's host: the local session saves a final
-//     checkpoint and frees the workspace (jara/release); then jara
-//     --run-remote continues there.
-//   - The host to this device: the window detaches and jara --local claims
-//     the workspace back once the host is idle.
-//   - A host the folder is not attached to, while the agent runs here: jara
-//     --remote NAME attaches it there, sending the conversations along; the
-//     agent keeps running here until /remote moves it.
+//     checkpoint and frees the workspace (jara/release); once it ended, the
+//     window joins the host's session, which continues the conversation.
+//   - The host to this device: the window detaches and claims the workspace
+//     here, catching up from the host's newest checkpoint; while the host is
+//     still busy it watches live until the host hands back.
+//   - A host the folder is not attached to, while the agent runs here: Jara
+//     opens again with --remote NAME, which attaches the folder there (it may
+//     ask to clone), sending the conversations along; the agent keeps
+//     running here until /remote moves it.
 //   - One host straight to another is refused: the newest state lives on the
 //     first host, so the conversation comes to this device in between.
 
@@ -35,8 +38,17 @@ type chatPlacement struct {
 
 var chatPlace chatPlacement
 
-// chatMove is the reopen /remote asked for; Run starts it once the window
-// has closed.
+// chatMoves is what the client knows when it opens the window: how to reach
+// this folder's session on this device and on its host.
+var chatMoves struct {
+	here        func(thread string, explicit bool) (*appConnection, remoteChatServerReady, error) // nil when this device cannot run the agent
+	hereSession string
+	host        chatReconnector // nil without a host
+	hostName    string
+}
+
+// chatMove is the reopen /remote asked for to attach another host; Run
+// starts it once the window has closed.
 var chatMove *chatMoveRequest
 
 type chatMoveRequest struct {
@@ -90,11 +102,34 @@ func (u *chatUI) moveConversation(c Config, target string) (bool, error) {
 	case target == place.remote:
 		return refuse("The conversation already runs " + chatPlaceName(target) + ".")
 	case target == "":
-		chatMove = &chatMoveRequest{args: []string{"--local"}}
-		u.printRole("system", "Moving the conversation to this device…\n")
-		return true, u.sendPersistentExit("jara/detach")
+		here := chatMoves.here
+		if here == nil {
+			return refuse("This device cannot run the agent here: it needs codex on PATH and the Jara interface.")
+		}
+		if err := u.sendPersistentExit("jara/detach"); err != nil {
+			return false, err
+		}
+		chatPlace.remote, chatPlace.session = "", chatMoves.hereSession
+		u.moveConnection(
+			func(thread string) (*appConnection, remoteChatServerReady, error) { return here(thread, true) },
+			func(thread string) (*appConnection, remoteChatServerReady, error) { return here(thread, false) },
+			"Moving to this device", "Moving the conversation to this device…\n", "The conversation now runs on this device.")
+		return false, nil
 	case place.remote != "":
 		return refuse("The conversation runs on " + place.remote + ". Bring it to this device first (/remote here), then move it to " + target + ".")
+	case target == c.Bindings[place.root].Remote && chatMoves.host != nil && chatMoves.hostName == target:
+		if err := u.sendPersistentExit("jara/release"); err != nil {
+			return false, err
+		}
+		host, handingOver := chatMoves.host, place.session
+		chatPlace.remote, chatPlace.session = target, ""
+		u.moveConnection(
+			func(thread string) (*appConnection, remoteChatServerReady, error) {
+				waitForChatSessionEnd(handingOver, 30*time.Second) // its final checkpoint first
+				return host(thread)
+			}, host,
+			"Moving to "+target, "Moving the conversation to "+target+"…\n", "The conversation now runs on "+target+".")
+		return false, nil
 	case target == c.Bindings[place.root].Remote:
 		chatMove = &chatMoveRequest{args: []string{"--run-remote"}, waitFor: place.session}
 		u.printRole("system", "Moving the conversation to "+target+"…\n")
@@ -153,16 +188,27 @@ func chatRemotePickerChoices(u *chatUI, selected int) []chatCompletionChoice {
 	return choices
 }
 
+// waitForChatSessionEnd waits until this device's session id ended, as it
+// does after handing the workspace over, or until timeout.
+func waitForChatSessionEnd(id string, timeout time.Duration) {
+	if id == "" {
+		return
+	}
+	paths, err := chatDaemonPathSet(id)
+	if err != nil {
+		return
+	}
+	for deadline := time.Now().Add(timeout); chatDaemonPID(paths) != 0 && time.Now().Before(deadline); {
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
 // reopen starts Jara where the conversation moved, in this terminal, once
 // this device's session has handed the workspace over.
 func (m *chatMoveRequest) reopen() error {
 	if m.waitFor != "" {
-		if paths, err := chatDaemonPathSet(m.waitFor); err == nil {
-			fmt.Fprintln(os.Stderr, "Handing the conversation over…")
-			for deadline := time.Now().Add(30 * time.Second); chatDaemonPID(paths) != 0 && time.Now().Before(deadline); {
-				time.Sleep(200 * time.Millisecond)
-			}
-		}
+		fmt.Fprintln(os.Stderr, "Handing the conversation over…")
+		waitForChatSessionEnd(m.waitFor, 30*time.Second)
 	}
 	self, err := os.Executable()
 	if err != nil {
@@ -176,4 +222,44 @@ func (m *chatMoveRequest) reopen() error {
 		return fmt.Errorf("jara %s exited with status %s", strings.Join(m.args, " "), strconv.Itoa(exit.ExitCode()))
 	}
 	return err
+}
+
+// noteChatMoves records how the window opening now can reach this folder's
+// session on its host, and on this device when it can run the agent.
+func noteChatMoves(remote Remote, name string, local localRunnerOpen, q Request, hereAvailable bool) {
+	host := q
+	host.Reconnect = !q.Worktree
+	chatMoves.host = func(thread string) (*appConnection, remoteChatServerReady, error) {
+		return reconnectRemoteJaraClient(remote, host, thread)
+	}
+	chatMoves.hostName, chatMoves.here, chatMoves.hereSession = name, nil, ""
+	if !hereAvailable || q.Worktree {
+		return
+	}
+	here, err := localRunnerRequest(local, q)
+	if err != nil {
+		return
+	}
+	chatMoves.hereSession = here.ID
+	chatMoves.here = func(thread string, explicit bool) (*appConnection, remoteChatServerReady, error) {
+		return connectLocalRunner(local, chatRequestFor(here, thread), explicit)
+	}
+}
+
+// chatHereRunner marks a connection to this device's own session.
+const chatHereRunner = "\x00here"
+
+// noteChatRunner follows where the agent runs when a connection says so:
+// here, or on the host or device this window watches until it hands back.
+func noteChatRunner(ready remoteChatServerReady) {
+	switch ready.Runner {
+	case "":
+	case chatHereRunner:
+		chatPlace.remote = ""
+		if chatPlace.session == "" {
+			chatPlace.session = chatMoves.hereSession
+		}
+	default:
+		chatPlace.remote = ready.Runner
+	}
 }

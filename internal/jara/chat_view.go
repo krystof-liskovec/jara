@@ -37,6 +37,7 @@ type chatViewModel struct {
 	ControlReasoning  string
 	ControlContext    string // context meter, "" when unknown
 	ControlAutoOff    bool   // auto mode is off: approvals ask the user
+	ControlHost       string // the remote host running the agent; "" on this device
 	ApprovalPending   bool   // show the Allow/Deny row
 	ApprovalCountdown string // auto mode's "Auto-allow in 2:59", if any
 	ScrollOffset      int
@@ -97,12 +98,20 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	autoMode := chatAutoModeLabel(model.ControlAutoOff)
 	autoControl := "  " + autoMode + keyLabel("Shift+Tab")
 	modelControl += keyLabel("F2/F3")
-	controls := modelControl + contextMeter + autoControl
+	hostControl := "" // where the agent runs, when that is a remote host
+	if host := compactChatModelText(textutil.SanitizeText(model.ControlHost), 24); host != "" {
+		hostControl = "⇄ " + host
+	}
+	extras := contextMeter
+	if hostControl != "" {
+		extras += "  " + hostControl
+	}
+	controls := modelControl + extras + autoControl
 	controlLines := []string{controls}
 	if uniseg.StringWidth(" "+controls) > width {
 		controlLines = []string{modelControl + autoControl}
-		if contextMeter != "" {
-			controlLines = append(controlLines, strings.TrimSpace(contextMeter))
+		if extras != "" {
+			controlLines = append(controlLines, strings.TrimSpace(extras))
 		}
 	}
 	if short {
@@ -235,6 +244,9 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		if meter := textutil.SanitizeText(model.ControlContext); meter != "" {
 			parts = append(parts, meter)
 		}
+		if hostControl != "" {
+			parts = append(parts, hostControl)
+		}
 		autoMode, _, _ = strings.Cut(autoMode, " ") // just the glyph fits
 		parts = append(parts, autoMode)
 		sendLabel = " " + strings.Join(parts, " · ") + " "
@@ -245,6 +257,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.addTarget(row, bottom, controlModel, "model")
 		frame.addTarget(row, bottom, controlReasoning, "reasoning")
 		frame.addTarget(row, bottom, autoMode, "auto")
+		frame.addTarget(row, bottom, hostControl, "remote")
 	}
 	row++
 	for _, control := range controlLines {
@@ -253,6 +266,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.addTarget(row, line, "◈ "+controlModel, "model")
 		frame.addTargetAfter(row, line, "◈ "+controlModel, controlReasoning, "reasoning")
 		frame.addTarget(row, line, autoMode, "auto")
+		frame.addTarget(row, line, hostControl, "remote")
 		row++
 	}
 

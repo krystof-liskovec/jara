@@ -14,6 +14,11 @@ func init() {
 		commandHelp[key] = entry
 	}
 	addHelpExamples("root", "jara --run-remote", "jara runner status")
+	commandHelp["config set host-name"] = helpEntry{
+		usage:    "jara config set host-name NAME|auto",
+		summary:  "Run on a host. Names it in the controls of chat windows that run on it, as after ssh and jara connect. Without it the host uses the name your Jara client calls it by, learned when you open sessions there; auto returns to that.",
+		examples: []string{"jara config set host-name jellyfish", "jara config set host-name auto"},
+	}
 	commandHelp["remote order"] = helpEntry{
 		usage:    "jara remote order [NAME...]",
 		summary:  "Show or set the ranking of remote hosts; the first is the default and primary host. Unlisted remotes keep their order after the named ones.",

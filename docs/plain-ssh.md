@@ -13,6 +13,12 @@ same persistent Codex terminals you use from your laptop.
    the [deployment guide](../README.md#deploy-on-a-linux-docker-host).
 3. Connect and run `jara connect` to browse workspaces and running sessions.
 
+Conversations opened this way show the host's name in their controls (`⇄
+jellyfish`). The host learns it from your Jara client, which sends the name
+you gave the host during `jara setup` or `jara remote add`, and whenever it
+opens a session there; on a host only ever reached directly, set it with
+`jara config set host-name NAME` on the host.
+
 For direct access to the menu whenever you connect, set the host's **Startup
 Command** to `jara connect`. Termius documents startup snippets in its
 [snippets guide](https://docs.termius.com/terminal/snippets.md).

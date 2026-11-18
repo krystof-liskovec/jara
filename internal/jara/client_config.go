@@ -110,6 +110,9 @@ func configCommand(c *Config, args []string) error {
 	if len(args) >= 3 && args[0] == "set" && args[1] == "agent" {
 		return agentConfigCommand(c, args[2:])
 	}
+	if len(args) == 3 && args[0] == "set" && args[1] == "host-name" {
+		return setHostName(args[2]) // run on the host it names
+	}
 	if len(args) == 4 && args[0] == "set" && args[1] == "editor-command" {
 		if !nameRE.MatchString(args[2]) {
 			return fmt.Errorf("invalid editor name")

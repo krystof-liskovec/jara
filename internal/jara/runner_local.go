@@ -91,17 +91,16 @@ type localRunnerOpen struct {
 // moves back here as soon as that machine is idle.
 // Without a remote (o.remoteName empty) the session simply runs here.
 func openLocalRunner(o localRunnerOpen, q Request) error {
-	id, err := localSessionID(o.root, o.remoteName, o.binding.Workspace)
+	q, err := localRunnerRequest(o, q)
 	if err != nil {
 		return err
 	}
-	q.UserInterface, q.ID, q.Root, q.RemoteName, q.Workspace, q.Runner =
-		"jara", id, o.root, o.remoteName, o.binding.Workspace, runnerDeviceName()
-	chatPlace = chatPlacement{root: o.root, session: id} // the agent runs here
+	chatPlace = chatPlacement{root: o.root, session: q.ID} // the agent runs here
 	connection, ready, err := connectLocalRunner(o, q, true)
 	if err != nil {
 		return err
 	}
+	noteChatRunner(ready) // or another machine runs it and this window watches
 	conversation := q.Conversation
 	if conversation == "" && !q.New && !q.Resume && !q.ResumeLatest {
 		conversation = ready.Conversation
@@ -112,13 +111,38 @@ func openLocalRunner(o localRunnerOpen, q Request) error {
 		resumeAtStart: q.Conversation == "" && (q.Resume || q.ResumeLatest),
 		resumeLatest:  q.Conversation == "" && q.ResumeLatest,
 		reconnect: func(thread string) (*appConnection, remoteChatServerReady, error) {
-			again := q
-			again.Conversation, again.New, again.Resume, again.ResumeLatest = thread, false, false, false
-			return connectLocalRunner(o, again, false)
+			return connectLocalRunner(o, chatRequestFor(q, thread), false)
 		},
 		notice: ready.Notice,
 	}
 	return chatLoopWithOptions(connection, os.Stdin, os.Stdout, options)
+}
+
+// localRunnerRequest fills in q for the folder's session on this device.
+func localRunnerRequest(o localRunnerOpen, q Request) (Request, error) {
+	id, err := localSessionID(o.root, o.remoteName, o.binding.Workspace)
+	if err != nil {
+		return q, err
+	}
+	q.UserInterface, q.ID, q.Root, q.RemoteName, q.Workspace, q.Runner =
+		"jara", id, o.root, o.remoteName, o.binding.Workspace, runnerDeviceName()
+	return q, nil
+}
+
+// chatRequestFor turns an opening request into one that continues thread.
+func chatRequestFor(q Request, thread string) Request {
+	q.Conversation, q.New, q.Resume, q.ResumeLatest = thread, false, false, false
+	q.Prompt, q.BackgroundPromptID = "", ""
+	return q
+}
+
+// localRunnerAvailable reports whether this device can run agents itself.
+func localRunnerAvailable() bool {
+	if runtime.GOOS == "windows" {
+		return false
+	}
+	_, err := exec.LookPath("codex")
+	return err == nil
 }
 
 // connectLocalRunner connects to this device's session, starting it after
@@ -207,6 +231,7 @@ func readyLocalRunner(conn net.Conn, notice string) (*appConnection, remoteChatS
 	if notice != "" {
 		ready.Notice = notice
 	}
+	ready.Runner = chatHereRunner
 	return app, ready, nil
 }
 
@@ -229,6 +254,10 @@ func watchRunner(o localRunnerOpen, q Request, runner string) (*appConnection, r
 		return nil, ready, err
 	}
 	ready.Notice = fmt.Sprintf("%s is running this conversation; you are watching it live. It moves to this device when %s is idle.", runner, runner)
+	ready.Runner = runner
+	if runner == runnerHub {
+		ready.Runner = o.remoteName // the host, by the name you know it as
+	}
 	if runner != runnerHub {
 		ready.Notice = fmt.Sprintf("%s is running this conversation; you are watching it live. Run jara --local to move it here.", runner)
 	}

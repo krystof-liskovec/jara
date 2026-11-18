@@ -331,6 +331,7 @@ func run(args []string) error {
 		return err
 	}
 	var openLocal func(Request) error
+	var b Binding // the folder's workspace on the remote, found below
 	openSession := func(q Request) error {
 		if (*runLocal || *takeOver) && openLocal == nil {
 			return fmt.Errorf("--local needs a workspace on the remote: open a Git repository or use --copy")
@@ -358,6 +359,8 @@ func run(args []string) error {
 			q.Prompt = prompt
 			q.ResumeLatest = *resumeLatest
 		}
+		noteChatMoves(r, chosen, localRunnerOpen{remote: r, remoteName: chosen, binding: b, root: root, isGit: isGit, includeIgnored: *includeIgnored},
+			q, localEligible && localRunnerAvailable())
 		if openLocal != nil {
 			// Running here is the default only where the host supports it.
 			if err := openLocal(q); !errors.Is(err, errRunnerUnsupported) || *runLocal || *takeOver {
@@ -381,7 +384,8 @@ func run(args []string) error {
 	}
 	legacyKey := workspaceAssociationKey(chosen, root, "")
 	key := workspaceAssociationKey(chosen, root, origin)
-	b, exists := c.Associations[key]
+	var exists bool
+	b, exists = c.Associations[key]
 	if !exists && origin != "" {
 		if legacy, ok := c.Associations[legacyKey]; ok {
 			if existing, matches := workspaceForOrigin(r, legacy.Workspace, origin); matches && existing.Ready {

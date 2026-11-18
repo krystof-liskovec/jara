@@ -60,6 +60,7 @@ func remoteRPC(q Request) error {
 		}
 		return applyUpdate(root, u)
 	case "doctor":
+		rememberHostName(q.RemoteName) // setup, remote add and doctor name the host
 		d := Diagnosis{Protocol: Protocol, Version: Version, Root: fsutil.DataRoot(), OK: true}
 		identity, identityErr := readGitIdentity()
 		if identityErr != nil || identity.Name == "" || identity.Email == "" {

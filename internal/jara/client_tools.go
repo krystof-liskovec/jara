@@ -21,7 +21,8 @@ func diagnoseRemote(remoteName string, r Remote) (Diagnosis, error) {
 		return Diagnosis{}, fmt.Errorf("install the OpenSSH client: %w", err)
 	}
 	var d Diagnosis
-	if err := rpc(r, Request{Op: "doctor"}, nil, &d); err != nil {
+	// The name tells the host what you call it (see chat_host_name.go).
+	if err := rpc(r, Request{Op: "doctor", RemoteName: remoteName}, nil, &d); err != nil {
 		return d, err
 	}
 	if d.Protocol != Protocol {
