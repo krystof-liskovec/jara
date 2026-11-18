@@ -9,6 +9,7 @@ import (
 
 	"krystof.liskovec/jara/internal/agentrouter"
 	"krystof.liskovec/jara/internal/protocol"
+	"github.com/rivo/uniseg"
 )
 
 func TestChatMentionCompletion(t *testing.T) {
@@ -163,6 +164,24 @@ func TestChatControlsShowTheContextMeter(t *testing.T) {
 	frame := renderChatView(chatViewModel{ControlModel: "GPT", ControlReasoning: "high", ControlContext: "75% left"}, 100, 20, menuColorsForTerminal(), false)
 	if !strings.Contains(strings.Join(frame.Lines, "\n"), "◔ Context 75% left") {
 		t.Fatalf("controls:\n%s", strings.Join(frame.Lines, "\n"))
+	}
+}
+
+func TestModelAndReasoningShareOneControl(t *testing.T) {
+	model := chatViewModel{ControlModel: "GPT-5.5", ControlReasoning: "High", ControlContext: "75% left"}
+	frame := renderChatView(model, 100, 20, menuColorsForTerminal(), false)
+	row := len(frame.Lines) - 1
+	line := frame.Lines[row]
+	if !strings.HasPrefix(line, " ◈ GPT-5.5 · High (F2/F3)  ◔ Context 75% left") || strings.Contains(line, "Reasoning") {
+		t.Fatalf("controls %q", line)
+	}
+	if frame.target(row, strings.Index(line, "GPT")) != "model" || frame.target(row, uniseg.StringWidth(line[:strings.Index(line, "High")])) != "reasoning" {
+		t.Fatalf("taps %+v on %q", frame.Targets, line)
+	}
+	// A change waiting for the next turn is said once.
+	model.ControlModel, model.ControlReasoning = "GPT-5.5 · next turn", "Low · next turn"
+	if line = renderChatView(model, 100, 20, menuColorsForTerminal(), false).Lines[row]; !strings.Contains(line, "◈ GPT-5.5 · Low · next turn (F2/F3)") {
+		t.Fatalf("next turn %q", line)
 	}
 }
 

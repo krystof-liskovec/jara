@@ -119,12 +119,12 @@ func expandChatTranscriptLine(raw string, width int, role string, code string) (
 		return []chatViewLine{{kind: "body", role: role}}, inCode
 	}
 	if prefix, body, ok := chatMarkdownHeading(raw); ok {
-		return wrapChatLine(body, width, prefix, "   ", "heading", role, false), inCode
+		return wrapChatProse(body, width, prefix, "   ", "heading", role), inCode
 	}
 	if prefix, body, ok := chatMarkdownBullet(raw); ok {
-		return wrapChatLine(body, width, prefix, "    ", "bullet", role, false), inCode
+		return wrapChatProse(body, width, prefix, "    ", "bullet", role), inCode
 	}
-	return wrapChatLine(raw, width, "  ", "  ", "body", role, false), inCode
+	return wrapChatProse(raw, width, "  ", "  ", "body", role), inCode
 }
 
 func chatMarkdownHeading(line string) (prefix, body string, ok bool) {

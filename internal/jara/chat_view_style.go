@@ -14,11 +14,18 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 	if !color || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
 		return plain
 	}
-	bg, fg, bold := palette.canvas, palette.text, ""
+	bg, fg, bold := chatViewLineStyle(kind, role, selected, palette)
+	return menuBG(bg) + menuFG(fg) + bold + plain + "\x1b[0m"
+}
+
+// chatViewLineStyle returns a row's background and text colors, and the
+// bold sequence when the row is bold.
+func chatViewLineStyle(kind, role string, selected bool, palette menuPalette) (bg, fg, bold string) {
+	bg, fg = palette.canvas, palette.text
 	switch kind {
 	case "message-gap":
 		bg = palette.canvas
-	case "footer", "scroll", "empty":
+	case "scroll", "empty":
 		fg = palette.muted
 	case "welcome-space":
 		bg = palette.canvas
@@ -82,6 +89,5 @@ func paintChatViewLine(text, kind, role string, selected bool, width int, palett
 			fg, bold = palette.accent, "\x1b[1m"
 		}
 	}
-	line := menuBG(bg) + menuFG(fg) + bold + plain
-	return line + "\x1b[0m"
+	return bg, fg, bold
 }

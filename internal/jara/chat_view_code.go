@@ -75,6 +75,9 @@ func paintChatTranscriptLine(lead string, line chatViewLine, width int, palette 
 	if len(line.spans) == 0 || !color || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" || line.codeStart > len(line.text) {
 		return paintChatViewLine(fitChatView(text, width), line.kind, line.role, false, width, palette, color)
 	}
+	if !strings.HasPrefix(line.kind, "code") {
+		return paintChatInline(lead+line.text[:line.codeStart], line, width, palette)
+	}
 	bg, fg := chatCodeLineColors(line.kind, palette)
 	return paintChatSyntax(lead+line.text[:line.codeStart], line.spans, width, bg, fg, palette.text, "", chatColorIsLight(palette.canvas))
 }

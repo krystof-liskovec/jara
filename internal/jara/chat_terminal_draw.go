@@ -56,7 +56,7 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 		transcriptWidth = width
 	}
 	suggestions := t.suggestions()
-	hints, queueLines, queueEditNumber := chatTerminalHints(u, editor, t.queueEditor, t.picker, t.sessionPicker, suggestions, paneWidth > 0)
+	queueLines, queueEditNumber := chatTerminalQueue(u, t.queueEditor)
 	activity, elapsed := chatTerminalActivity(u, now)
 	transcript := t.agentTranscriptLines(transcriptWidth)
 	if transcript == nil {
@@ -78,7 +78,7 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 		ControlAutoOff:    u.manualApprovals,
 		ApprovalPending:   len(u.approvals) > 0,
 		ApprovalCountdown: u.approvalCountdown(now),
-		Hints:             hints, Motion: t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
+		Motion:            t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
 		Mark: chatWelcomeMark(t.motion, now),
 	}, width, height, t.palette, color)
 	if paneWidth > 0 {

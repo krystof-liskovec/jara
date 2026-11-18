@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"krystof.liskovec/jara/internal/protocol"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 func newTestChatTerminal(t *testing.T) (*chatTerminal, *bytes.Buffer) {
@@ -148,28 +149,24 @@ func rawChatRequests(wire *bytes.Buffer) []rawChatRequest {
 	}
 }
 
-func TestChatFooterLeavesOutAlwaysAvailableKeys(t *testing.T) {
+func TestChatScreenHasNoHintRow(t *testing.T) {
 	term, _ := newTestChatTerminal(t)
-	footer := func() string {
-		frame := term.frame(120, 30, time.Now())
-		return frame.Lines[len(frame.Lines)-1]
-	}
-	removed := []string{"Shift+drag", "PgUp/Dn/wheel", "Shift+Enter", "Enter send", "Ctrl+C", "Tab accept"}
-	for _, hint := range removed {
-		if strings.Contains(footer(), hint) {
-			t.Fatalf("idle footer shows %q: %q", hint, footer())
-		}
-	}
+	term.u.diff.record([]protocol.FileChange{{Path: "a.go", Diff: "+a\n"}}, false)
 	for range 40 {
 		term.transcript.WriteChatRole("assistant", "line\n")
 	}
-	if got := footer(); !strings.Contains(got, "↑ older") {
-		t.Fatalf("a long transcript still marks older lines: %q", got)
-	}
-	for _, hint := range removed {
-		if strings.Contains(footer(), hint) {
-			t.Fatalf("scrolled footer shows %q: %q", hint, footer())
+	frame := term.frame(100, 30, time.Now())
+	screen := strings.Join(frame.Lines, "\n")
+	for _, gone := range []string{"Message", "Enter send", "Tab ", "F4 ", "older", "Ctrl+C"} {
+		if strings.Contains(screen, gone) {
+			t.Fatalf("screen shows %q:\n%s", gone, screen)
 		}
+	}
+	// The input box sits right above the controls, which end the screen.
+	rows := strings.Split(textutil.TerminalEscapes.ReplaceAllString(screen, ""), "\n")
+	last := len(rows) - 1
+	if !strings.Contains(rows[last], "◈ ") || !strings.HasPrefix(rows[last-1], "╰─") || !strings.HasPrefix(rows[last-3], "╭─") {
+		t.Fatalf("bottom rows:\n%s", strings.Join(rows[last-3:], "\n"))
 	}
 }
 

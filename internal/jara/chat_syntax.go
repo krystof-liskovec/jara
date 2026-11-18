@@ -20,6 +20,7 @@ import (
 type chatSyntaxSpan struct {
 	text  string
 	token chroma.TokenType
+	style chatInlineStyle // inline markdown in prose rows
 }
 
 const chatSyntaxCacheLimit = 32768 // above the changes pane maximum of 30 files × 400 lines
@@ -116,7 +117,7 @@ func wrapChatSyntaxSpans(spans []chatSyntaxSpan, width int) [][]chatSyntaxSpan {
 		var current strings.Builder
 		flush := func() {
 			if current.Len() > 0 {
-				rows[len(rows)-1] = append(rows[len(rows)-1], chatSyntaxSpan{text: current.String(), token: span.token})
+				rows[len(rows)-1] = append(rows[len(rows)-1], chatSyntaxSpan{text: current.String(), token: span.token, style: span.style})
 				current.Reset()
 			}
 		}

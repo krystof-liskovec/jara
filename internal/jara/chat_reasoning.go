@@ -199,7 +199,7 @@ func (u *chatUI) currentChatReasoning() string {
 func (u *chatUI) reasoningControlLabel() string {
 	value := u.currentChatReasoning()
 	if value == "" {
-		return "Default"
+		return "Default reasoning" // beside the model, plain "Default" would read as its name
 	}
 	label := chatReasoningEffortLabel(value)
 	if u.nextReasoning != "" {

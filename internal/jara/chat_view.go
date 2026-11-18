@@ -1,7 +1,6 @@
 package jara
 
 import (
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,7 +30,7 @@ type chatViewModel struct {
 	QueuedPrompts     []chatViewLine
 	Agents            []chatViewLine // the subagent strip
 	AgentTargets      []string       // agent shown by each strip line, for taps
-	ComposerTitle     string         // replaces " Message " in the input border
+	ComposerTitle     string         // titles the input border, such as the subagent written to
 	QueueEditing      bool
 	QueueEditNumber   int
 	ControlModel      string
@@ -41,7 +40,6 @@ type chatViewModel struct {
 	ApprovalPending   bool   // show the Allow/Deny row
 	ApprovalCountdown string // auto mode's "Auto-allow in 2:59", if any
 	ScrollOffset      int
-	Hints             []string
 	Motion            bool   // animations enabled
 	Tick              int    // shimmer frame
 	Mark              string // welcome mark glyph
@@ -81,17 +79,13 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	// Phones: with the keyboard open the screen is short, so the chrome
 	// shrinks to one header row and the controls move into the input border.
 	short, narrow := height < chatShortScreenRows, width < chatNarrowColumns
-	footerRows := 1
-	if short {
-		footerRows = 0
-	}
 	keyLabel := func(key string) string {
 		if narrow {
 			return "" // phone keyboards have no function keys; tap instead
 		}
 		return " (" + key + ")"
 	}
-	controlModel := compactChatModelText(textutil.SanitizeText(model.ControlModel), 24)
+	controlModel, modelControl := chatModelControl(compactChatModelText(textutil.SanitizeText(model.ControlModel), 24), compactChatModelText(textutil.SanitizeText(model.ControlReasoning), 20))
 	controlReasoning := compactChatModelText(textutil.SanitizeText(model.ControlReasoning), 20)
 	contextMeter := ""
 	if model.ControlContext != "" {
@@ -99,10 +93,14 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 	autoMode := chatAutoModeLabel(model.ControlAutoOff)
 	autoControl := "  " + autoMode + keyLabel("Shift+Tab")
-	controls := "◈ Model " + controlModel + keyLabel("F2") + "  ◉ Reasoning " + controlReasoning + keyLabel("F3") + contextMeter + autoControl
+	modelControl += keyLabel("F2/F3")
+	controls := modelControl + contextMeter + autoControl
 	controlLines := []string{controls}
 	if uniseg.StringWidth(" "+controls) > width {
-		controlLines = []string{"◈ Model " + controlModel + keyLabel("F2") + autoControl, "◉ Reasoning " + controlReasoning + keyLabel("F3") + contextMeter}
+		controlLines = []string{modelControl + autoControl}
+		if contextMeter != "" {
+			controlLines = append(controlLines, strings.TrimSpace(contextMeter))
+		}
 	}
 	if short {
 		controlLines = nil
@@ -115,10 +113,10 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	if len(model.QueuedPrompts) > 0 {
 		queueReserve = 1
 	}
-	maxInputRows := max(1, min(4, height-footerRows-controlRows-approvalRows-2-queueReserve))
+	maxInputRows := max(1, min(4, height-controlRows-approvalRows-2-queueReserve))
 	inputRows := max(1, min(maxInputRows, len(composerLines)))
 	composerRows := inputRows + 2
-	spare := max(0, height-footerRows-controlRows-approvalRows-composerRows)
+	spare := max(0, height-controlRows-approvalRows-composerRows)
 	queueRows := min(min(chatQueueViewRowLimit, len(model.QueuedPrompts)), spare)
 	agentLimit := len(model.Agents)
 	if short {
@@ -146,7 +144,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	} else if short {
 		transcript = collapseChatBlankLines(transcript)
 	}
-	visibleTranscript, clippedAbove, clippedBelow := chatTranscriptWindow(transcript, transcriptRows, model.ScrollOffset)
+	visibleTranscript, _, _ := chatTranscriptWindow(transcript, transcriptRows, model.ScrollOffset)
 	frame.TranscriptRows = transcriptRows
 
 	row := 0
@@ -227,7 +225,10 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 	if short {
 		// The controls ride in the bottom border: tap the model or reasoning.
-		parts := []string{strings.TrimSpace(sendLabel), controlModel, controlReasoning}
+		parts := []string{controlModel, controlReasoning}
+		if label := strings.TrimSpace(sendLabel); label != "" {
+			parts = append([]string{label}, parts...)
+		}
 		if meter := textutil.SanitizeText(model.ControlContext); meter != "" {
 			parts = append(parts, meter)
 		}
@@ -246,13 +247,10 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	for _, control := range controlLines {
 		line := " " + fitChatView(control, width-2)
 		frame.Lines[row] = paintChatViewLine(line, "controls", "", false, width, palette, color)
-		frame.addTarget(row, line, "◈ Model "+controlModel, "model")
-		frame.addTarget(row, line, "◉ Reasoning "+controlReasoning, "reasoning")
+		frame.addTarget(row, line, "◈ "+controlModel, "model")
+		frame.addTargetAfter(row, line, "◈ "+controlModel, controlReasoning, "reasoning")
 		frame.addTarget(row, line, autoMode, "auto")
 		row++
-	}
-	if footerRows > 0 {
-		frame.Lines[height-1] = paintChatViewLine(chatFooter(model, width, clippedAbove, clippedBelow), "footer", "", false, width, palette, color)
 	}
 
 	if cursorLine >= visibleStart && cursorLine < visibleStart+inputRows {
@@ -291,33 +289,6 @@ func centerChatViewText(text string, width int) string {
 	return strings.Repeat(" ", max(0, (width-uniseg.StringWidth(text))/2)) + text
 }
 
-func chatFooter(model chatViewModel, width int, clippedAbove, clippedBelow bool) string {
-	hints := slices.Clip(model.Hints)
-	picker := strings.Contains(strings.Join(hints, " "), "Esc close")
-	if clippedAbove || clippedBelow {
-		if model.QueueEditing {
-			hints = []string{"Enter save", "Esc cancel"}
-		} else if picker {
-			hints = []string{"↑↓ choose", "Enter open", "Esc close"}
-		}
-		markers := []string{}
-		if clippedAbove {
-			markers = append(markers, "↑ older")
-		}
-		if clippedBelow {
-			markers = append(markers, "↓ newer")
-		}
-		hints = append(hints, strings.Join(markers, " "))
-	}
-	if len(model.QueuedPrompts) > 0 && !model.QueueEditing && !picker {
-		hints = append(hints, "/queue edit N")
-	}
-	if width < chatNarrowColumns {
-		hints = chatPhoneHints(hints)
-	}
-	return strings.Join(hints, "  ")
-}
-
 func chatCompletionWindow(choices []chatCompletionChoice, rows int) int {
 	if rows <= 0 || len(choices) <= rows {
 		return 0
@@ -336,12 +307,27 @@ func chatCompletionWindow(choices []chatCompletionChoice, rows int) int {
 	return min(start, len(choices)-rows)
 }
 
-func chatComposerBorder(width int, left, right, label string, more bool) string {
-	marker := ""
-	if more {
-		marker = " ↑"
+// chatModelControl joins the model and its reasoning into one control, such
+// as "◈ Opus 5.5 · High". It returns the model's text as shown, which drops
+// a "next turn" the reasoning already says.
+func chatModelControl(model, reasoning string) (modelText, control string) {
+	const nextTurn = " · next turn"
+	if strings.HasSuffix(model, nextTurn) && strings.HasSuffix(reasoning, nextTurn) {
+		model = strings.TrimSuffix(model, nextTurn)
 	}
-	label = label + marker + " "
+	return model, "◈ " + model + " · " + reasoning
+}
+
+// chatComposerBorder draws a border of the input box, with label and an
+// arrow when more of the message is above or below.
+func chatComposerBorder(width int, left, right, label string, more bool) string {
+	label = strings.TrimSpace(label)
+	if more {
+		label = strings.TrimSpace(label + " ↑")
+	}
+	if label != "" {
+		label = " " + label + " "
+	}
 	remaining := max(0, width-unisegStringWidth(left+right+label))
 	return left + label + strings.Repeat("─", remaining) + right
 }
@@ -376,12 +362,12 @@ func chatComposerLabels(model chatViewModel) (string, string) {
 		if model.QueueEditNumber > 0 {
 			label = " Edit #" + strconv.Itoa(model.QueueEditNumber) + " "
 		}
-		return label, " Enter save "
+		return label, " Enter save · Esc cancel "
 	}
 	if model.ComposerTitle != "" {
-		return model.ComposerTitle, " Enter send · Esc main "
+		return model.ComposerTitle, " Esc main "
 	}
-	return " Message ", " Enter send "
+	return "", ""
 }
 
 // chatAgentStripWindow picks the strip lines that fit, carrying each line's

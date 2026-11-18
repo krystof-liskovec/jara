@@ -35,6 +35,22 @@ func (f *chatFrame) addTarget(row int, line, segment, action string) {
 }
 
 // target returns the action at a cell, or "".
+// addTargetAfter makes segment tappable where it first appears after the
+// text after, so a label that repeats earlier on the row is not confused.
+func (f *chatFrame) addTargetAfter(row int, line, after, segment, action string) {
+	index := strings.Index(line, after)
+	if index < 0 || segment == "" {
+		return
+	}
+	start := index + len(after)
+	found := strings.Index(line[start:], segment)
+	if found < 0 {
+		return
+	}
+	from := uniseg.StringWidth(line[:start+found])
+	f.Targets = append(f.Targets, chatTapTarget{row: row, from: from, to: from + uniseg.StringWidth(segment), action: action})
+}
+
 func (f chatFrame) target(row, column int) string {
 	for _, target := range f.Targets {
 		if target.row == row && column >= target.from && column < target.to {
@@ -59,19 +75,4 @@ func collapseChatBlankLines(lines []chatViewLine) []chatViewLine {
 		out = out[:len(out)-1]
 	}
 	return out
-}
-
-// chatPhoneHints replaces hints that need a desktop keyboard or mouse.
-func chatPhoneHints(hints []string) []string {
-	out := []string{}
-	for _, hint := range hints {
-		if strings.Contains(hint, "Shift+") || strings.Contains(hint, "PgUp") || strings.Contains(hint, "Alt+") || strings.HasPrefix(hint, "F") && len(hint) > 1 && hint[1] >= '0' && hint[1] <= '9' {
-			continue
-		}
-		out = append(out, hint)
-	}
-	if len(out) > 1 {
-		return append(out[:1], append([]string{`\ Enter newline`}, out[1:]...)...)
-	}
-	return append(out, `\ Enter newline`)
 }

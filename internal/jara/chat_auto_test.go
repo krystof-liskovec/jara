@@ -47,7 +47,7 @@ func TestShiftTabTogglesAutoModeShownUnderTheInput(t *testing.T) {
 	frame := renderChatView(model, 60, 30, menuColorsForTerminal(), false)
 	row := -1
 	for i, line := range frame.Lines {
-		if strings.Contains(line, "◈ Model") {
+		if strings.Contains(line, "◈ GPT-5.5") {
 			row = i
 		}
 	}
