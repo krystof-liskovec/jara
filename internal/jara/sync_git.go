@@ -2,6 +2,7 @@ package jara
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -77,7 +78,7 @@ func gitRun(root string, args ...string) error {
 func gitNullList(root string, args ...string) ([]string, error) {
 	output, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
 	if err != nil {
-		return nil, fmt.Errorf("git %s: %w", args[0], err)
+		return nil, gitError(gitSubcommand(args), err)
 	}
 	var names []string
 	for _, name := range bytes.Split(output, []byte{0}) {
@@ -190,12 +191,13 @@ func clearConvergedChanges(root, from, to string) error {
 // incomingContentMatches returns have when a commit in from..to holds that
 // content of name, and something else otherwise.
 func incomingContentMatches(root, from, to, name, have string) (string, error) {
-	commits, err := gitNullList(root, "--literal-pathspecs", "rev-list", "-z", from+".."+to, "--", name)
+	// Hashes only, one per line: Git before 2.47 ignores rev-list -z.
+	list, err := exec.Command("git", "-C", root, "--literal-pathspecs", "rev-list", from+".."+to, "--", name).Output()
 	if err != nil {
-		return "", err
+		return "", gitError("rev-list", err)
 	}
-	for _, commit := range commits {
-		entry, err := gitTreeEntry(root, strings.TrimSpace(commit), name)
+	for _, commit := range strings.Fields(string(list)) {
+		entry, err := gitTreeEntry(root, commit, name)
 		if err != nil {
 			return "", err
 		}
@@ -259,4 +261,23 @@ func worktreeEntry(root, name string) (string, error) {
 	default:
 		return "unsupported", nil
 	}
+}
+
+// gitSubcommand names the command in args, after any global options.
+func gitSubcommand(args []string) string {
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			return arg
+		}
+	}
+	return "command"
+}
+
+// gitError reports a failed Git command with what Git printed.
+func gitError(command string, err error) error {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && len(bytes.TrimSpace(exit.Stderr)) > 0 {
+		return fmt.Errorf("git %s: %w: %s", command, err, strings.TrimSpace(string(exit.Stderr)))
+	}
+	return fmt.Errorf("git %s: %w", command, err)
 }
