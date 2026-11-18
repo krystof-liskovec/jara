@@ -19,7 +19,13 @@ func (t *Thread) HistoryTurns() []map[string]any {
 			items = append(items, map[string]any{"id": fmt.Sprintf("f%d", i), "type": "fileChange", "status": "completed", "changes": turn.Changes})
 		}
 		if turn.Reply != "" {
-			items = append(items, map[string]any{"id": fmt.Sprintf("a%d", i), "type": "agentMessage", "text": turn.Reply, "startedAtMs": at, "jaraAgent": turn.Agent})
+			reply := map[string]any{"id": fmt.Sprintf("a%d", i), "type": "agentMessage", "text": turn.Reply, "startedAtMs": at, "jaraAgent": turn.Agent}
+			for key, value := range map[string]string{"jaraModel": turn.Model, "jaraEffort": turn.Effort, "jaraResolvedModel": turn.Resolved} {
+				if value != "" {
+					reply[key] = value
+				}
+			}
+			items = append(items, reply)
 		}
 		turns = append(turns, map[string]any{"id": turn.ID, "startedAt": turn.At, "items": items})
 	}
@@ -113,6 +119,9 @@ func (r *agentRouter) observeCodexNotification(m rpcMessage) {
 	switch p.Item.Type {
 	case "agentMessage":
 		turn.Reply = p.Item.Text
+		if turn.Agent == protocol.AgentCodex {
+			turn.Model, turn.Effort = thread.CodexModel, thread.CodexEffort
+		}
 		thread.Save()
 	case "fileChange":
 		turn.Changes = append(turn.Changes, p.Item.Changes...)

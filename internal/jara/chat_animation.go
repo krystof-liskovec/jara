@@ -94,18 +94,24 @@ func paintChatShimmer(text string, tick int, base, glow, bg, bold string) string
 // The activity row shows an animated glyph, the label with a trailing
 // ellipsis under a sweeping shimmer, and muted details in parentheses, e.g.
 // "✿ Thinking… (12s · ctrl+c to interrupt)". Each turn picks one animation;
-// JARA_SPINNER=flower, sun or explosion keeps one. Every glyph is one cell
-// wide and has no emoji presentation, so the row never shifts.
+// JARA_SPINNER=flower, sun, explosion, fish or wave keeps one. An animation's
+// frames are all as wide and have no emoji presentation, so the row never
+// shifts.
 type chatSpinner struct {
 	name   string
 	frames []string
 	bounce bool // play forwards then backwards instead of restarting
+	hold   int  // ticks each frame shows; 0 means one
 }
 
 var chatSpinners = []chatSpinner{
 	{name: "flower", frames: []string{"·", "∘", "✾", "❀", "✿"}, bounce: true},               // a bud opens and closes
 	{name: "sun", frames: []string{"◡", "◒", "●", "☼"}, bounce: true},                       // rises, shines, sets
 	{name: "explosion", frames: []string{"·", "•", "✦", "✸", "✹", "✺", "❋", "⁙", "⁘", "∙"}}, // bursts, scatters
+	// A fish swims across its pond, turns, and swims back.
+	{name: "fish", frames: []string{"><>  ", " ><> ", "  ><>", "  <><", " <>< ", "<><  "}, hold: 2},
+	// A wave rolls out from a wall, finds the far one, and rolls back in.
+	{name: "wave", frames: []string{"|.  ", "|.. ", "|...", "... ", "...|", "..| ", ".|  "}, hold: 2},
 }
 
 // chatSpinnerFor picks the turn's animation from its seed, unless
@@ -123,7 +129,7 @@ func chatSpinnerFor(seed int64) chatSpinner {
 }
 
 func (s chatSpinner) glyph(frame int) string {
-	frame = max(0, frame)
+	frame = max(0, frame) / max(1, s.hold)
 	if !s.bounce {
 		return s.frames[frame%len(s.frames)]
 	}

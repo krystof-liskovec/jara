@@ -107,6 +107,11 @@ type HistoryItem struct {
 	ReceiverThreadIDs []string                      `json:"receiverThreadIds"`
 	AgentsStates      map[string]SubagentAgentState `json:"agentsStates"`
 	Agent             string                        `json:"jaraAgent"` // set by the agent router
+	// The model and reasoning behind a reply, when the agent router knows
+	// them; ResolvedModel is Claude Code's concrete model behind an alias.
+	Model         string `json:"jaraModel"`
+	Effort        string `json:"jaraEffort"`
+	ResolvedModel string `json:"jaraResolvedModel"`
 }
 
 const ModelPageSize = 100

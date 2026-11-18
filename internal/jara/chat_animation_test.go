@@ -9,7 +9,7 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-func TestActivityRowAnimatesAFlowerSunOrExplosion(t *testing.T) {
+func TestActivityRowPicksAnAnimation(t *testing.T) {
 	play := func(spinner chatSpinner, frames int) string {
 		var glyphs []string
 		for frame := 0; frame < frames; frame++ {
@@ -30,8 +30,8 @@ func TestActivityRowAnimatesAFlowerSunOrExplosion(t *testing.T) {
 			t.Fatalf("JARA_SPINNER=%s picked %s", spinner.name, got.name)
 		}
 		for _, glyph := range spinner.frames {
-			if uniseg.StringWidth(glyph) != 1 || strings.TrimSpace(glyph) == "" {
-				t.Fatalf("%s glyph %q must fill one cell", spinner.name, glyph)
+			if uniseg.StringWidth(glyph) != uniseg.StringWidth(spinner.frames[0]) || strings.TrimSpace(glyph) == "" {
+				t.Fatalf("%s frame %q must be as wide as the others and show something", spinner.name, glyph)
 			}
 		}
 	}
@@ -42,6 +42,28 @@ func TestActivityRowAnimatesAFlowerSunOrExplosion(t *testing.T) {
 	if got := play(chatSpinners[2], 11); got != "·•✦✸✹✺❋⁙⁘∙·" {
 		t.Fatalf("the explosion must burst and restart: %s", got)
 	}
+	// The fish holds each step for two ticks, turns at the far side, and
+	// swims back to start again.
+	t.Setenv("JARA_SPINNER", "fish")
+	var swim []string
+	for frame := 0; frame < 14; frame += 2 {
+		swim = append(swim, chatSpinnerFor(3).glyph(frame))
+	}
+	if got := strings.Join(swim, "|"); got != "><>  | ><> |  ><>|  <><| <>< |<><  |><>  " || chatSpinnerFor(3).glyph(1) != "><>  " {
+		t.Fatalf("the fish must swim there and back: %s", got)
+	}
+	if line := chatActivityViewLine(chatViewModel{Activity: "Thinking", ActivityFrame: 4}); !strings.HasPrefix(line.text, "  ><> ") {
+		t.Fatalf("fish row %q", line.text)
+	}
+	t.Setenv("JARA_SPINNER", "wave")
+	var wave []string
+	for frame := 0; frame < 16; frame += 2 {
+		wave = append(wave, chatSpinnerFor(3).glyph(frame))
+	}
+	if got := strings.Join(wave, "|"); got != "|.  ||.. ||...|... |...||..| |.|  ||.  " {
+		t.Fatalf("the wave must roll out and back: %s", got)
+	}
+	t.Setenv("JARA_SPINNER", "flower")
 	line := chatActivityViewLine(chatViewModel{Activity: "Thinking · ~330 tokens", ActivityElapsed: "12s", ActivityHint: "ctrl+c to interrupt", ActivityFrame: 4})
 	if line.text != "✿ Thinking… (12s · ~330 tokens · ctrl+c to interrupt)" || line.kind != "activity" {
 		t.Fatalf("activity row %q (%s)", line.text, line.kind)

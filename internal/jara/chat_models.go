@@ -371,9 +371,7 @@ func (u *chatUI) setEffectiveModel(model string) {
 		u.resolvedModel = ""
 	}
 	u.effectiveModel = model
-	if writer, ok := u.out.(interface{ SetChatAgent(string) }); ok {
-		writer.SetChatAgent(protocol.AgentDisplayName(protocol.AgentForModel(u.effectiveModel)))
-	}
+	u.labelReplies()
 }
 
 func (u *chatUI) effectiveModelLabel() string {

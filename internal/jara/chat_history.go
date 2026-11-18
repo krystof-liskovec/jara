@@ -38,7 +38,7 @@ func (u *chatUI) renderChatHistory(turns []protocol.HistoryTurn) {
 			at := chatHistoryItemTime(item, fallback)
 			switch item.Type {
 			case "agentMessage":
-				u.labelHistoryAgent(item.Agent)
+				u.labelHistoryReply(item)
 				u.printRoleAt("assistant", item.Text+"\n", at)
 			case "plan":
 				u.printRoleAt("assistant", "Plan:\n"+item.Text+"\n", at)
@@ -76,20 +76,58 @@ func (u *chatUI) renderChatHistory(turns []protocol.HistoryTurn) {
 			}
 		}
 	}
-	u.labelHistoryAgent("")
+	u.labelReplies()
 }
 
-// labelHistoryAgent labels replayed replies with the agent that wrote them;
-// an empty agent restores the label of the active model.
-func (u *chatUI) labelHistoryAgent(agent string) {
+// labelHistoryReply labels a replayed reply with the model and reasoning
+// that wrote it, or with its agent when those were not recorded.
+func (u *chatUI) labelHistoryReply(item protocol.HistoryItem) {
 	writer, ok := u.out.(interface{ SetChatAgent(string) })
 	if !ok {
 		return
 	}
-	if agent == "" {
-		agent = protocol.AgentForModel(u.effectiveModel)
+	label := u.replyLabel(item.Model, item.ResolvedModel, item.Effort)
+	if label == "" {
+		agent := item.Agent
+		if agent == "" {
+			agent = protocol.AgentForModel(u.effectiveModel)
+		}
+		label = protocol.AgentDisplayName(agent)
 	}
-	writer.SetChatAgent(protocol.AgentDisplayName(agent))
+	writer.SetChatAgent(label)
+}
+
+// labelReplies labels the replies that follow with the active model and
+// reasoning.
+func (u *chatUI) labelReplies() {
+	writer, ok := u.out.(interface{ SetChatAgent(string) })
+	if !ok {
+		return
+	}
+	label := u.replyLabel(u.effectiveModel, u.resolvedModel, u.effectiveReasoning)
+	if label == "" {
+		label = protocol.AgentDisplayName(protocol.AgentForModel(u.effectiveModel))
+	}
+	writer.SetChatAgent(label)
+}
+
+// replyLabel names a model with its reasoning, such as "Claude Opus 5.5
+// Extra high", or returns "" when the model is unknown.
+func (u *chatUI) replyLabel(model, resolved, effort string) string {
+	name := ""
+	switch {
+	case resolved != "" && (model == "" || protocol.AgentForModel(model) == protocol.AgentClaude):
+		name = claudeModelPrettyName(chatText(resolved))
+	case model != "":
+		name = u.modelName(chatText(model))
+	}
+	if name == "" {
+		return ""
+	}
+	if effort = strings.TrimSpace(chatText(effort)); effort != "" {
+		name += " " + chatReasoningEffortLabel(effort)
+	}
+	return name
 }
 
 func chatHistoryItemTime(item protocol.HistoryItem, fallback time.Time) time.Time {

@@ -95,6 +95,7 @@ func (u *chatUI) event(m appMessage) error {
 		}
 		if (p.ThreadID == "" || p.ThreadID == u.thread) && json.Unmarshal(m.Params, &resolved) == nil {
 			u.resolvedModel = chatText(resolved.Model)
+			u.labelReplies()
 		}
 	case "jara/activity":
 		if u.busy && (p.ThreadID == "" || p.ThreadID == u.thread) && p.Label != "" {
@@ -103,6 +104,7 @@ func (u *chatUI) event(m appMessage) error {
 	case "item/reasoning/summaryTextDelta":
 		u.streamReasoningSummary(p.ItemID, p.SummaryIndex, p.Delta)
 	case "turn/started":
+		u.labelReplies() // the model list or defaults may have named the model since
 		u.notePromptTurn(p.Turn.ID)
 		u.attachedTurnActive = true
 		u.busy = true

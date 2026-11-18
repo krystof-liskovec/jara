@@ -44,7 +44,8 @@ func TestTranscriptLabelsFollowTheActiveAgent(t *testing.T) {
 			labels = append(labels, line.text)
 		}
 	}
-	if len(labels) != 2 || !strings.Contains(labels[0], "Codex") || !strings.Contains(labels[1], "Claude Code") {
+	// Replies name the model that wrote them, not just the agent.
+	if len(labels) != 2 || !strings.HasPrefix(labels[0], "✦ gpt-x · ") || !strings.HasPrefix(labels[1], "✦ Claude Sonnet · ") {
 		t.Fatalf("assistant labels %q", labels)
 	}
 	if got := u.effectiveModelLabel(); got != "Claude Sonnet" {

@@ -74,6 +74,7 @@ func chatViewLineStyle(kind, role string, selected bool, palette menuPalette) (b
 	case "code-add", "code-delete", "code-hunk", "code-meta":
 		bg, fg = chatCodeLineColors(kind, palette)
 	case "completion":
+		bg = palette.surface // menus sit apart from the conversation
 		if selected {
 			bg, fg, bold = palette.selection, menuSelectionText(palette.selection), "\x1b[1m"
 		}

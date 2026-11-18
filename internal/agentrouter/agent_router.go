@@ -219,9 +219,11 @@ func (r *agentRouter) fromCodex(m rpcMessage) error {
 		delete(r.codexCalls, string(m.ID))
 		if call.callback != nil {
 			call.callback(m.Result, m.Error)
+			r.noteCodexSettings(call.method, m.Result, m.Error)
 			return nil
 		}
 		m.Result = r.postProcessCodexResult(call, m.Result, m.Error)
+		r.noteCodexSettings(call.method, m.Result, m.Error)
 		r.send(m)
 		return nil
 	}
@@ -233,6 +235,39 @@ func (r *agentRouter) fromCodex(m rpcMessage) error {
 	r.observeCodexNotification(m)
 	r.send(m)
 	return nil
+}
+
+// noteCodexSettings remembers the model and reasoning a Codex thread opened
+// with, so its replies can be labeled with them. It runs after the call's own
+// handling, which may first start tracking the thread.
+func (r *agentRouter) noteCodexSettings(method string, result, failure json.RawMessage) {
+	if failure != nil || method != "thread/start" && method != "thread/resume" {
+		return
+	}
+	var response struct {
+		Thread struct {
+			ID string `json:"id"`
+		} `json:"thread"`
+		Model           string  `json:"model"`
+		ReasoningEffort *string `json:"reasoningEffort"`
+	}
+	if json.Unmarshal(result, &response) != nil || response.Thread.ID == "" {
+		return
+	}
+	thread := r.threads[response.Thread.ID]
+	if thread == nil {
+		thread = r.threads[r.codexToVirtual[response.Thread.ID]]
+	}
+	if thread == nil {
+		return
+	}
+	if response.Model != "" {
+		thread.CodexModel = response.Model
+	}
+	thread.CodexEffort = ""
+	if response.ReasoningEffort != nil {
+		thread.CodexEffort = *response.ReasoningEffort
+	}
 }
 
 // rewriteCodexThread maps a Codex thread ID back to the UI's thread ID after

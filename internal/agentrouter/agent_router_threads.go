@@ -27,23 +27,32 @@ type ThreadSegment struct {
 }
 
 type TranscriptTurn struct {
-	ID      string                `json:"id,omitempty"` // Codex turn ID, for /rewind
-	User    string                `json:"user"`
-	Agent   string                `json:"agent,omitempty"`
-	Reply   string                `json:"reply,omitempty"`
-	Changes []protocol.FileChange `json:"changes,omitempty"`
-	Actions []string              `json:"actions,omitempty"` // commands and plans, summarized
-	At      int64                 `json:"at"`
+	ID    string `json:"id,omitempty"` // Codex turn ID, for /rewind
+	User  string `json:"user"`
+	Agent string `json:"agent,omitempty"`
+	// The model and reasoning that wrote the reply, so the interface can
+	// name them; Resolved is Claude Code's concrete model behind an alias.
+	Model    string                `json:"model,omitempty"`
+	Effort   string                `json:"effort,omitempty"`
+	Resolved string                `json:"resolved,omitempty"`
+	Reply    string                `json:"reply,omitempty"`
+	Changes  []protocol.FileChange `json:"changes,omitempty"`
+	Actions  []string              `json:"actions,omitempty"` // commands and plans, summarized
+	At       int64                 `json:"at"`
 }
 
 type Thread struct {
-	ID      string               `json:"id"`
-	CWD     string               `json:"cwd"`
-	Created int64                `json:"created"`
-	Updated int64                `json:"updated"`
-	Model   string               `json:"model,omitempty"` // Claude model ID
-	Effort  string               `json:"effort,omitempty"`
-	Goal    *protocol.ThreadGoal `json:"goal,omitempty"`
+	ID      string `json:"id"`
+	CWD     string `json:"cwd"`
+	Created int64  `json:"created"`
+	Updated int64  `json:"updated"`
+	Model   string `json:"model,omitempty"` // Claude model ID
+	Effort  string `json:"effort,omitempty"`
+	// The model and reasoning the Codex thread runs with, as Codex last
+	// reported them or the interface last chose.
+	CodexModel  string               `json:"codexModel,omitempty"`
+	CodexEffort string               `json:"codexEffort,omitempty"`
+	Goal        *protocol.ThreadGoal `json:"goal,omitempty"`
 	// Reviewer is the app-server approvalsReviewer the UI last selected.
 	Reviewer string           `json:"approvalsReviewer,omitempty"`
 	Segments []ThreadSegment  `json:"segments"`
@@ -264,6 +273,12 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 	}
 	startTurn := len(thread.Turns) + 1
 	thread.beginTurn(text, target)
+	if target == protocol.AgentCodex && request.Model != "" {
+		// A new model without an effort runs at its default, unknown here.
+		thread.CodexModel, thread.CodexEffort = request.Model, request.Effort
+	} else if target == protocol.AgentCodex && request.Effort != "" {
+		thread.CodexEffort = request.Effort
+	}
 	thread.goalContinuations = 0
 	if target == protocol.AgentClaude {
 		message = goalPreamble(thread.Goal) + message

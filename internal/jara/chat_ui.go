@@ -292,6 +292,7 @@ func (u *chatUI) response(m appMessage) error {
 		} else if r.Thread.ReasoningEffort != nil {
 			u.effectiveReasoning = *r.Thread.ReasoningEffort
 		}
+		u.labelReplies()
 		u.threadReady = true
 		u.busy = p.method == "thread/resume" && u.attachedTurnActive
 		if u.busy {
@@ -361,6 +362,7 @@ func (u *chatUI) response(m appMessage) error {
 					u.nextReasoning = ""
 				}
 			}
+			u.labelReplies()
 		}
 		if u.busy {
 			u.turn = r.Turn.ID

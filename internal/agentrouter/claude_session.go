@@ -300,6 +300,7 @@ func (s *claudeSession) finishTurn(status, message string) {
 	s.finishCompaction()
 	if turn := s.thread.lastTurn(); turn != nil && s.reply.Len() > 0 && !compacted {
 		turn.Reply = s.reply.String()
+		turn.Model, turn.Effort, turn.Resolved = s.thread.Model, s.thread.Effort, s.resolvedModel
 	}
 	s.thread.Save()
 	turn := map[string]any{"id": s.turnID, "status": status}

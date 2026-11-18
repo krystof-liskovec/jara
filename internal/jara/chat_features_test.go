@@ -185,6 +185,34 @@ func TestModelAndReasoningShareOneControl(t *testing.T) {
 	}
 }
 
+func TestMenusHaveTheirOwnBackground(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
+	t.Setenv("TERM", "xterm-256color")
+	palette := menuColorsForBackground(terminalRGB{r: 30, g: 30, b: 30})
+	model := chatViewModel{ControlModel: "GPT-5.5", ControlReasoning: "High",
+		Messages:    []chatViewMessage{{Role: "assistant", Text: "Done."}},
+		Suggestions: []chatCompletionChoice{{Value: "gpt-5.5", Index: 0, Total: 2, Selected: true}, {Value: "gpt-6", Index: 1, Total: 2}}}
+	frame := renderChatView(model, 80, 20, palette, true)
+	rowWith := func(text string) string {
+		for _, line := range frame.Lines {
+			if strings.Contains(line, text) {
+				return line
+			}
+		}
+		t.Fatalf("no row with %q", text)
+		return ""
+	}
+	if row := rowWith("gpt-6"); !strings.HasPrefix(row, menuBG(palette.surface)) {
+		t.Fatalf("menu row %q", row)
+	}
+	if row := rowWith("gpt-5.5"); !strings.HasPrefix(row, menuBG(palette.selection)) {
+		t.Fatalf("selected row %q", row)
+	}
+	if row := rowWith("Done."); !strings.HasPrefix(row, menuBG(palette.canvas)) || palette.surface == palette.canvas {
+		t.Fatalf("conversation row %q", row)
+	}
+}
+
 func TestChatRequestFailuresKeepTheSession(t *testing.T) {
 	var output strings.Builder
 	u := &chatUI{out: &output, pending: map[string]chatPending{}, threadReady: true, thread: "t1"}
