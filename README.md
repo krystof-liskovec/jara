@@ -2,22 +2,21 @@
 
 **Just Another Remote Agent**
 
-Persistent remote Codex and Claude Code workspaces over standard OpenSSH, hosted
-with Docker or Compose. The Go CLI remembers environments and workspace associations.
-
-Jara launches Codex, or Claude Code with `--agent claude` ([agent runtimes](docs/agent-providers.md)),
-inside tmux. Conversations open in Jara's [conversation interface](docs/conversation-interface.md)
+Jara runs Codex, or Claude Code with `--agent claude` ([agent runtimes](docs/agent-providers.md)),
+in any folder on your machine. Conversations open in Jara's [conversation interface](docs/conversation-interface.md)
 by default: streamed replies, saved sessions, multiline prompts, explicit approvals and questions,
-and agent activity tracking. Pass `--interface codex` for the native Codex terminal. Each agent CLI owns inference,
-its authentication, and tools. Ordinary SSH, SFTP, VS Code Remote SSH, and port forwarding remain available.
+and agent activity tracking. Pass `--interface codex` for the agent's native terminal. Each agent CLI owns inference,
+its authentication, and tools. Nothing else is needed: no server, SSH or Docker.
 
-Codex startup arguments are configurable through `JARA_CODEX_ARGS` in the
-container and arguments forwarded by the local Jara client. No extra Codex flags
-are enabled by default. Deployments allow up to 500 concurrent terminals by
-default; lower `JARA_MAX_SESSIONS` to reduce that cap. Detached sessions expire
-24 hours after their most recent attachment, except verified active agents in
-Jara's conversation interface. Configure `JARA_SESSION_IDLE_TIMEOUT` or set it to
-`0` to disable expiration. Native Codex terminals have no reliable busy signal.
+Optionally attach a remote host (Docker or Compose over standard OpenSSH) for
+[device handoffs](docs/local-runner.md): the host keeps a shared copy, continues
+a turn when your laptop sleeps, and lets a phone or another computer follow the
+conversation. Hosts also offer persistent tmux terminals, SFTP, VS Code Remote SSH and port forwarding.
+
+On hosts, `JARA_CODEX_ARGS` sets Codex startup arguments (none by default),
+`JARA_MAX_SESSIONS` caps terminals (500), and detached sessions expire 24 hours after
+their last attachment unless an agent is verifiably active in Jara's interface
+(`JARA_SESSION_IDLE_TIMEOUT`, `0` disables). Native Codex terminals have no busy signal.
 
 **Security status:** a focused review found a startup privilege escalation,
 which has been fixed and regression tested. Treat this as a development prototype
@@ -26,34 +25,42 @@ addressed; the optional privileged Docker sidecar is for trusted workloads.
 
 ## Build the client
 
-Requires Go 1.27.3+ or Docker (the installer uses Go 1.27.3 if needed), plus
-`ssh`. Git is required locally for repository discovery, exclusions, and cloning
-unpublished commits. Docker and rsync are not needed after installation.
+Requires Go 1.27.3+ or Docker (the installer uses Go 1.27.3 if needed). Remotes
+also need `ssh`, and Git locally for repository discovery and cloning unpublished commits.
 
 ```sh
 ./install.sh
 ```
 
-This installs `jara` into `~/.local/bin` and does not modify your shell `PATH`.
-If that directory is not already on your `PATH`, run it as `~/.local/bin/jara`.
-The installer embeds a fresh deployment bundle without modifying the checked-in archive.
+This installs `jara` into `~/.local/bin` without modifying your shell `PATH`, and
+embeds a fresh deployment bundle without modifying the checked-in archive.
 
-## First connection
+## Use it on this device
 
-Run `jara setup` to reuse a saved remote, connect to a Jara server, or deploy
-a new Linux Docker host. Choose `connect` to enter its SSH address and key;
-Setup also offers to register Docker host access for upgrades, reusing your key
-when authorized. Rerun setup with the same remote name to add it later. New deployments run over SSH when your account can run Docker
-and the host has `tar`. The guide can generate a dedicated service key or use
-an existing SSH key, transfers the source bundled in the CLI, and uses native
-`docker build` and `docker run`; no Git
-checkout or Compose plugin is needed on the host. Docker installation and
-firewall rules remain host-specific; see the detailed
-[host setup](#deploy-on-a-linux-docker-host) if you need to prepare those yourself.
-On Debian or Ubuntu with Docker's default AppArmor profile, guided setup detects
-it and configures the Jara container automatically; no host profile or Docker
-daemon changes are needed for Codex's sandbox. Setup waits for Jara's SSH service
-to answer before running its deployment check.
+Install the Codex CLI (and Claude Code if you like) and sign in with each CLI as
+usual. Then, in any project folder:
+
+```sh
+jara               # open or continue this folder's conversation
+jara new           # a new conversation;  jara resume  picks an earlier one
+jara run "Fix the flaky test"   # non-interactive, in the background
+jara handoff       # continue the work with the other agent
+```
+
+The session keeps running when you close the window; `jara` reattaches.
+`jara setup` checks the installed CLIs. Without Codex, Claude Code opens in its
+own terminal. A folder stays local until you attach it to a remote.
+
+## Add a remote host
+
+Run `jara setup` and choose `remote` to reuse a saved remote, connect to a Jara
+server (enter its SSH address and key), or deploy a new Linux Docker host. Setup
+also offers to register Docker host access for upgrades; rerun it with the same
+remote name to add that later. Deployments need Docker and `tar` on the host; the
+guide can generate a service key or reuse yours, transfers the source bundled in
+the CLI, and runs native `docker build`/`docker run`. Docker installation and
+firewall rules remain host-specific; see [host setup](#deploy-on-a-linux-docker-host).
+Debian/Ubuntu AppArmor defaults are detected and handled for Codex's sandbox.
 For a noninteractive client setup, use:
 
 ```sh
@@ -62,35 +69,28 @@ jara auth codex --remote work
 jara auth claude --remote work   # optional: paste a token from `claude setup-token`
 ```
 
-Configure commit name/email separately with [Git identity settings](docs/git-identity.md). Experimental: the Jara interface runs the agent on your machine while the host keeps a shared copy; see [agents on your device](docs/local-runner.md).
+Configure commit name/email separately with [Git identity settings](docs/git-identity.md).
 
-From a Git repository, run `jara --remote work` to reuse a checkout or clone it.
-For a non-Git folder, use `jara --remote work --copy`. After that, `jara` in
-the same folder reopens the workspace. For a host without an SSH alias, include
-`--port`, `--user`, and `--identity` in `remote add` as needed. The detailed
-steps below cover host keys, direct SSH access, and other setup options.
-Run `jara menu` for workspaces, remotes, credentials, and a searchable GitLab/Gitea
-repository browser using configured tokens. `jara clone URL` clones remotely and
-opens Codex; bare `jara` still opens the current folder's workspace.
+Attach a folder with `jara --remote work` (a Git repository reuses a checkout or
+clones it; a non-Git folder needs `--copy`). The agent keeps running on your device
+and the host receives its conversations, including earlier local ones; see
+[device handoffs](docs/local-runner.md). After that, `jara` in the folder uses the remote.
+Without an SSH alias, pass `--port`, `--user` and `--identity` to `remote add`.
+`jara menu` covers workspaces, remotes, credentials and a GitLab/Gitea repository
+browser; `jara clone URL` clones remotely and opens Codex.
 
 Use `jara workspace list [--remote NAME]` to inspect stored workspaces and
 `jara workspace delete ID [--remote NAME]` to permanently remove one. Deletion
 asks for confirmation and refuses workspaces with running sessions.
 Jara terminal titles and tmux labels include the repository and host.
 
-Remove a host deployed by the guide with `jara deployment uninstall work`. It
-stops the container and removes deployment files while keeping workspace data,
-Codex login, and Git credentials in Docker volumes. Local workspace links are
-kept for reuse after redeployment. Add `--volumes` only when you also want to
-permanently delete that data, for example
-`jara deployment uninstall work --volumes`. This also removes the server host
-key, so verify the new fingerprint after a later reinstall. Uninstall asks
-separately whether to remove a Jara-generated local
-SSH key pair; user-provided keys are kept. `jara remote remove NAME` only
-forgets a manually configured remote.
+`jara deployment uninstall work` stops a guided deployment and removes its files,
+keeping workspace data, Codex login and Git credentials in Docker volumes (local
+workspace links stay for redeployment). `--volumes` also deletes that data and the
+host key; verify the new fingerprint after reinstalling. Uninstall asks before
+removing a Jara-generated local key pair. `jara remote remove NAME` forgets a remote.
 
-The client also builds for Windows and macOS. Native terminal/editor behavior on
-those platforms needs validation; cross-compilation alone does not establish it.
+The client also builds for Windows and macOS; native terminal and editor behavior there is unvalidated.
 
 ## Deploy on a Linux Docker host
 

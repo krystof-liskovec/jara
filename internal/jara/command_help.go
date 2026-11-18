@@ -11,10 +11,10 @@ type helpEntry struct {
 var commandHelp = map[string]helpEntry{
 	"root": {
 		usage:   "jara [COMMAND] [OPTIONS]",
-		summary: "Open the current repository or browse persistent Codex workspaces.",
+		summary: "Run Codex or Claude Code in the current folder on this device; attach a remote host for device handoffs and phone access.",
 		commands: []string{
-			"open, resume, new, run, connect, sessions, clone\tManage remote Codex sessions and repositories.",
-			"sync, edit, tools, doctor\tWork with a remote workspace.",
+			"open, resume, new, run, sessions, handoff\tAgent sessions; local unless the folder is attached to a remote.",
+			"connect, clone, sync, edit, tools, doctor\tWork with a remote workspace.",
 			"remote, workspace, config, auth\tManage workspaces and credentials.",
 			"setup, deployment, host, uninstall\tSet up and maintain Jara hosts.",
 			"forward, reverse, tunnel\tForward ports over SSH.",
@@ -22,7 +22,7 @@ var commandHelp = map[string]helpEntry{
 			"environment, docker, migrate, help\tOther commands.",
 		},
 		options: []string{
-			"--remote NAME       Select a configured host.",
+			"--remote NAME       Attach this folder to a configured host (once; later runs reuse it).",
 			"--clone             Skip workspace discovery and clone confirmation.",
 			"--choose-workspace  Choose a checkout even if this folder is already linked.",
 			"--copy              Copy the current folder to the host.",
@@ -32,18 +32,18 @@ var commandHelp = map[string]helpEntry{
 			"-- CODEX_ARGS       Pass remaining arguments directly to Codex.",
 		},
 		examples: []string{
-			"jara --clone --remote jellyfish",
+			"jara",
+			"jara --remote jellyfish",
 			"jara --copy --source ~/projects/demo",
-			"jara --codex-arg=--model --codex-arg=gpt-6.1-sol",
 			"jara -- --model gpt-6.1-sol -c 'model_reasoning_effort=\"high\"'",
 			"jara menu",
 		},
 	},
 	"open": {
 		usage:   "jara [open] [OPTIONS]",
-		summary: "Open or create the session associated with the current folder.",
+		summary: "Open or create the session of the current folder: on this device, or through its remote once attached.",
 		options: []string{
-			"--remote NAME       Select a configured host.",
+			"--remote NAME       Attach this folder to a configured host.",
 			"--clone             Skip workspace discovery and clone confirmation.",
 			"--choose-workspace  Link this folder to another existing checkout.",
 			"--copy              Copy the current folder.",
@@ -236,10 +236,10 @@ var commandHelp = map[string]helpEntry{
 	},
 	"setup": {
 		usage:   "jara setup",
-		summary: "Connect to Jara, register Docker host management, or deploy a new host.",
+		summary: "Check the agent CLIs for local use, or connect to a Jara host, register Docker host management, or deploy a new host.",
 		examples: []string{
 			"jara setup",
-			"jara setup  # follow the prompts to configure Codex, Git access, and a workspace",
+			"jara setup  # local: check Codex and Claude Code; remote: connect or deploy a host",
 		},
 	},
 	"menu": {

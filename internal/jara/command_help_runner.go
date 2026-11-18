@@ -1,10 +1,11 @@
 package jara
 
-// Help for agents running on devices is layered onto the session commands.
+// Help for where an attached workspace runs its agent is layered onto the
+// session commands.
 func init() {
 	options := []string{
-		"--local             Run the agent on this device (the default when Codex is installed here).",
-		"--run-remote        Run the agent on the remote host; JARA_RUN_REMOTE=1 makes it the default.",
+		"--local             Attached folders: run the agent on this device (the default when Codex is installed here).",
+		"--run-remote        Run the agent on the remote host (attaching the folder to the default remote); JARA_RUN_REMOTE=1 makes it the default for attached folders.",
 		"--take-over         Take the conversation although another device still looks online.",
 	}
 	for _, key := range []string{"root", "open", "resume", "new"} {

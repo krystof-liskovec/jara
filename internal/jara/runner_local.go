@@ -89,9 +89,14 @@ type localRunnerOpen struct {
 // runs it (the host continuing work this device left when it slept, or
 // another device), the window watches that session, and the conversation
 // moves back here as soon as that machine is idle.
+// Without a remote (o.remoteName empty) the session simply runs here.
 func openLocalRunner(o localRunnerOpen, q Request) error {
+	id, err := localSessionID(o.root, o.remoteName, o.binding.Workspace)
+	if err != nil {
+		return err
+	}
 	q.UserInterface, q.ID, q.Root, q.RemoteName, q.Workspace, q.Runner =
-		"jara", localRunnerID(o.remoteName, o.binding.Workspace), o.root, o.remoteName, o.binding.Workspace, runnerDeviceName()
+		"jara", id, o.root, o.remoteName, o.binding.Workspace, runnerDeviceName()
 	connection, ready, err := connectLocalRunner(o, q, true)
 	if err != nil {
 		return err
@@ -118,15 +123,25 @@ func openLocalRunner(o localRunnerOpen, q Request) error {
 // connectLocalRunner connects to this device's session, starting it after
 // claiming the workspace, or to the machine the claim has to wait for.
 func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnection, remoteChatServerReady, error) {
+	marker := loadLocalRunnerMarker(q.ID)
 	if chatDaemonRunning(q.ID) {
+		if o.remoteName != "" && marker.Remote == "" {
+			return nil, remoteChatServerReady{}, fmt.Errorf("this folder's session is running without a remote; end it with /quit, then open it again to attach it to %s", o.remoteName)
+		}
 		conn, err := connectExistingChatDaemon(q.ID)
 		if err != nil {
 			return nil, remoteChatServerReady{}, err
 		}
-		return readyLocalRunner(conn, "The agent runs on this device.")
+		notice := ""
+		if o.remoteName != "" {
+			notice = "The agent runs on this device."
+		}
+		return readyLocalRunner(conn, notice)
+	}
+	if o.remoteName == "" {
+		return startLocalOnlyRunner(q)
 	}
 	var claim runnerClaim
-	marker := loadLocalRunnerMarker(q.ID)
 	// A window reconnecting by itself only reclaims the conversation from the
 	// host; it never displaces another device the user moved to.
 	wire := Request{Op: "runner-claim", ID: o.binding.Workspace, Runner: q.Runner, Force: first && o.takeOver, Wait: true, Passive: !first, Since: marker.Seq}
@@ -163,8 +178,10 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 	err := updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) {
 		m.Remote, m.Workspace, m.Root, m.Seq, m.Epoch, m.Lost = o.remoteName, o.binding.Workspace, o.root, claim.Seq, claim.Epoch, false
 		m.Branch = checkoutState(o.root).Branch
+		// Conversations the host has never received are sent by the first
+		// checkpoint: attaching a folder keeps its local history.
 		if m.Versions == nil {
-			m.Versions = workspaceThreadVersions(o.root)
+			m.Versions = map[string]string{}
 		}
 	})
 	if err != nil {
@@ -186,7 +203,9 @@ func readyLocalRunner(conn net.Conn, notice string) (*appConnection, remoteChatS
 		app.close()
 		return nil, ready, err
 	}
-	ready.Notice = notice
+	if notice != "" {
+		ready.Notice = notice
+	}
 	return app, ready, nil
 }
 
@@ -268,17 +287,35 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64, claim runner
 	// The host converts its copies to this checkout's form for the next
 	// checkpoint's deltas.
 	return updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) {
-		m.Versions, m.Sent = workspaceThreadVersions(o.root), sentAfterImport(m.Sent, checkpoint)
+		m.Versions, m.Sent = versionsAfterCatchUp(o.root, m.Versions, checkpoint), sentAfterImport(m.Sent, checkpoint)
 	})
 }
 
-// defaultLocalRunner reports whether conversations run on this device unless
-// --run-remote says otherwise: the agent CLI is installed here, and
-// JARA_RUN_REMOTE=1 does not opt out.
+// defaultLocalRunner reports whether a workspace attached to a remote runs
+// its agent on this device unless --run-remote says otherwise: the agent CLI
+// is installed here, and JARA_RUN_REMOTE=1 does not opt out.
 func defaultLocalRunner() bool {
 	if os.Getenv("JARA_RUN_REMOTE") == "1" || runtime.GOOS == "windows" {
 		return false
 	}
 	_, err := exec.LookPath("codex")
 	return err == nil
+}
+
+// versionsAfterCatchUp records the conversations the host already has after
+// a catch-up: the ones it sent and the ones this device sent before.
+// Conversations only this device has stay unrecorded, so the next
+// checkpoint sends them.
+func versionsAfterCatchUp(root string, known map[string]string, checkpoint runnerCheckpoint) map[string]string {
+	imported := map[string]bool{}
+	for _, bundle := range checkpoint.Threads {
+		imported[bundle.ThreadID] = true
+	}
+	versions := map[string]string{}
+	for id, version := range workspaceThreadVersions(root) {
+		if _, sent := known[id]; sent || imported[id] {
+			versions[id] = version
+		}
+	}
+	return versions
 }

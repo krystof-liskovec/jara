@@ -14,6 +14,21 @@ import (
 
 func guidedSetup(c Config) error {
 	reader := bufio.NewReader(os.Stdin)
+	scope := "local"
+	if len(c.Remotes) > 0 {
+		scope = "remote"
+	}
+	scope, err := askSetup(reader, "Use Jara on this device only, or add a remote host? [local/remote]", scope)
+	if err != nil {
+		return err
+	}
+	switch strings.ToLower(scope) {
+	case "local":
+		return localSetup()
+	case "remote":
+	default:
+		return fmt.Errorf("choose local or remote")
+	}
 	name, err := askSetup(reader, "Remote name", "work")
 	if err != nil {
 		return err

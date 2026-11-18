@@ -15,10 +15,12 @@ import (
 // runLocalRunnerDaemon is `jara _runner-daemon`: the persistent conversation
 // service of a workspace whose agent runs on this device. It is the remote
 // host's chat daemon, run against the local checkout with the local agent
-// CLIs, plus a checkpoint after every turn and a tunnel that lets other
-// devices attach through the remote host.
+// CLIs. A workspace attached to a remote also gets a checkpoint after every
+// turn and a tunnel that lets other devices attach through the remote host;
+// a local-only workspace (no RemoteName) runs without either.
 func runLocalRunnerDaemon(q Request) error {
-	if q.UserInterface != "jara" || q.Runner == "" || q.Root == "" || !nameRE.MatchString(q.Workspace) {
+	attached := q.RemoteName != ""
+	if q.UserInterface != "jara" || q.Runner == "" || q.Root == "" || attached && !nameRE.MatchString(q.Workspace) {
 		return fmt.Errorf("invalid local runner request")
 	}
 	paths, err := chatDaemonPathSet(q.ID)
@@ -29,13 +31,16 @@ func runLocalRunnerDaemon(q Request) error {
 		return err
 	}
 	defer removeChatDaemonPID(paths, os.Getpid())
-	config, err := readConfig()
-	if err != nil {
-		return err
-	}
-	remote, ok := config.Remotes[q.RemoteName]
-	if !ok {
-		return fmt.Errorf("remote %s is not configured", q.RemoteName)
+	var remote Remote
+	if attached {
+		config, err := readConfig()
+		if err != nil {
+			return err
+		}
+		var ok bool
+		if remote, ok = config.Remotes[q.RemoteName]; !ok {
+			return fmt.Errorf("remote %s is not configured", q.RemoteName)
+		}
 	}
 	cwd := filepath.Join(q.Root, filepath.FromSlash(q.Subdir))
 	if !pathWithin(q.Root, cwd) {
@@ -94,6 +99,9 @@ func runLocalRunnerDaemon(q Request) error {
 		saved, _, _ := readSavedChatDaemonState(q.ID, paths)
 		return saved
 	}
+	if !attached {
+		return serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state)
+	}
 	status := func() runnerHeartbeat {
 		saved := current()
 		return runnerHeartbeat{Busy: saved.ActiveTurn, Pending: schedules.hasPending() || crunch.hasPending(), Conversation: saved.Conversation}
@@ -102,6 +110,12 @@ func runLocalRunnerDaemon(q Request) error {
 	go runner.linkLoop(paths.socket)
 	go runner.midTurnCheckpoints(current)
 	go watchSleep(runner.stop, func() { runner.goingToSleep(current(), sleepBudget) })
+	// Conversations this device had before it was attached, or kept while
+	// another machine ran the workspace, reach the host without waiting for
+	// a turn.
+	if hasUnsentThreads(q.ID, q.Root) {
+		runner.checkpointLater(state)
+	}
 	result := serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state, runner.hooks())
 	runner.stopLink()
 	if !runner.isLost() && !runner.released {
@@ -120,7 +134,7 @@ func runLocalRunnerDaemon(q Request) error {
 func localRunnerAgentServer(q Request, cwd string) (*exec.Cmd, error) {
 	codex, err := exec.LookPath("codex")
 	if err != nil {
-		return nil, fmt.Errorf("running the agent on this device needs the Codex CLI on PATH: %w", err)
+		return nil, fmt.Errorf("the Jara interface needs the Codex CLI on PATH (install it, or use --interface codex --agent claude for Claude Code alone): %w", err)
 	}
 	codexArgs, err := configuredCodexArgs(q.CodexArgs)
 	if err != nil {

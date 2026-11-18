@@ -296,6 +296,14 @@ func Run(args []string) error {
 	if resolved, e := filepath.EvalSymlinks(root); e == nil {
 		root = resolved
 	}
+	if localSessionActions[action] && !*clone && !*copyMode && !*chooseWorkspace && !workspaceUsesRemote(c, root, *remoteName, *runRemote) {
+		if *takeOver {
+			return fmt.Errorf("--take-over needs a folder attached to a remote")
+		}
+		return openLocalWorkspace(c, localOpen{action: action, chatInterface: *chatInterface, agent: *agentName,
+			note: *note, prompt: prompt, root: root, rel: rel, codexArgs: codexArgs,
+			latest: *latest, resumeLatest: *resumeLatest, worktree: *newTree})
+	}
 	chosen := *remoteName
 	if chosen == "" {
 		chosen = c.Bindings[root].Remote
@@ -305,7 +313,7 @@ func Run(args []string) error {
 	}
 	r, ok := c.Remotes[chosen]
 	if !ok {
-		return fmt.Errorf("no selected remote; use jara remote add NAME --host HOST, then jara remote use NAME")
+		return fmt.Errorf("jara %s needs a remote; connect one with jara setup or jara remote add NAME --host HOST", action)
 	}
 	if err = validateRemote(r); err != nil {
 		return err

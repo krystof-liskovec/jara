@@ -97,6 +97,15 @@ func runInternalCommand(args []string) (bool, error) {
 			return true, err
 		}
 		return true, runRunnerWatch(q)
+	case "_local-run":
+		if len(args) != 2 {
+			return true, fmt.Errorf("invalid background run invocation")
+		}
+		var q Request
+		if err := decode(args[1], &q); err != nil {
+			return true, err
+		}
+		return true, runLocalBackground(q)
 	case "_runner-daemon":
 		if len(args) != 2 {
 			return true, fmt.Errorf("invalid local runner invocation")

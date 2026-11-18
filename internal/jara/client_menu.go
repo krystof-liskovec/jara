@@ -34,20 +34,25 @@ func clientMenu(c Config) error {
 }
 
 func clientMenuItems(c Config) []menuItem {
-	items := []menuItem{}
+	where := "this device"
+	if len(c.Remotes) > 0 {
+		where = "this device, or its remote when attached"
+	}
+	items := []menuItem{
+		{Title: "Open this workspace", Detail: "Continue in " + where, Kind: "workspace", Action: "open"},
+		{Title: "New Codex conversation", Detail: "Codex", Kind: "new", Action: "new"},
+		{Title: "New Claude Code conversation", Detail: "Claude Code", Kind: "new", Action: "new-claude"},
+		{Title: "Hand off this workspace", Detail: "Continue the work with the other agent", Kind: "new", Action: "handoff"},
+	}
 	if len(c.Remotes) == 0 {
-		items = append(items, menuItem{Title: "Set up or connect a remote", Detail: "Guided setup for a Jara server", Kind: "new", Action: "setup"})
+		items = append(items, menuItem{Title: "Add a remote", Detail: "Device handoffs, phone access and hosted workspaces", Kind: "remote", Action: "setup"})
 	} else {
 		remote := defaultRemoteLabel(c)
 		items = append(items,
-			menuItem{Title: "Open this workspace", Detail: "Attach or choose a session · " + remote, Kind: "workspace", Action: "open"},
-			menuItem{Title: "Choose checkout for this folder", Detail: "Link this folder to an existing remote checkout", Kind: "workspace", Action: "choose-workspace"},
+			menuItem{Title: "Choose checkout for this folder", Detail: "Link this folder to an existing remote checkout · " + remote, Kind: "workspace", Action: "choose-workspace"},
 			menuItem{Title: "Projects", Detail: "Conversations and live terminals", Kind: "running", Action: "browse"},
 			menuItem{Title: "Browse repositories", Detail: "Search GitLab and Gitea repositories available to your tokens", Kind: "project", Action: "browse-repositories"},
 			menuItem{Title: "Clean stale Docker containers", Detail: "Remove exited containers stopped for at least 24h", Kind: "tools", Action: "docker-cleanup"},
-			menuItem{Title: "New Codex conversation", Detail: "Codex terminal", Kind: "new", Action: "new"},
-			menuItem{Title: "New Claude Code conversation", Detail: "Claude Code terminal", Kind: "new", Action: "new-claude"},
-			menuItem{Title: "Hand off this workspace", Detail: "Continue the work with the other agent", Kind: "new", Action: "handoff"},
 			menuItem{Title: "Connections", Detail: fmt.Sprintf("%d configured", len(c.Remotes)), Kind: "remote", Action: "remote"},
 			menuItem{Title: "Credentials", Detail: "Codex, Claude Code and Git", Kind: "tools", Action: "auth"},
 			menuItem{Title: "Diagnostics", Detail: "Host health", Kind: "tools", Action: "doctor"},
@@ -80,21 +85,12 @@ func runClientMenuAction(c Config, action string) error {
 		return browseRepositories(c)
 	case "docker-cleanup":
 		return dockerCleanupMenu(c)
-	case "new", "new-claude":
-		name, err := chooseMenuRemote(c, "Start a new session")
-		if err != nil || name == "" {
-			return err
-		}
-		if action == "new-claude" {
-			return Run([]string{"new", "--remote", name, "--agent", protocol.AgentClaude})
-		}
-		return Run([]string{"new", "--remote", name, "--agent", protocol.AgentCodex})
+	case "new":
+		return Run([]string{"new", "--agent", protocol.AgentCodex})
+	case "new-claude":
+		return Run([]string{"new", "--agent", protocol.AgentClaude})
 	case "handoff":
-		name, err := chooseMenuRemote(c, "Hand off on which remote")
-		if err != nil || name == "" {
-			return err
-		}
-		return Run([]string{"handoff", "--remote", name})
+		return Run([]string{"handoff"})
 	case "setup":
 		return guidedSetup(c)
 	case "remote":

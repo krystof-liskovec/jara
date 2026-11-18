@@ -1,26 +1,32 @@
-# Agents on your device (experimental)
+# Device handoffs
 
-In the Jara conversation interface, `jara` runs the agent on the machine you
-are sitting at: against your local checkout, with your local Codex and Claude
-Code CLIs and sign-in. The remote host keeps the shared copy. After every turn,
-and every 20 seconds during long turns, it receives the checkout's commits and
-edits, every conversation of the workspace, and the work waiting in the session:
-queued and scheduled prompts and an active `/crunch` or `/goalcrunch` task.
+Jara runs on its own: `jara` in a folder runs the agent on your machine, with
+your local Codex and Claude Code CLIs and sign-in, and keeps the session and its
+conversations on this device. No remote host is involved until you attach one.
+
+Attaching the folder to a remote host (`jara --remote NAME`, once) adds device
+handoffs. The agent keeps running on the machine you are sitting at, and the
+host keeps the shared copy. After every turn, and every 20 seconds during long
+turns, it receives the checkout's commits and edits, every conversation of the
+workspace, and the work waiting in the session: queued and scheduled prompts and
+an active `/crunch` or `/goalcrunch` task. Conversations the folder had before it
+was attached are sent as soon as the session starts.
 
 Any device can watch a running conversation live or continue it. When your
 laptop goes to sleep in the middle of a turn, the remote host continues the
 turn by itself. When the laptop wakes, its window follows the conversation and
 takes it back as soon as the remote host is idle.
 
-This is an experimental branch feature. It needs a remote host running the same
-Jara version (`jara deployment upgrade --remote NAME`), and a Unix client
-(Linux or macOS) with `codex` on `PATH`. `claude` is used when installed. Only
-the Jara interface takes part; native Codex and Claude Code terminals
-(`--interface codex`) keep running on the remote host.
+Handoffs need a remote host running the same Jara version (`jara deployment
+upgrade --remote NAME`), and a Unix client (Linux or macOS) with `codex` on
+`PATH`. `claude` is used when installed. Only the Jara interface takes part;
+native Codex and Claude Code terminals (`--interface codex`) of an attached
+folder keep running on the remote host.
 
 ## Commands
 
 ```sh
+jara --remote work          # attach this folder to the remote host work
 jara                        # run here when Codex is installed; otherwise on the host
 jara --run-remote           # run this session on the remote host instead
 JARA_RUN_REMOTE=1 jara      # the same, for every session in this shell
@@ -33,7 +39,9 @@ jara remote order jellyfish backup # rank remote hosts; the first is the default
 
 `JARA_DEVICE` overrides the device name used in leases (the host name by
 default). Several projects, or several Git worktrees of one project, are
-independent workspaces: each runs wherever it was last opened.
+independent workspaces: each runs wherever it was last opened. A folder's session
+is keyed by its path, so attaching it keeps the queue, schedules and conversations
+it had as a local-only folder.
 
 ## Model
 
@@ -180,7 +188,7 @@ The briefing keeps the exchange and the working tree, not the agent's internal
 tool history. Sessions taking part keep a transcript of every conversation,
 including Codex-only ones, so the fallback always has something to replay.
 
-## Limits of this experiment
+## Limits
 
 - While a device holds the workspace, the remote host's checkout is a mirror.
   Edits made there directly, for example over plain SSH, are overwritten by the

@@ -191,7 +191,7 @@ func TestOpenLinksExistingCheckoutAndRemembersAssociation(t *testing.T) {
 	original := os.Stdin
 	os.Stdin = input
 	defer func() { os.Stdin = original }()
-	if err = Run([]string{"--interface", "codex", "--source", root}); err != nil {
+	if err = Run([]string{"--interface", "codex", "--remote", "work", "--source", root}); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := readConfig()
