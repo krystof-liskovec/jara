@@ -187,7 +187,7 @@ func (u *chatUI) line(line string) (bool, error) {
 			return false, nil
 		}
 		if !chatUIIsInteractive(u) {
-			u.print("Loading available Codex models...\n")
+			u.print("Loading available models...\n")
 		}
 		return false, nil
 	case strings.HasPrefix(line, "/models "):

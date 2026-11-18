@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -67,6 +68,17 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		_ = writeChatDaemonState(paths, snapshot)
 		stateWriteMu.Unlock()
 	}
+	compactor := newChatIdleCompactor()
+	compactor.begin = func(requestID string, notice []byte) {
+		pendingMu.Lock()
+		pending[strconv.Quote(requestID)] = "thread/compact/start"
+		pendingMu.Unlock()
+		stateMu.Lock()
+		state.ActiveTurn = true
+		stateMu.Unlock()
+		writeState()
+		clients.broadcast(notice, appMessage{Method: "jara/idleCompaction/started"})
+	}
 	isDetachedAndIdle := func() bool {
 		stateMu.Lock()
 		idle := !state.ActiveTurn
@@ -117,15 +129,16 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 			}
 			if hasMessage {
 				stateMu.Lock()
-				workspace := state.Workspace
+				workspace, conversation := state.Workspace, state.Conversation
 				stateMu.Unlock()
 				chatPush.observe(message, workspace)
+				compactor.observe(message, conversation)
 				schedules.handleAppMessage(message)
 				isCrunchBusy := func() bool {
 					stateMu.Lock()
 					busy := state.ActiveTurn || !state.ThreadLoaded
 					stateMu.Unlock()
-					return busy || schedules.running()
+					return busy || schedules.running() || compactor.running()
 				}
 				crunch.handleAppMessage(message, input, &inputMu, isCrunchBusy)
 			}
@@ -242,7 +255,7 @@ running:
 				stateMu.Lock()
 				busy := state.ActiveTurn || !state.ThreadLoaded
 				stateMu.Unlock()
-				return busy || crunch.hasPending()
+				return busy || crunch.hasPending() || compactor.running()
 			}
 			if err := schedules.startDue(input, &inputMu, isScheduleBusy); err != nil {
 				fmt.Fprintf(os.Stderr, "Jara scheduled prompt failed to start: %v\n", err)
@@ -251,10 +264,19 @@ running:
 				stateMu.Lock()
 				busy := state.ActiveTurn || !state.ThreadLoaded
 				stateMu.Unlock()
-				return busy || schedules.running()
+				return busy || schedules.running() || compactor.running()
 			}
 			if err := crunch.tick(input, &inputMu, isCrunchBusy); err != nil {
 				fmt.Fprintf(os.Stderr, "Jara crunch task failed to start: %v\n", err)
+			}
+			isCompactBusy := func() bool {
+				stateMu.Lock()
+				busy := state.ActiveTurn || !state.ThreadLoaded
+				stateMu.Unlock()
+				return busy || schedules.running() || crunch.hasPending()
+			}
+			if err := compactor.tick(input, &inputMu, snapshot.Agent, isCompactBusy); err != nil {
+				fmt.Fprintf(os.Stderr, "Jara idle compaction failed to start: %v\n", err)
 			}
 			if isDetachedAndIdle() {
 				shutdown.Store(true)

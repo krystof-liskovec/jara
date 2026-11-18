@@ -68,7 +68,14 @@ func (u *chatUI) contextStatusLine() string {
 	return fmt.Sprintf("Context: %s of %s tokens (%s)\n", chatTokenCount(usage.used), chatTokenCount(usage.window), u.contextControlLabel())
 }
 
-func (u *chatUI) runChatCompactCommand() error {
+func (u *chatUI) runChatCompactCommand(args string) error {
+	if fields := strings.Fields(strings.ToLower(args)); len(fields) > 0 {
+		if fields[0] != "idle" {
+			u.print("Use /compact, or /compact idle [on|off|DURATION|status].\n")
+			return nil
+		}
+		return u.runChatIdleCompactCommand(fields[1:])
+	}
 	if !u.threadReady {
 		u.print("No conversation is open. Use /resume ID or /new first.\n")
 		return nil
@@ -118,7 +125,7 @@ func (u *chatUI) clearChatTranscript() {
 
 // Extra commands share one dispatcher so the main command switch stays short.
 var chatExtraCommands = map[string]func(u *chatUI, args string) error{
-	"/compact": func(u *chatUI, _ string) error { return u.runChatCompactCommand() },
+	"/compact": func(u *chatUI, args string) error { return u.runChatCompactCommand(args) },
 	"/clear":   func(u *chatUI, _ string) error { return u.runChatClearCommand() },
 	"/rewind":  func(u *chatUI, args string) error { return u.runChatRewindCommand(args) },
 	"/alerts":  func(u *chatUI, args string) error { u.runChatAlertsCommand(args); return nil },
@@ -152,6 +159,8 @@ func (u *chatUI) acceptChatExtraResponse(m appMessage, p chatPending) bool {
 	switch p.method {
 	case "thread/compact/start":
 		u.acceptChatCompactResponse(m)
+	case "jara/idleCompaction/get", "jara/idleCompaction/set":
+		u.acceptChatIdleCompactResponse(m)
 	case "jara/rewind":
 		return u.acceptChatRewindResponse(m, p)
 	case "fuzzyFileSearch":
@@ -177,6 +186,8 @@ func (u *chatUI) expireChatExtraRequest(id string, pending chatPending) bool {
 	case "fuzzyFileSearch", "jara/commands/list":
 	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
 		u.printRole("system", "Notifications: no reply in time.\n")
+	case "jara/idleCompaction/get", "jara/idleCompaction/set":
+		u.printRole("system", "Idle compaction: no reply in time.\n")
 	case "jara/rewind":
 		u.printRole("system", "Rewinding timed out.\n")
 	case "thread/compact/start":

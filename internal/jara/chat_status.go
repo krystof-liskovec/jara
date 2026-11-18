@@ -85,7 +85,7 @@ func (u *chatUI) help() string {
 /new             Start a new conversation
 /sessions [query] Browse saved sessions in this folder
 /resume [N or ID]  Browse recent sessions or resume an ID
-/models          Browse and select available Codex models
+/models          Browse and select available models
 /model [ID or N] Browse models or select one directly
 /reasoning [EFFORT] Select reasoning or browse supported efforts
 /compose         Write a multi-line message
@@ -96,7 +96,7 @@ func (u *chatUI) help() string {
 /auto [on|off|status] Let an automatic reviewer handle approvals (default on)
 /btw QUESTION    Ask a side question; works during a turn and is not saved
 /agents [N]      List subagents, or view subagent N (Ctrl+↓/↑ switch, Esc returns)
-/compact         Compact the conversation's context now
+/compact [idle ...] Compact now; /compact idle on|off|DURATION sets idle compaction
 /clear           Start a new conversation with an empty transcript
 /rewind [N]      Go back to before prompt N and edit it (files are not reverted)
 /diff            Show or hide the changes pane; lists changes on narrow terminals

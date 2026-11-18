@@ -106,6 +106,24 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 				}
 				continue
 			}
+			if chatIdleCompactRequest(message.Method) {
+				if len(message.ID) > 0 {
+					stateMu.Lock()
+					agent := state.Agent
+					stateMu.Unlock()
+					result, requestErr := handleChatIdleCompactRequest(message.Method, message.Params, agent)
+					response := map[string]any{"id": message.ID}
+					if requestErr != nil {
+						response["error"] = map[string]any{"code": -32602, "message": requestErr.Error()}
+					} else {
+						response["result"] = result
+					}
+					if line, marshalErr := json.Marshal(response); marshalErr == nil {
+						_ = client.write(line)
+					}
+				}
+				continue
+			}
 			if chatScheduleRequest(message.Method) || chatQueueRequest(message.Method) {
 				if len(message.ID) > 0 {
 					stateMu.Lock()
@@ -194,6 +212,9 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 			stateWriteMu.Lock()
 			stateMu.Lock()
 			state.ActiveTurn = true
+			if model := chatDaemonRequestModel(message.Params); model != "" {
+				state.Agent = protocol.AgentForModel(model) // a model switch can change the agent
+			}
 			snapshot := *state
 			stateMu.Unlock()
 			_ = writeChatDaemonState(paths, snapshot)
@@ -261,11 +282,15 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 				Thread struct {
 					ID string `json:"id"`
 				} `json:"thread"`
+				Model string `json:"model"`
 			}
 			if json.Unmarshal(message.Result, &response) == nil && response.Thread.ID != "" {
 				stateMu.Lock()
 				state.Conversation = response.Thread.ID
 				state.ThreadLoaded = true
+				if response.Model != "" {
+					state.Agent = protocol.AgentForModel(response.Model)
+				}
 				stateMu.Unlock()
 				changed = true
 			}
@@ -275,7 +300,8 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 			stateMu.Unlock()
 			changed = true
 		}
-		if method == "turn/start" && message.Error != nil {
+		// An idle compaction marks the turn active before its turn starts.
+		if (method == "turn/start" || method == "thread/compact/start") && message.Error != nil {
 			stateMu.Lock()
 			state.ActiveTurn = false
 			stateMu.Unlock()
@@ -378,4 +404,13 @@ func chatDaemonOtherThread(params json.RawMessage, state *chatDaemonState, state
 	conversation := state.Conversation
 	stateMu.Unlock()
 	return conversation != "" && target.ThreadID != conversation
+}
+
+// chatDaemonRequestModel is the model a turn/start request selects, or "".
+func chatDaemonRequestModel(params json.RawMessage) string {
+	var request struct {
+		Model string `json:"model"`
+	}
+	_ = json.Unmarshal(params, &request)
+	return request.Model
 }

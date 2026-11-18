@@ -88,9 +88,6 @@ so Jara asks the main agent to forward it with its `SendMessage` tool. That
 request appears in the main conversation and waits in the queue while the main
 agent is busy.
 
-When Codex compacts conversation context, Jara shows a progress message in the
-chat and updates the live activity label until compaction completes.
-
 Type `/` in the composer to open command suggestions. Filter by typing, navigate
 with the arrow keys, and accept a suggestion with Tab or Enter. Acceptance fills
 the composer; it does not execute the command. Escape dismisses the dropdown.
@@ -212,8 +209,11 @@ Prompts typed while a window reconnects wait in that window until it is back.
 - The controls bar shows how much of the model's context window is left once
   the agent reports usage (`◔ Context 72% left`; `/status` shows the token
   counts). `/compact` compacts the context now: Codex runs its compaction, and
-  Claude Code runs its own `/compact`. `/clear` starts a new conversation with
-  an empty transcript.
+  Claude Code runs its own `/compact`; progress shows in the chat and activity
+  label. A conversation using half its context window is compacted after it
+  idles (Codex 25m, Claude Code 55m), before the prompt cache expires, even
+  while detached; `/compact idle DURATION` sets the current agent's delay and
+  `/compact idle off` disables it. `/clear` starts a new conversation.
 - `/rewind` opens a list of this conversation's prompts (`/rewind N` picks one
   directly). The agent forgets the chosen prompt and everything after it, the
   transcript reloads, and the prompt returns to the input box to edit and send.

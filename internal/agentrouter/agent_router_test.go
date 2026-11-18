@@ -136,6 +136,10 @@ func TestAgentRouterClaudeDefaultInterruptAndGoals(t *testing.T) {
 	if status := done["params"].(map[string]any)["turn"].(map[string]any)["status"]; status != "interrupted" {
 		t.Fatalf("interrupt status %v", status)
 	}
+	unsupported := h.Response(h.Request("thread/unsubscribe", map[string]any{"threadId": thread}))
+	if failure, _ := unsupported["error"].(map[string]any); failure == nil || !strings.Contains(failure["message"].(string), "not supported in Claude Code conversations") {
+		t.Fatalf("an unhandled request for a Claude conversation was not refused clearly: %v", unsupported)
+	}
 	h.Response(h.Request("thread/settings/update", map[string]any{"threadId": thread, "collaborationMode": map[string]any{"mode": "plan"}}))
 	h.Request("turn/start", map[string]any{"threadId": thread, "model": "claude/opus", "effort": "high", "input": []any{map[string]any{"type": "text", "text": "plan it"}}})
 	_, seen := h.WaitFor(agentfake.IsMethod("turn/completed"))

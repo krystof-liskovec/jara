@@ -155,7 +155,7 @@ func numericChatModelChoice(value string) bool {
 
 func (b *chatModelBrowser) render() string {
 	var out strings.Builder
-	out.WriteString("Available Codex models\n")
+	out.WriteString("Available models\n")
 	for i, model := range b.models {
 		id := model.ID
 		if id == "" {

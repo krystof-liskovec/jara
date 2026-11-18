@@ -21,6 +21,7 @@ type chatDaemonState struct {
 	Workspace       string `json:"workspace"`
 	CWD             string `json:"cwd"`
 	Conversation    string `json:"conversation,omitempty"`
+	Agent           string `json:"agent,omitempty"` // the conversation's runtime, from its model
 	Initialized     bool   `json:"initialized,omitempty"`
 	ThreadLoaded    bool   `json:"thread_loaded,omitempty"`
 	ActiveTurn      bool   `json:"active_turn,omitempty"`

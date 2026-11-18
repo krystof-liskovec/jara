@@ -77,6 +77,10 @@ func (u *chatUI) event(m appMessage) error {
 		if p.ThreadID == "" || p.ThreadID == u.thread {
 			u.printRole("progress", "Conversation context compacted.\n")
 		}
+	case "jara/idleCompaction/started":
+		if p.ThreadID == "" || p.ThreadID == u.thread {
+			u.printRole("progress", "Compacting while idle, before the prompt cache expires · turn off with /compact idle off\n")
+		}
 	case "jara/queue/updated":
 		u.acceptQueueUpdate(m.Params)
 	case "jara/session/ended":

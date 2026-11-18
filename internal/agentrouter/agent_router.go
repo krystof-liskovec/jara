@@ -350,7 +350,11 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 			r.handleClaudeGoal(m.ID, m.Method, params, thread)
 			return nil
 		}
-		return r.callCodex(codexCall{uiID: m.ID, method: m.Method}, params)
+		// Codex does not know this conversation, so forwarding would fail
+		// with an unrelated error; name the gap instead.
+		if len(m.ID) > 0 {
+			r.fail(m.ID, m.Method+" is not supported in Claude Code conversations")
+		}
 	}
 	return nil
 }
