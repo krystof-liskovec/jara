@@ -94,7 +94,7 @@ func paintChatShimmer(text string, tick int, base, glow, bg, bold string) string
 // The activity row shows an animated glyph, the label with a trailing
 // ellipsis under a sweeping shimmer, and muted details in parentheses, e.g.
 // "✿ Thinking… (12s · ctrl+c to interrupt)". Each turn picks one animation;
-// JARA_SPINNER=flower, sun, explosion, fish, wave or visualizer keeps one. An animation's
+// JARA_SPINNER=flower, sun, explosion, fish, chomper or visualizer keeps one. An animation's
 // frames are all as wide and have no emoji presentation, so the row never
 // shifts.
 type chatSpinner struct {
@@ -110,8 +110,8 @@ var chatSpinners = []chatSpinner{
 	{name: "explosion", frames: []string{"·", "•", "✦", "✸", "✹", "✺", "❋", "⁙", "⁘", "∙"}}, // bursts, scatters
 	// A fish swims across its pond, turns, and swims back.
 	{name: "fish", frames: []string{"><>  ", " ><> ", "  ><>", "  <><", " <>< ", "<><  "}, hold: 2},
-	// A wave rolls out from a wall, finds the far one, and rolls back in.
-	{name: "wave", frames: []string{"|.  ", "|.. ", "|...", "... ", "...|", "..| ", ".|  "}, hold: 2},
+	// A mouth chomps its way along a row of dots, then starts again.
+	{name: "chomper", frames: []string{"C····", "O····", " C···", " O···", "  C··", "  O··", "   C·", "   O·", "    C", "    O"}},
 	{name: "visualizer", frames: chatVisualizerFrames()}, // bars dance like an audio visualizer
 }
 

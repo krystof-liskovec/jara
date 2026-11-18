@@ -175,7 +175,7 @@ func (u *chatUI) chooseChatReasoning(value string) error {
 
 func (u *chatUI) modelControlLabel() string {
 	if u.nextModel != "" {
-		return u.nextModelLabel + " · next turn"
+		return u.nextModelLabel
 	}
 	if u.effectiveModel != "" {
 		return u.effectiveModelLabel()
@@ -202,10 +202,7 @@ func (u *chatUI) reasoningControlLabel() string {
 		return "Default reasoning" // beside the model, plain "Default" would read as its name
 	}
 	label := chatReasoningEffortLabel(value)
-	if u.nextReasoning != "" {
-		return label + " · next turn"
-	}
-	if u.effectiveReasoning == "" {
+	if u.nextReasoning == "" && u.effectiveReasoning == "" {
 		return label + " · default"
 	}
 	return label

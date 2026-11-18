@@ -308,13 +308,8 @@ func chatCompletionWindow(choices []chatCompletionChoice, rows int) int {
 }
 
 // chatModelControl joins the model and its reasoning into one control, such
-// as "◈ Opus 5.5 · High". It returns the model's text as shown, which drops
-// a "next turn" the reasoning already says.
+// as "◈ Opus 5.5 · High", and returns the model's text as shown.
 func chatModelControl(model, reasoning string) (modelText, control string) {
-	const nextTurn = " · next turn"
-	if strings.HasSuffix(model, nextTurn) && strings.HasSuffix(reasoning, nextTurn) {
-		model = strings.TrimSuffix(model, nextTurn)
-	}
 	return model, "◈ " + model + " · " + reasoning
 }
 

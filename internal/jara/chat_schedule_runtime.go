@@ -35,6 +35,7 @@ type chatScheduleManager struct {
 	activeID  string
 	requestID string
 	onQueue   func([]byte) // broadcasts jara/queue/updated
+	onPrompt  func([]byte) // broadcasts jara/prompt/started
 }
 
 func newChatScheduleManager(path string) (*chatScheduleManager, error) {
@@ -254,6 +255,7 @@ func (m *chatScheduleManager) startDue(input io.Writer, inputMu *sync.Mutex, bus
 		err = m.saveLocked()
 	}
 	requestID, queued := m.requestID, job.Queued
+	started, _ := json.Marshal(map[string]any{"method": "jara/prompt/started", "params": map[string]any{"threadId": job.ThreadID, "prompt": job.Prompt}})
 	if err != nil {
 		job.Status = "failed"
 		job.Error = err.Error()
@@ -275,6 +277,8 @@ func (m *chatScheduleManager) startDue(input io.Writer, inputMu *sync.Mutex, bus
 	inputMu.Unlock()
 	if err != nil {
 		m.finishFailed(requestID, err.Error())
+	} else if m.onPrompt != nil {
+		m.onPrompt(started) // windows show it as the user's prompt
 	}
 	return err
 }

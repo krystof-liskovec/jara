@@ -202,7 +202,7 @@ func claudeModelPrettyName(id string) string {
 // chatDefaultPickerChoices lists models for /default or /fallback, marking
 // the current choice.
 func chatDefaultPickerChoices(u *chatUI, selected int, kind string) []chatCompletionChoice {
-	choices := chatModelPickerChoices(u.models, "", "", selected)
+	choices := chatModelPickerChoices(u.models, "", "", selected, "")
 	current := u.pickerCurrentChoice(kind)
 	for index := range choices {
 		choice := &choices[index]

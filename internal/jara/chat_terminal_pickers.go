@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 type chatTerminalPicker struct {
 	kind     string
 	selected int
+	provider string // the model picker's chosen provider; "" lists the providers
 }
 
 func chatSessionPickerChoices(browser *chatSessionBrowser, selected int) []chatCompletionChoice {
@@ -51,7 +54,7 @@ func chatSessionPickerChoices(browser *chatSessionBrowser, selected int) []chatC
 }
 
 func (p *chatTerminalPicker) request(u *chatUI, kind string) error {
-	p.kind, p.selected = kind, 0
+	p.kind, p.selected, p.provider = kind, 0, ""
 	if u.models != nil && u.models.complete && u.models.failure == "" {
 		p.selectCurrent(u)
 		return nil
@@ -83,13 +86,13 @@ func (p *chatTerminalPicker) sync(u *chatUI) {
 		return
 	}
 	if u.pickerRequested != "" {
-		p.kind, p.selected = u.pickerRequested, 0
+		p.kind, p.selected, p.provider = u.pickerRequested, 0, ""
 		u.pickerRequested = ""
 		p.selectCurrent(u)
 	}
 }
 
-func (p *chatTerminalPicker) close() { p.kind, p.selected = "", 0 }
+func (p *chatTerminalPicker) close() { p.kind, p.selected, p.provider = "", 0, "" }
 
 func (p *chatTerminalPicker) active() bool { return p.kind != "" }
 
@@ -100,19 +103,11 @@ func (p *chatTerminalPicker) selectCurrent(u *chatUI) {
 		if u.models == nil {
 			return
 		}
-		current := u.nextModel
-		if current == "" {
-			current = u.effectiveModel
-		}
-		if p.kind != "model" {
-			current = u.pickerCurrentChoice(p.kind)
-		}
-		for index, model := range u.models.models {
-			id, _, _ := modelOverride(model)
-			if current != "" && (current == id || current == model.ID || current == model.Model) || current == "" && model.IsDefault {
-				p.selected = index
-				return
-			}
+		index := u.pickerModelIndex(p.kind)
+		if p.kind == "model" {
+			p.selectModel(u, index)
+		} else {
+			p.selected = max(0, index)
 		}
 	case "reasoning":
 		model := u.reasoningModel()
@@ -132,7 +127,10 @@ func (p *chatTerminalPicker) selectCurrent(u *chatUI) {
 func (p *chatTerminalPicker) choices(u *chatUI) []chatCompletionChoice {
 	switch p.kind {
 	case "model":
-		return chatModelPickerChoices(u.models, u.nextModel, u.effectiveModel, p.selected)
+		if p.showsProviders(u) {
+			return chatProviderPickerChoices(u, p.selected)
+		}
+		return chatModelPickerChoices(u.models, u.nextModel, u.effectiveModel, p.selected, p.provider)
 	case "default", "fallback":
 		return chatDefaultPickerChoices(u, p.selected, p.kind)
 	case "reasoning":
@@ -166,14 +164,7 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 		p.close()
 		return u.rewindTo(index)
 	case "model":
-		if u.models == nil || p.selected >= len(u.models.models) {
-			return nil
-		}
-		if err := u.chooseChatModel(strconv.Itoa(p.selected + 1)); err != nil {
-			return err
-		}
-		u.print("Model set to " + u.nextModelLabel + " for the next and subsequent turns.\n")
-		p.close()
+		return p.chooseModel(u)
 	case "default", "fallback":
 		if u.models == nil || p.selected >= len(u.models.models) {
 			return nil
@@ -203,7 +194,9 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 	return nil
 }
 
-func chatModelPickerChoices(browser *chatModelBrowser, next, current string, selected int) []chatCompletionChoice {
+// chatModelPickerChoices lists the models of one provider, or every model
+// for an empty provider.
+func chatModelPickerChoices(browser *chatModelBrowser, next, current string, selected int, provider string) []chatCompletionChoice {
 	if browser == nil {
 		return []chatCompletionChoice{{Value: "Loading models…"}}
 	}
@@ -213,25 +206,30 @@ func chatModelPickerChoices(browser *chatModelBrowser, next, current string, sel
 	if len(browser.models) == 0 {
 		return []chatCompletionChoice{{Value: "No models found", Description: "Esc closes"}}
 	}
-	choices := []chatCompletionChoice{{Value: "Choose a model", Description: "For this conversation"}}
-	for index := range browser.models {
-		model := &browser.models[index]
+	heading := chatCompletionChoice{Value: "Choose a model", Description: "For this conversation"}
+	if provider != "" && len(chatModelProviders(browser.models)) > 1 {
+		heading = chatCompletionChoice{Value: protocol.AgentDisplayName(provider) + " models", Description: "Esc goes back to the providers"}
+	}
+	choices := []chatCompletionChoice{heading}
+	indexes := chatProviderModels(browser.models, provider)
+	for index, at := range indexes {
+		model := &browser.models[at]
 		id, label, _ := modelOverride(*model)
 		description := id
 		if model.IsDefault {
 			description += " · default"
 		}
 		if next != "" && (id == next || model.ID == next) {
-			description += " · next turn"
+			description += " · current" // a switch takes over from the running model
 		} else if current != "" && (id == current || model.ID == current) {
 			description += " · current"
 		}
 		choices = append(choices, chatCompletionChoice{
 			Value: label, Description: description, Selected: index == selected,
-			Index: index, Total: len(browser.models),
+			Index: index, Total: len(indexes),
 		})
 	}
-	if browser.more {
+	if browser.more && provider != protocol.AgentClaude { // further pages list Codex models
 		choices = append(choices, chatCompletionChoice{Value: "More models available", Description: "Use /model ID to select one"})
 	}
 	return choices

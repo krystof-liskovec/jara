@@ -44,6 +44,9 @@ func (o *chatTerminalOutput) Write(data []byte) (int, error) {
 	text = strings.ReplaceAll(text, "You> ", "")
 	text = strings.ReplaceAll(text, "Compose> ", "")
 	text = strings.TrimPrefix(text, "Jara conversation · /help for commands · Ctrl-C cancels a turn; while idle it stops the session\n")
+	if last := len(o.entries) - 1; strings.TrimSpace(text) == "" && (last < 0 || o.entries[last].role != "system" || o.entries[last].tool != nil) {
+		return len(data), nil // a blank line, such as after "You> ", is no message
+	}
 	o.append("system", text)
 	return len(data), nil
 }

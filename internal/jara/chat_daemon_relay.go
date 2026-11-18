@@ -43,6 +43,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 	defer signal.Stop(signals)
 	stopAccept := make(chan struct{})
 	schedules.onQueue = func(line []byte) { clients.broadcast(line, appMessage{Method: "jara/queue/updated"}) }
+	schedules.onPrompt = func(line []byte) { clients.broadcast(line, appMessage{Method: "jara/prompt/started"}) }
 	if runner.bootstrap != "" {
 		// No window opened this session: initialize the agent and load the
 		// conversation so scheduled and continued turns can start.

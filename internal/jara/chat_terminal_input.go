@@ -3,7 +3,6 @@
 package jara
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 )
@@ -71,6 +70,10 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 		t.dirty = true
 		return false, nil
 	}
+	if t.leftOpensSessions(*input) {
+		t.dirty = true
+		return t.submit("/resume")
+	}
 	if t.queueEditor.active() && input.Key == chatEditorEscape {
 		t.queueEditor.cancel(u, t.editor)
 		t.scroll(0)
@@ -107,19 +110,44 @@ func (t *chatTerminal) openPicker(kind string) {
 	t.dirty = true
 }
 
+// leftOpensSessions reports whether Left should open the recent sessions:
+// it does on an empty input box with no menu or question showing.
+func (t *chatTerminal) leftOpensSessions(input chatEditorInput) bool {
+	if input.Key != chatEditorLeft || t.editor.Text() != "" || t.queueEditor.active() || t.u.viewedAgent() != nil {
+		return false
+	}
+	_, asking := t.questionChoices()
+	return !asking
+}
+
+// chatMenuArrow lets Right choose like Enter and Left go back like Escape
+// in the dropdown menus.
+func chatMenuArrow(input chatEditorInput) chatEditorInput {
+	switch input.Key {
+	case chatEditorRight:
+		input.Key = chatEditorEnter
+	case chatEditorLeft:
+		input.Key = chatEditorEscape
+	}
+	return input
+}
+
 // handlePickerKey drives an open model, reasoning, default, fallback, or
 // rewind picker. Any other key closes it and goes on to the input box.
 func (t *chatTerminal) handlePickerKey(input chatEditorInput) bool {
 	if !t.picker.active() {
 		return false
 	}
+	input = chatMenuArrow(input)
 	switch input.Key {
 	case chatEditorUp:
 		t.picker.move(t.u, -1)
 	case chatEditorDown:
 		t.picker.move(t.u, 1)
 	case chatEditorEscape:
-		t.picker.close()
+		if !t.picker.back(t.u) {
+			t.picker.close()
+		}
 	case chatEditorEnter:
 		if err := t.picker.choose(t.u); err != nil {
 			t.transcript.append("system", err.Error()+"\n")
@@ -137,6 +165,7 @@ func (t *chatTerminal) handleSessionPickerKey(input chatEditorInput) bool {
 		return false
 	}
 	u := t.u
+	input = chatMenuArrow(input)
 	switch input.Key {
 	case chatEditorUp:
 		t.sessionSelection = max(0, t.sessionSelection-1)
@@ -173,12 +202,7 @@ func (t *chatTerminal) queueOnTab(input chatEditorInput) bool {
 	if err := u.queuePrompt(u.thread, editor.Text()); err != nil {
 		t.transcript.append("system", err.Error()+"\n")
 	} else {
-		message := fmt.Sprintf("Queued prompt %d. It will run after the current turn.\n", len(u.queuedPrompts))
-		if u.persistentSession {
-			message = "Queued the prompt. It runs after the current turn, also if this window closes.\n"
-		}
-		t.transcript.append("system", message)
-		editor.SetText("")
+		editor.SetText("") // the queue rows above the input box show it
 	}
 	return true
 }

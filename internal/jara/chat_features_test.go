@@ -178,10 +178,14 @@ func TestModelAndReasoningShareOneControl(t *testing.T) {
 	if frame.target(row, strings.Index(line, "GPT")) != "model" || frame.target(row, uniseg.StringWidth(line[:strings.Index(line, "High")])) != "reasoning" {
 		t.Fatalf("taps %+v on %q", frame.Targets, line)
 	}
-	// A change waiting for the next turn is said once.
-	model.ControlModel, model.ControlReasoning = "GPT-5.5 · next turn", "Low · next turn"
-	if line = renderChatView(model, 100, 20, menuColorsForTerminal(), false).Lines[row]; !strings.Contains(line, "◈ GPT-5.5 · Low · next turn (F2/F3)") {
-		t.Fatalf("next turn %q", line)
+	// A model or reasoning switch shows just the new choice.
+	u := &chatUI{out: &strings.Builder{}, effectiveReasoning: "high", nextReasoning: "low"}
+	if got := u.reasoningControlLabel(); got != "Low" {
+		t.Fatalf("switched reasoning %q", got)
+	}
+	u.nextModel, u.nextModelLabel = "gpt-6", "GPT-6"
+	if got := u.modelControlLabel(); got != "GPT-6" {
+		t.Fatalf("switched model %q", got)
 	}
 }
 

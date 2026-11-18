@@ -55,13 +55,13 @@ func TestActivityRowPicksAnAnimation(t *testing.T) {
 	if line := chatActivityViewLine(chatViewModel{Activity: "Thinking", ActivityFrame: 4}); !strings.HasPrefix(line.text, "  ><> ") {
 		t.Fatalf("fish row %q", line.text)
 	}
-	t.Setenv("JARA_SPINNER", "wave")
-	var wave []string
-	for frame := 0; frame < 16; frame += 2 {
-		wave = append(wave, chatSpinnerFor(3).glyph(frame))
+	t.Setenv("JARA_SPINNER", "chomper")
+	var chomps []string
+	for frame := 0; frame < 11; frame++ {
+		chomps = append(chomps, chatSpinnerFor(3).glyph(frame))
 	}
-	if got := strings.Join(wave, "|"); got != "|.  ||.. ||...|... |...||..| |.|  ||.  " {
-		t.Fatalf("the wave must roll out and back: %s", got)
+	if got := strings.Join(chomps, "|"); got != "C····|O····| C···| O···|  C··|  O··|   C·|   O·|    C|    O|C····" {
+		t.Fatalf("the chomper must eat its way along and start again: %s", got)
 	}
 	// The visualizer's five bars keep moving: no two frames in a row match,
 	// and the last frame leads back into the first.

@@ -208,6 +208,8 @@ func TestChatScheduleManagerRunsDuePromptsInOrder(t *testing.T) {
 	var input bytes.Buffer
 	var inputMu sync.Mutex
 	idle := func() bool { return false }
+	var announced []string
+	m.onPrompt = func(line []byte) { announced = append(announced, string(line)) }
 	later, _ := m.add("th", "later", time.Now().Add(time.Hour))
 	older, _ := m.add("th", "older", time.Now().Add(time.Hour))
 	if err := m.startDue(&input, &inputMu, idle); err != nil || input.Len() != 0 || m.running() {
@@ -215,7 +217,7 @@ func TestChatScheduleManagerRunsDuePromptsInOrder(t *testing.T) {
 	}
 	makeDue(m, later.ID, time.Second)
 	makeDue(m, older.ID, time.Minute)
-	if err := m.startDue(&input, &inputMu, func() bool { return true }); err != nil || input.Len() != 0 {
+	if err := m.startDue(&input, &inputMu, func() bool { return true }); err != nil || input.Len() != 0 || len(announced) != 0 {
 		t.Fatal("job started while the session was busy")
 	}
 
@@ -228,6 +230,10 @@ func TestChatScheduleManagerRunsDuePromptsInOrder(t *testing.T) {
 	}
 	if request["id"] != "jara-schedule-start-"+older.ID || request["method"] != "turn/start" || !strings.Contains(jsonString(t, request["params"]), `"text":"older"`) {
 		t.Fatalf("turn request = %v", request)
+	}
+	// Windows learn the prompt so they show it as the user's.
+	if len(announced) != 1 || !strings.Contains(announced[0], `"method":"jara/prompt/started"`) || !strings.Contains(announced[0], `"prompt":"older"`) {
+		t.Fatalf("announced %q", announced)
 	}
 	if !m.running() || !m.hasPending() {
 		t.Fatal("started job not tracked")

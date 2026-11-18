@@ -83,6 +83,16 @@ func (u *chatUI) event(m appMessage) error {
 		}
 	case "jara/queue/updated":
 		u.acceptQueueUpdate(m.Params)
+	case "jara/prompt/started":
+		// The session started a queued or scheduled prompt: show it as if
+		// it had just been typed.
+		var started struct {
+			Prompt string `json:"prompt"`
+		}
+		if (p.ThreadID == "" || p.ThreadID == u.thread) && json.Unmarshal(m.Params, &started) == nil && strings.TrimSpace(started.Prompt) != "" {
+			u.recordRole("user", started.Prompt+"\n")
+			u.promptLog = append(u.promptLog, chatPromptEntry{text: started.Prompt})
+		}
 	case "jara/session/ended":
 		var ended struct {
 			Reconnect bool `json:"reconnect"`

@@ -200,7 +200,6 @@ func (u *chatUI) dispatchQueuedPrompt() (bool, error) {
 			continue
 		}
 		u.queuedPrompts = append(u.queuedPrompts[:index], u.queuedPrompts[index+1:]...)
-		u.printRole("system", fmt.Sprintf("\nRunning queued prompt (%d remaining).\n", len(u.queuedPrompts)))
 		if err := u.sendQueuedPrompt(prompt.text); err != nil {
 			u.queuedPrompts = append(u.queuedPrompts, chatQueuedPrompt{})
 			copy(u.queuedPrompts[index+1:], u.queuedPrompts[index:])

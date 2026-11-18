@@ -109,6 +109,9 @@ func TestChatTerminalKeepsUnsentTextAndQueuesWithTab(t *testing.T) {
 	if term.editor.Text() != "" || len(term.u.queuedPrompts) != 1 || term.u.queuedPrompts[0].text != "hello" {
 		t.Fatalf("Tab queues the prompt during a turn: %q %+v", term.editor.Text(), term.u.queuedPrompts)
 	}
+	if screen := chatScreenText(term.frame(100, 30, time.Now())); strings.Contains(screen, "Queued prompt 1") || strings.Contains(screen, "Queued the prompt") {
+		t.Fatal("queuing adds no note to the conversation; the queue rows show it")
+	}
 	if done := typeChatKeys(t, term, "\x03"); done {
 		t.Fatal("Ctrl-C during a turn cancels it instead of leaving")
 	}
@@ -191,5 +194,22 @@ func TestMessagesHaveNoBlankRowsAtTheirEdges(t *testing.T) {
 	}
 	if strings.HasSuffix(got, "\n") {
 		t.Fatalf("a trailing blank row after the last message:\n%s", got)
+	}
+}
+
+func TestSessionStartedPromptsLookTyped(t *testing.T) {
+	term, _ := newTestChatTerminal(t)
+	u := term.u
+	u.printRole("assistant", "Done with the first task.\n")
+	u.print("\nYou> ") // the turn ended; nothing was typed
+	sendChatToolEvent(t, u, "jara/prompt/started", map[string]any{"threadId": u.thread, "prompt": "now the second task"})
+	sendChatToolEvent(t, u, "jara/prompt/started", map[string]any{"threadId": "other", "prompt": "not this window's"})
+	var rows []string
+	for _, line := range term.transcript.transcriptLines(80) {
+		rows = append(rows, strings.SplitN(line.text, " · ", 2)[0])
+	}
+	got := strings.Join(rows, "|")
+	if got != "✦ Codex|  Done with the first task.||● You|  now the second task" || len(u.promptLog) != 1 {
+		t.Fatalf("rows %q, prompts %+v", got, u.promptLog)
 	}
 }
