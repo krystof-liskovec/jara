@@ -118,8 +118,10 @@ func fastForwardCheckout(root string, expected gitCheckoutState, target, bundle 
 }
 
 // clearConvergedChanges resolves uncommitted paths that already hold the
-// incoming content (for example, from an earlier file-based sync) so Git can
-// fast-forward over them. It changes nothing when any touched path differs.
+// incoming content so Git can fast-forward over them: content of the target,
+// or of any incoming commit (an earlier file-based sync mirrored work that was
+// committed later, then changed again). Either way the incoming history keeps
+// it. It changes nothing when any touched path holds other content.
 func clearConvergedChanges(root, from, to string) error {
 	changed, err := commitPathsChanged(root, from, to)
 	if err != nil {
@@ -146,6 +148,11 @@ func clearConvergedChanges(root, from, to string) error {
 		have, err := worktreeEntry(root, name)
 		if err != nil {
 			return err
+		}
+		if want != have {
+			if want, err = incomingContentMatches(root, from, to, name, have); err != nil {
+				return err
+			}
 		}
 		if want == have {
 			converged = append(converged, name)
@@ -178,6 +185,25 @@ func clearConvergedChanges(root, from, to string) error {
 		}
 	}
 	return nil
+}
+
+// incomingContentMatches returns have when a commit in from..to holds that
+// content of name, and something else otherwise.
+func incomingContentMatches(root, from, to, name, have string) (string, error) {
+	commits, err := gitNullList(root, "--literal-pathspecs", "rev-list", "-z", from+".."+to, "--", name)
+	if err != nil {
+		return "", err
+	}
+	for _, commit := range commits {
+		entry, err := gitTreeEntry(root, strings.TrimSpace(commit), name)
+		if err != nil {
+			return "", err
+		}
+		if entry == have {
+			return have, nil
+		}
+	}
+	return "\x00differs", nil
 }
 
 // gitTreeEntry returns "mode blob" for a file in commit, or "" when absent.

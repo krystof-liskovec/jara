@@ -162,6 +162,24 @@ func TestSyncPushAdoptsFilesAlreadyCopiedAsEdits(t *testing.T) {
 	}
 }
 
+// An earlier sync mirrored edits that were committed and then changed again:
+// the remote copy matches an intermediate commit, so the push keeps it.
+func TestSyncPushAdoptsEditsFromAnIntermediateCommit(t *testing.T) {
+	f := newCommitSyncFixture(t)
+	writeSyncFile(t, f.local, "a.txt", "a first version\n")
+	f.commit(t, f.local, "first")
+	writeSyncFile(t, f.remote, "a.txt", "a first version\n")
+	writeSyncFile(t, f.local, "a.txt", "a second version\n")
+	f.commit(t, f.local, "second")
+
+	if err := f.sync("push"); err != nil {
+		t.Fatal(err)
+	}
+	if gitHead(f.remote) != gitHead(f.local) || readSyncFile(t, f.remote, "a.txt") != "a second version\n" || syncStatus(t, f.remote) != "" {
+		t.Fatalf("remote not converged: status %q", syncStatus(t, f.remote))
+	}
+}
+
 func TestSyncPushRefusesWithoutChangingRemote(t *testing.T) {
 	f := newCommitSyncFixture(t)
 	writeSyncFile(t, f.local, "a.txt", "a committed\n")
