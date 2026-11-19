@@ -220,7 +220,6 @@ func (p *chatTerminalPicker) choose(u *chatUI) error {
 		if err := u.chooseChatReasoning(effort); err != nil {
 			return err
 		}
-		u.print("Reasoning set to " + chatReasoningEffortLabel(u.nextReasoning) + " for the next and subsequent turns.\n")
 		p.close()
 	}
 	return nil

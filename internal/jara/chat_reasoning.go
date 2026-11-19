@@ -130,11 +130,7 @@ func (u *chatUI) stepChatReasoning(delta int) error {
 	if effort == current {
 		return nil
 	}
-	if err := u.chooseChatReasoning(effort); err != nil {
-		return err
-	}
-	u.printRole("system", "Reasoning set to "+chatReasoningEffortLabel(effort)+" for the next and subsequent turns.\n")
-	return nil
+	return u.chooseChatReasoning(effort)
 }
 
 func (u *chatUI) chooseChatReasoning(value string) error {

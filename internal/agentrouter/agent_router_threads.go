@@ -218,7 +218,7 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 	r.codexToVirtual[segment.BackendID] = thread.ID
 	codexRequest, _ := json.Marshal(thread.codexOpenParams(map[string]any{"threadId": segment.BackendID}))
 	return r.callCodex(codexCall{method: "thread/resume", callback: func(result, failure json.RawMessage) {
-		if failure != nil && !thread.rebriefAfterMove() {
+		if failure != nil && !thread.rebriefAfterMove(failure) {
 			r.send(rpcMessage{ID: id, Error: failure})
 			return
 		}
@@ -269,7 +269,10 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 			header = movedBriefing
 		}
 		thread.Rebrief, thread.RebriefMoved, switching = false, false, true
-		plan = agentSwitch{from: from, to: target, previous: -1, fresh: thread.briefing(header, thread.Turns, text)}
+		plan = agentSwitch{from: from, to: target, previous: -1, fresh: text}
+		if len(thread.Turns) > 0 {
+			plan.fresh = thread.briefing(header, thread.Turns, text)
+		}
 		message = plan.fresh
 	}
 	startTurn := len(thread.Turns) + 1

@@ -85,7 +85,6 @@ func (p *chatTerminalPicker) chooseModel(u *chatUI) error {
 	if err := u.chooseChatModel(strconv.Itoa(indexes[p.selected] + 1)); err != nil {
 		return err
 	}
-	u.print("Model set to " + u.nextModelLabel + " for the next and subsequent turns.\n")
 	p.close()
 	return nil
 }

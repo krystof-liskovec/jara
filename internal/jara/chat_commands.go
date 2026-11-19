@@ -230,7 +230,7 @@ func (u *chatUI) line(line string) (bool, error) {
 			u.print("\n" + err.Error() + "\nYou> ")
 			return false, nil
 		}
-		u.print("Model set to " + u.nextModelLabel + " for the next and subsequent turns in this conversation.\nYou> ")
+		u.print("You> ")
 		return false, nil
 	case line == "/reasoning":
 		if chatUIIsInteractive(u) {
@@ -251,7 +251,7 @@ func (u *chatUI) line(line string) (bool, error) {
 			u.print("\n" + err.Error() + "\nYou> ")
 			return false, nil
 		}
-		u.print("Reasoning set to " + chatReasoningEffortLabel(u.nextReasoning) + " for the next and subsequent turns.\nYou> ")
+		u.print("You> ")
 		return false, nil
 	case line == "/answer" || strings.HasPrefix(line, "/answer "):
 		return false, u.answerQuestion(line)

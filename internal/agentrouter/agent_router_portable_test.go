@@ -47,6 +47,7 @@ func TestPortableClaudeThreadRebriefsWithoutNativeSession(t *testing.T) {
 // turn in a fresh Codex thread briefed on the transcript.
 func TestMovedCodexThreadRebriefs(t *testing.T) {
 	agentfake.Setup(t)
+	t.Setenv("JARA_FAKE_CODEX_RESUME_ERROR", "no rollout found for thread id codex-moved")
 	record := &Thread{ID: "codex-moved", CWD: t.TempDir(), Turns: []TranscriptTurn{{User: "earlier", Agent: protocol.AgentCodex, Reply: "done"}},
 		Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: "codex-moved", StartTurn: 1}}}
 	record.MarkMoved()
@@ -69,5 +70,54 @@ func TestMovedCodexThreadRebriefs(t *testing.T) {
 	turns := agentfake.ReadLog(t, "codex-turn")
 	if last := turns[len(turns)-1]; strings.HasPrefix(last, "codex-moved|") || !strings.Contains(last, "moved to another machine") || !strings.Contains(last, "User: earlier") {
 		t.Fatalf("moved Codex turn: %q", turns)
+	}
+}
+
+func TestEmptyPortableCodexThreadResumesWithoutRollout(t *testing.T) {
+	agentfake.Setup(t)
+	const threadID = "codex-empty"
+	t.Setenv("JARA_FAKE_CODEX_RESUME_ERROR", "no rollout found for thread id "+threadID)
+	record := &Thread{ID: threadID, CWD: t.TempDir(),
+		Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: threadID, StartTurn: 1}}}
+	if err := StoreThread(record); err != nil {
+		t.Fatal(err)
+	}
+	h := startRouterHarness(t, protocol.AgentCodex)
+	h.Response(h.Request("initialize", map[string]any{}))
+	resumed := h.Response(h.Request("thread/resume", map[string]any{"threadId": threadID}))
+	if resumed["error"] != nil {
+		t.Fatalf("resume: %v", resumed)
+	}
+	thread := resumed["result"].(map[string]any)["thread"].(map[string]any)
+	if thread["id"] != threadID {
+		t.Fatalf("resumed with a different conversation ID: %v", thread)
+	}
+	seen := routedTurn(h, threadID, textInput("first prompt"))
+	if ids := agentfake.ThreadIDs(seen); len(ids) != 1 || !ids[threadID] {
+		t.Fatalf("turn notifications must retain the conversation ID: %v", ids)
+	}
+	turns := agentfake.ReadLog(t, "codex-turn")
+	if len(turns) != 1 || strings.HasPrefix(turns[0], threadID+"|") || !strings.HasSuffix(turns[0], "|first prompt") {
+		t.Fatalf("first prompt should reach a new Codex session verbatim: %q", turns)
+	}
+	if got := LoadThread(threadID); got == nil || got.Rebrief || got.Current().BackendID == threadID || len(got.Turns) != 1 {
+		t.Fatalf("recovered conversation was not saved: %+v", got)
+	}
+}
+
+func TestEmptyPortableCodexThreadPropagatesOtherResumeErrors(t *testing.T) {
+	agentfake.Setup(t)
+	const threadID = "codex-unavailable"
+	const failure = "conversation is already active"
+	t.Setenv("JARA_FAKE_CODEX_RESUME_ERROR", failure)
+	if err := StoreThread(&Thread{ID: threadID, CWD: t.TempDir(),
+		Segments: []ThreadSegment{{Agent: protocol.AgentCodex, BackendID: threadID, StartTurn: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	h := startRouterHarness(t, protocol.AgentCodex)
+	h.Response(h.Request("initialize", map[string]any{}))
+	resumed := h.Response(h.Request("thread/resume", map[string]any{"threadId": threadID}))
+	if rpcError, _ := resumed["error"].(map[string]any); rpcError == nil || rpcError["message"] != failure {
+		t.Fatalf("resume should report the original error: %v", resumed)
 	}
 }

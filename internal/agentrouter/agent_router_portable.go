@@ -1,6 +1,7 @@
 package agentrouter
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,11 +50,21 @@ func (t *Thread) checkMovedClaudeSession() {
 	}
 }
 
-// rebriefAfterMove handles a failed Codex resume of a moved conversation:
-// the next turn starts a fresh Codex thread briefed on the transcript.
-func (t *Thread) rebriefAfterMove() bool {
-	if !t.Portable || len(t.Turns) == 0 {
+// rebriefAfterMove lets the next turn open a fresh Codex thread when a
+// portable conversation's native session cannot be resumed.
+func (t *Thread) rebriefAfterMove(failure json.RawMessage) bool {
+	if !t.Portable {
 		return false
+	}
+	if len(t.Turns) == 0 {
+		// A saved conversation can have metadata before its first rollout.
+		// Keep other resume errors visible when there is no transcript to replay.
+		var err struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(failure, &err) != nil || err.Message != "no rollout found for thread id "+t.Current().BackendID {
+			return false
+		}
 	}
 	t.MarkMoved()
 	t.Save()

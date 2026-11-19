@@ -197,6 +197,10 @@ func fakeCodex() {
 			}
 			reply(map[string]any{"thread": map[string]any{"id": id, "cwd": params["cwd"], "turns": []any{}}, "model": "gpt-x"})
 		case "thread/resume":
+			if failure := os.Getenv("JARA_FAKE_CODEX_RESUME_ERROR"); failure != "" {
+				_ = out.Encode(map[string]any{"id": m.ID, "error": map[string]any{"code": -32600, "message": failure}})
+				continue
+			}
 			reply(map[string]any{"thread": map[string]any{"id": params["threadId"], "turns": []any{}}, "model": "gpt-x"})
 		case "thread/fork":
 			Log("codex-fork", fmt.Sprint(params["threadId"], "|", params["ephemeral"], "|", params["sandbox"]))
