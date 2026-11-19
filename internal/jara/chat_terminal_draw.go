@@ -86,7 +86,7 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 		ApprovalPending:   len(u.approvals) > 0,
 		ApprovalCountdown: u.approvalCountdown(now),
 		Motion:            t.motion, Tick: int(now.UnixMilli() / chatShimmerStep.Milliseconds()),
-		Mark: chatWelcomeMark(t.motion, now),
+		Mark: chatWelcomeMark(t.motion, now), Welcome: chatWelcome{Workspace: u.welcomeWorkspace(), Note: u.welcomeNote},
 	}, width, height, t.palette, color)
 	if paneWidth > 0 {
 		pane := renderChatDiffPane(&u.diff, paneWidth-1, height, now, t.motion, t.palette, color)

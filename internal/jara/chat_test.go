@@ -107,6 +107,7 @@ func TestChatProtocolConversation(t *testing.T) {
 	wait("Press y to allow once")
 	send("/deny")
 	wait("[completed]")
+	wait("Finished after ")
 	if strings.Contains(transcript.String(), "\x1b") {
 		t.Fatal("untrusted terminal escape rendered")
 	}
@@ -118,6 +119,7 @@ func TestChatProtocolConversation(t *testing.T) {
 	wait("Press y to allow once")
 	send("/cancel")
 	wait("[interrupted]")
+	wait("Finished after ")
 	send("/quit")
 	select {
 	case err := <-done:

@@ -178,6 +178,7 @@ func (u *chatUI) event(m appMessage) error {
 			u.finishToolCall(item.ID, chatCommandStatus(p.Item))
 		}
 	case "turn/completed":
+		startedAt, finishedAt := u.turnStartedAt, time.Now()
 		u.refreshGitDiff()
 		u.alertTurnEnded(p.Turn.Status)
 		u.finishAllReasoningSummaries()
@@ -199,6 +200,9 @@ func (u *chatUI) event(m appMessage) error {
 		}
 		if p.Turn.Error != nil && !u.signedOutTurnError(p.Turn.Error.Message) {
 			u.print(p.Turn.Error.Message + "\n")
+		}
+		if !startedAt.IsZero() {
+			u.print("\nFinished after " + chatElapsedLabel(finishedAt.Sub(startedAt)) + "\n")
 		}
 		u.login.hinted = false
 		if retried, err := u.retryOnFallback(m.Params); retried || err != nil {

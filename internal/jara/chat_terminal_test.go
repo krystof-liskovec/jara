@@ -120,6 +120,90 @@ func TestChatTerminalKeepsUnsentTextAndQueuesWithTab(t *testing.T) {
 	}
 }
 
+func TestChatTerminalNewConversationReplacesTranscript(t *testing.T) {
+	term, wire := newTestChatTerminal(t)
+	term.u.printRole("assistant", "Reply from the previous conversation.\n")
+
+	typeChatKeys(t, term, "/new\r")
+	requests := decodeModelRequests(t, wire)
+	if len(requests) != 1 || requests[0].Method != "thread/start" {
+		t.Fatalf("/new sent %+v", requests)
+	}
+	var rejected appMessage
+	if err := json.Unmarshal([]byte(`{"error":{"code":-32000,"message":"could not create thread"}}`), &rejected); err != nil {
+		t.Fatal(err)
+	}
+	rejected.ID = requests[0].ID
+	if err := term.handleMessage(rejected); err != nil {
+		t.Fatal(err)
+	}
+	if screen := chatScreenText(term.frame(100, 30, time.Now())); term.u.thread != "thread-test" ||
+		!strings.Contains(screen, "Reply from the previous conversation.") {
+		t.Fatalf("rejected /new lost the previous conversation:\n%s", screen)
+	}
+
+	typeChatKeys(t, term, "/new\r")
+	requests = decodeModelRequests(t, wire)
+	if len(requests) != 2 || requests[1].Method != "thread/start" {
+		t.Fatalf("retrying /new sent %+v", requests)
+	}
+	if err := term.handleMessage(appMessage{ID: requests[1].ID, Result: json.RawMessage(
+		`{"thread":{"id":"thread-new","turns":[]}}`,
+	)}); err != nil {
+		t.Fatal(err)
+	}
+	if term.u.thread != "thread-new" {
+		t.Fatalf("/new selected %q", term.u.thread)
+	}
+	if screen := chatScreenText(term.frame(100, 30, time.Now())); strings.Contains(screen, "Reply from the previous conversation.") {
+		t.Fatalf("/new left the previous conversation on screen:\n%s", screen)
+	}
+	typeChatKeys(t, term, "First prompt in the new conversation\r")
+	requests = decodeModelRequests(t, wire)
+	last := requests[len(requests)-1]
+	if last.Method != "turn/start" || string(last.Params["threadId"]) != `"thread-new"` {
+		t.Fatalf("first prompt sent %+v", last)
+	}
+}
+
+func TestChatTerminalResumeReplacesTranscript(t *testing.T) {
+	term, wire := newTestChatTerminal(t)
+	term.u.printRole("assistant", "Reply from the previous conversation.\n")
+	typeChatKeys(t, term, "/resume thread-saved\r")
+	requests := decodeModelRequests(t, wire)
+	if len(requests) != 1 || requests[0].Method != "thread/resume" ||
+		string(requests[0].Params["threadId"]) != `"thread-saved"` {
+		t.Fatalf("/resume sent %+v", requests)
+	}
+	if err := term.handleMessage(appMessage{ID: requests[0].ID, Result: json.RawMessage(
+		`{"thread":{"id":"thread-saved","turns":[{"id":"turn-1","items":[{"type":"agentMessage","text":"Reply from the saved conversation."}]}]}}`,
+	)}); err != nil {
+		t.Fatal(err)
+	}
+	if screen := chatScreenText(term.frame(100, 30, time.Now())); strings.Contains(screen, "Reply from the previous conversation.") ||
+		!strings.Contains(screen, "Reply from the saved conversation.") {
+		t.Fatalf("/resume displayed the wrong history:\n%s", screen)
+	}
+}
+
+func TestChatTerminalShowsElapsedTimeAfterTurn(t *testing.T) {
+	term, _ := newTestChatTerminal(t)
+	sendChatToolEvent(t, term.u, "turn/started", map[string]any{
+		"threadId": term.u.thread, "turn": map[string]string{"id": "turn-1"},
+	})
+	term.u.turnStartedAt = time.Now().Add(-62 * time.Minute)
+	sendChatToolEvent(t, term.u, "item/agentMessage/delta", map[string]any{"delta": "Final reply"})
+	sendChatToolEvent(t, term.u, "turn/completed", map[string]any{
+		"threadId": term.u.thread, "turn": map[string]string{"id": "turn-1", "status": "completed"},
+	})
+
+	screen := chatScreenText(term.frame(100, 30, time.Now()))
+	reply := strings.Index(screen, "Final reply")
+	if reply < 0 || strings.Index(screen, "Finished after 1h 2m") <= reply {
+		t.Fatalf("turn duration should follow the reply:\n%s", screen)
+	}
+}
+
 func TestChatScreenRewritesOnlyChangedLines(t *testing.T) {
 	var screen chatScreenState
 	first := screen.update(chatFrame{Lines: []string{"a", "b"}, CursorRow: 1, CursorCol: 0}, 10, 2)

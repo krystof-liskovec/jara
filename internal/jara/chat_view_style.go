@@ -37,6 +37,8 @@ func chatViewLineStyle(kind, role string, selected bool, palette menuPalette) (b
 		bold = "\x1b[1m"
 	case "welcome-copy":
 		fg = palette.muted
+	case "welcome-note":
+		fg, bold = palette.muted, "\x1b[3m"
 	case "activity", "approval":
 		fg, bold = palette.accent, "\x1b[1m"
 	case "activity-working":

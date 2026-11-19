@@ -44,6 +44,7 @@ type chatViewModel struct {
 	Motion            bool   // animations enabled
 	Tick              int    // shimmer frame
 	Mark              string // welcome mark glyph
+	Welcome           chatWelcome
 }
 
 type chatFrame struct {
@@ -152,7 +153,7 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		transcript = expandChatTranscript(model.Messages, width-4)
 	}
 	if len(transcript) == 0 {
-		transcript = chatWelcomeTranscript(transcriptRows, width-2, model.Mark)
+		transcript = chatWelcomeTranscript(transcriptRows, width-2, model.Mark, model.Welcome)
 	} else if short {
 		transcript = collapseChatBlankLines(transcript)
 	}
@@ -275,31 +276,6 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		frame.CursorCol = min(width-1, 2+max(0, cursorColumn))
 	}
 	return frame
-}
-
-func chatWelcomeTranscript(rows, width int, mark string) []chatViewLine {
-	if mark == "" {
-		mark = "✦"
-	}
-	content := []chatViewLine{
-		{text: mark, kind: "welcome-mark"},
-		{text: "Ready when you are", kind: "welcome-title"},
-		{text: "Ask Codex or Claude to explore or change this project.", kind: "welcome-copy"},
-		{text: "/resume  recent sessions     /help  command guide", kind: "welcome-hint"},
-	}
-	top := max(0, (rows-len(content))/2)
-	lines := make([]chatViewLine, top, max(rows, top+len(content)))
-	for i := range lines {
-		lines[i].kind = "welcome-space"
-	}
-	for _, line := range content {
-		line.text = centerChatViewText(line.text, width)
-		lines = append(lines, line)
-	}
-	for len(lines) < rows {
-		lines = append(lines, chatViewLine{kind: "welcome-space"})
-	}
-	return lines
 }
 
 func centerChatViewText(text string, width int) string {

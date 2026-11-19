@@ -47,7 +47,7 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	}
 	content = append(content, transcript...)
 	if len(transcript) == 0 {
-		content = append(content, chatWelcomeTranscript(max(0, transcriptRows-len(content)), width, model.Mark)...)
+		content = append(content, chatWelcomeTranscript(max(0, transcriptRows-len(content)), width, model.Mark, model.Welcome)...)
 	}
 	visibleHistory, _, _ := chatTranscriptWindow(content, transcriptRows, model.ScrollOffset)
 	row := 0

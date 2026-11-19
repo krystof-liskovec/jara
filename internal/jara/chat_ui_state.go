@@ -113,6 +113,7 @@ type chatBrowserState struct {
 // chatExtras holds the conveniences around the conversation.
 type chatExtras struct {
 	afterHistory   string                   // note shown once the transcript reloads
+	welcomeNote    string                   // afterHistory kept on the welcome screen of an empty conversation
 	alert          func(string)             // writes an alert to the terminal; nil when not interactive
 	alertsOff      bool                     // /alerts off
 	mentions       chatMentionSearch        // @file completion

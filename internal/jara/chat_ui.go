@@ -289,6 +289,7 @@ func (u *chatUI) response(m appMessage) error {
 		u.thread = r.Thread.ID
 		if previousThread != "" && previousThread != u.thread {
 			u.chatConversationState = chatConversationState{}
+			u.clearChatTranscript()
 		}
 		u.contextUsage = chatContextUsage{}
 		u.setEffectiveModel(r.Model)
@@ -318,7 +319,14 @@ func (u *chatUI) response(m appMessage) error {
 		u.renderChatHistory(r.Thread.Turns)
 		u.refreshGitDiff()
 		if u.afterHistory != "" {
-			u.printRole("system", u.afterHistory)
+			// An empty conversation shows the note on its welcome screen
+			// rather than as its first message.
+			u.welcomeNote = ""
+			if len(r.Thread.Turns) == 0 && chatUIIsInteractive(u) {
+				u.welcomeNote = strings.TrimSpace(u.afterHistory)
+			} else {
+				u.printRole("system", u.afterHistory)
+			}
 			u.afterHistory = ""
 		}
 		u.checkChatSignIn() // advisory: a dropped connection reports itself
