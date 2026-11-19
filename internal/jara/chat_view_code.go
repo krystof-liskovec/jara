@@ -4,9 +4,9 @@ import (
 	"os"
 	"strings"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // Fenced code in the transcript is highlighted by its fence language, and

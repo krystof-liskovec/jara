@@ -6,11 +6,11 @@ import (
 	"strings"
 	"sync"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // Code in diffs and fenced blocks is highlighted line by line. Spans keep the

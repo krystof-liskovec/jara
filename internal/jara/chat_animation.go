@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // Animation timing. Frames are derived from wall-clock time so every redraw

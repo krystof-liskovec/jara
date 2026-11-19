@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alecthomas/chroma/v2"
 	"krystof.liskovec/jara/internal/protocol"
 	"krystof.liskovec/jara/internal/textutil"
-	"github.com/alecthomas/chroma/v2"
 )
 
 func TestSyntaxSpansFollowTheLanguage(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // The changes pane's title row carries two buttons: [ ask ] starts a question

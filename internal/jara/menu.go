@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rivo/uniseg"
 	"krystof.liskovec/jara/internal/protocol"
 	"krystof.liskovec/jara/internal/textutil"
-	"github.com/rivo/uniseg"
 )
 
 type menuItem struct {

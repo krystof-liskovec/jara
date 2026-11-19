@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"krystof.liskovec/jara/internal/protocol"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 func (u *chatUI) renderLiveSubagentItem(item protocol.HistoryItem) {

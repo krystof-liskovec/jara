@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 // renderCompactChatView draws terminals too small for the full layout.

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rivo/uniseg"
 	"krystof.liskovec/jara/internal/protocol"
 	"krystof.liskovec/jara/internal/textutil"
-	"github.com/rivo/uniseg"
 )
 
 func TestChatDiffPaneLayoutAndOrder(t *testing.T) {

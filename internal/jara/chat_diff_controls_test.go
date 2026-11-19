@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"krystof.liskovec/jara/internal/protocol"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 func diffWithFiles(names ...string) *chatDiffState {

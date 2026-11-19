@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"krystof.liskovec/jara/internal/protocol"
 	"golang.org/x/term"
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 const updateSnooze = 24 * time.Hour // "not now" holds back the same offer this long

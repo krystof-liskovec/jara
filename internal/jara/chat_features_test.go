@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rivo/uniseg"
 	"krystof.liskovec/jara/internal/agentrouter"
 	"krystof.liskovec/jara/internal/protocol"
-	"github.com/rivo/uniseg"
 )
 
 func TestChatMentionCompletion(t *testing.T) {

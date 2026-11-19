@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 type chatViewMessage struct {

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 func TestActivityRowPicksAnAnimation(t *testing.T) {

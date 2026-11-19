@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/term"
 	"krystof.liskovec/jara/internal/agentrouter"
 	"krystof.liskovec/jara/internal/protocol"
-	"golang.org/x/term"
 )
 
 // A long-lived Claude token (claude setup-token) or an Anthropic API key can

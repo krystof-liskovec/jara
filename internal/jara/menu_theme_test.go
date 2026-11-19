@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"krystof.liskovec/jara/internal/textutil"
 	"github.com/rivo/uniseg"
+	"krystof.liskovec/jara/internal/textutil"
 )
 
 func TestMenuThemeKeepsGeometryAndColorsWholeSelection(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/term"
 	"krystof.liskovec/jara/internal/fsutil"
 	"krystof.liskovec/jara/internal/protocol"
-	"golang.org/x/term"
 )
 
 func authCommand(c Config, args []string) error {
