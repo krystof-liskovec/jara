@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/term"
@@ -232,7 +233,8 @@ func sortedKeys[V any](m map[string]V) []string {
 }
 
 // runUpdates updates this device's agents with their own updaters, then
-// upgrades each chosen remote once, raising only the agents accepted there.
+// upgrades the chosen remotes in parallel, raising only the agents accepted
+// on each, with one progress bar per remote.
 func runUpdates(c Config, choices updateChoices, out io.Writer) []string {
 	var updated []string
 	for _, agent := range choices.local {
@@ -251,16 +253,36 @@ func runUpdates(c Config, choices updateChoices, out io.Writer) []string {
 			fmt.Fprintf(out, "%s update failed: %v\n", name, err)
 		}
 	}
+	var names []string
 	for _, name := range sortedKeys(choices.remotes) {
-		deployment, ok := c.HostDeployments[name]
-		if !ok {
-			continue
+		if _, ok := c.HostDeployments[name]; ok {
+			names = append(names, name)
 		}
+	}
+	if len(names) == 0 {
+		return updated
+	}
+	board := newUpgradeBoard(out)
+	rows := make([]*upgradeRow, len(names))
+	for i, name := range names {
+		rows[i] = board.row(name)
+	}
+	board.start()
+	errs := make([]error, len(names))
+	var wg sync.WaitGroup
+	for i, name := range names {
 		accepted := choices.remotes[name]
 		options := deploymentUpgradeOptions{assumeYes: true, keepCodexVersion: !accepted[protocol.AgentCodex], keepClaudeVersion: !accepted[protocol.AgentClaude]}
-		fmt.Fprintf(out, "Upgrading %s…\n", name)
-		if err := upgradeGuidedHost(name, deployment, deploymentBundle(), Version, options, out); err != nil {
-			fmt.Fprintf(out, "%s was not upgraded: %v\n", name, err)
+		wg.Go(func() {
+			errs[i] = upgradeGuidedHost(name, c.HostDeployments[name], deploymentBundle(), Version, options, rows[i])
+			rows[i].settle(errs[i])
+		})
+	}
+	wg.Wait()
+	board.close()
+	for i, name := range names {
+		if errs[i] != nil {
+			fmt.Fprintf(out, "%s was not upgraded: %v\n", name, errs[i])
 			continue
 		}
 		updated = append(updated, name)

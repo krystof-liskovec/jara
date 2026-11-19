@@ -116,6 +116,12 @@ to answer yes to all upgrade prompts, including previous image removal and
 installation of a newer Jara client when the server offers one. Manual Compose
 deployments must be upgraded from their host checkout.
 
+The upgrade shows an animated progress bar with the current step; warnings
+print above it, and a failed build reports its last lines of output. Pass `-v`
+(`--verbose`) to see the full Docker build and command output instead. When the
+update offer upgrades several remotes, they upgrade in parallel with one
+progress bar each.
+
 ## First install
 
 The deployed Jara binary must include the maintenance gate. If upgrading from an
