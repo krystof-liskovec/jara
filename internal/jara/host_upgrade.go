@@ -35,22 +35,24 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	}
 	root := path.Join(home, saved.Directory)
 	lock := path.Join(home, ".jara-deploy-"+name+".upgrade.lock")
-	if _, err = runner.shell(20*time.Second, "mkdir -m 700 -- "+quote(lock), nil, false); err != nil {
-		return fmt.Errorf("another deployment upgrade may be running; if not, inspect and remove %s before retrying: %w", lock, err)
+	stagePrefix := path.Join(home, ".jara-upgrade-"+strings.ToLower(name)+"-")
+	deployLock, err := acquireRemoteDeployLock(runner, lock, stagePrefix, "Jara upgrade to "+desiredVersion, log)
+	if err != nil {
+		return err
 	}
 	keepLock := false
 	defer func() {
 		if keepLock {
+			if e := deployLock.record(deployLockRecovery, ""); e != nil {
+				fmt.Fprintln(log, "WARNING:", e)
+			}
 			fmt.Fprintln(log, "WARNING: deployment upgrade lock retained for recovery:", lock)
 			return
 		}
-		if _, e := runner.shell(20*time.Second, "rm -f -- "+quote(path.Join(lock, "owner"))+" && rmdir -- "+quote(lock), nil, false); e != nil {
+		if e := deployLock.release(); e != nil {
 			fmt.Fprintln(log, "WARNING: could not release deployment upgrade lock:", e)
 		}
 	}()
-	if _, err = runner.shell(10*time.Second, "printf '%s\\n' "+quote(desiredVersion)+" > "+quote(path.Join(lock, "owner")), nil, false); err != nil {
-		return fmt.Errorf("record deployment upgrade lock owner: %w", err)
-	}
 
 	envPath := path.Join(root, "deploy/.env")
 	manifestPath := path.Join(root, "deploy/.jara-native.json")
@@ -192,10 +194,13 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return err
 	}
 	nonce := hex.EncodeToString(nonceBytes[:])
-	stage := path.Join(home, ".jara-upgrade-"+strings.ToLower(name)+"-"+nonce)
+	stage := stagePrefix + nonce
 	backup := path.Join(home, ".jara-deploy-"+name+".backup-"+nonce)
 	rollbackName := spec.Container + "-rollback-" + nonce[:8]
 	candidate := "jara-upgrade-" + project + ":server-" + nonce
+	if err = deployLock.record(deployLockPrepare, stage); err != nil {
+		return err
+	}
 	defer func() {
 		if _, e := runner.shell(2*time.Minute, "rm -rf -- "+quote(stage), nil, false); e != nil {
 			fmt.Fprintln(log, "WARNING: could not remove upgrade staging directory:", stage, e)
@@ -268,6 +273,8 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		return fmt.Errorf("deployment changed during build; refusing to replace it")
 	}
 	log.stage("Replacing container", 0.92, 30*time.Second)
+	hold := holdInterrupts(log, "Interrupt received; finishing or rolling back the container replacement before stopping.")
+	defer hold.release()
 	lease := "upgrade-" + nonce
 	if admitted, gateErr := gate.beginUpdate(container, lease, options.force, log); gateErr != nil || !admitted {
 		if gateErr == nil {
@@ -314,6 +321,12 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	}
 	rollbackTag := "jara-upgrade-" + project + ":previous-" + nonce[:8]
 	if _, err = runDocker(20*time.Second, []string{"docker", "tag", oldImage, rollbackTag}, false); err != nil {
+		return err
+	}
+	if hold.interrupted() {
+		return fmt.Errorf("upgrade interrupted; live container unchanged")
+	}
+	if err = deployLock.record(deployLockReplacing, ""); err != nil {
 		return err
 	}
 	if _, err = runDocker(2*time.Minute, []string{"docker", "stop", spec.Container}, true); err != nil {
@@ -368,6 +381,10 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 	} else {
 		fmt.Fprintln(log, "WARNING: previous source tree retained for recovery at", backup)
 	}
+	if err = deployLock.record(deployLockCleanup, ""); err != nil {
+		fmt.Fprintln(log, "WARNING:", err)
+	}
+	hold.release()
 	summary := "Jara " + oldJaraVersion + " → " + desiredVersion
 	if targetCodexVersion != codexVersion {
 		summary += ", Codex " + codexVersion + " → " + targetCodexVersion
@@ -378,7 +395,7 @@ func upgradeGuidedHost(name string, saved HostDeployment, bundle []byte, desired
 		summary += ", Claude Code → " + claudeTarget
 	}
 	log.finish(summary)
-	if previousRemoved {
+	if previousRemoved && !hold.interrupted() {
 		removeImage, promptErr := confirm("Remove previous image "+rollbackTag+"?", false)
 		if promptErr != nil {
 			fmt.Fprintf(log, "Could not read cleanup choice; previous image retained as %s: %v\n", rollbackTag, promptErr)

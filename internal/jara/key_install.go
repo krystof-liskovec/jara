@@ -150,18 +150,15 @@ func withGuidedKeyStore(name string, deployment HostDeployment, action func(host
 	}
 	root := path.Join(home, deployment.Directory)
 	lock := path.Join(home, ".jara-deploy-"+name+".upgrade.lock")
-	if _, err = runner.shell(20*time.Second, "mkdir -m 700 -- "+quote(lock), nil, false); err != nil {
-		return fmt.Errorf("another deployment operation may be running; if not, inspect and remove %s before retrying: %w", lock, err)
+	deployLock, err := acquireRemoteDeployLock(runner, lock, "", "SSH key change", os.Stderr)
+	if err != nil {
+		return err
 	}
 	defer func() {
-		command := "rm -f -- " + quote(path.Join(lock, "owner")) + " && rmdir -- " + quote(lock)
-		if _, releaseErr := runner.shell(10*time.Second, command, nil, false); releaseErr != nil {
+		if releaseErr := deployLock.release(); releaseErr != nil {
 			fmt.Fprintln(os.Stderr, "WARNING: could not release deployment lock:", releaseErr)
 		}
 	}()
-	if _, err = runner.shell(10*time.Second, "printf '%s\\n' "+quote("manage SSH keys")+" > "+quote(path.Join(lock, "owner")), nil, false); err != nil {
-		return fmt.Errorf("record deployment lock owner: %w", err)
-	}
 
 	manifestBytes, err := readHostFile(runner, path.Join(root, "deploy/.jara-native.json"))
 	if err != nil {
