@@ -91,10 +91,16 @@ func (t *chatTerminal) questionChoices() ([]chatCompletionChoice, bool) {
 	note := ""
 	if menu.noteKeyStarts(question) {
 		note = " · n add a note"
+		if t.editor.vim == chatVimNormal {
+			note = " · i then n adds a note"
+		}
 	}
 	hint := "↑↓ choose · Enter select" + note
 	if question.MultiSelect {
 		hint = "↑↓ choose · Enter or Space check" + note
+		if t.editor.vim == chatVimNormal {
+			hint = "↑↓ choose · Enter checks" + note
+		}
 	}
 	switch {
 	case menu.required:
@@ -120,6 +126,9 @@ func (t *chatTerminal) questionChoices() ([]chatCompletionChoice, bool) {
 	}
 	if other >= 0 {
 		description := "type it in the input box, then press Enter"
+		if t.editor.vim == chatVimNormal {
+			description = "press i to type, then Enter to send"
+		}
 		if strings.TrimSpace(t.editor.Text()) != "" && !menu.noting {
 			description = "Enter sends what you typed"
 		}

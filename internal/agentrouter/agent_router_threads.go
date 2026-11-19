@@ -50,9 +50,10 @@ type Thread struct {
 	Effort  string `json:"effort,omitempty"`
 	// The model and reasoning the Codex thread runs with, as Codex last
 	// reported them or the interface last chose.
-	CodexModel  string               `json:"codexModel,omitempty"`
-	CodexEffort string               `json:"codexEffort,omitempty"`
-	Goal        *protocol.ThreadGoal `json:"goal,omitempty"`
+	CodexModel  string                  `json:"codexModel,omitempty"`
+	CodexEffort string                  `json:"codexEffort,omitempty"`
+	Goal        *protocol.ThreadGoal    `json:"goal,omitempty"`
+	NextTurn    *protocol.TurnSelection `json:"nextTurn,omitempty"`
 	// Reviewer is the app-server approvalsReviewer the UI last selected.
 	Reviewer string           `json:"approvalsReviewer,omitempty"`
 	Segments []ThreadSegment  `json:"segments"`
@@ -236,8 +237,7 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) error {
 	var request struct {
 		ThreadID string `json:"threadId"`
-		Model    string `json:"model"`
-		Effort   string `json:"effort"`
+		protocol.TurnSelection
 	}
 	_ = json.Unmarshal(params, &request)
 	thread := r.threads[request.ThreadID]
@@ -247,6 +247,7 @@ func (r *agentRouter) startTurn(id json.RawMessage, params json.RawMessage) erro
 			Portable: portableThreads()}
 		r.threads[request.ThreadID] = thread
 	}
+	params, request.TurnSelection = r.applyTurnSelection(id, thread, params, request.TurnSelection)
 	thread.selectReviewer(params)
 	text := turnText(params)
 	target := thread.Current().Agent

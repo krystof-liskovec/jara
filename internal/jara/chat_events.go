@@ -19,6 +19,10 @@ func (u *chatUI) event(m appMessage) error {
 	if m.Method == "thread/settings/updated" {
 		return u.acceptChatPlanUpdate(m.Params)
 	}
+	if m.Method == protocol.TurnSelectionUpdated {
+		u.acceptChatTurnSelection(m.Params)
+		return nil
+	}
 	if m.Method == "error" {
 		return u.acceptChatErrorEvent(m.Params)
 	}

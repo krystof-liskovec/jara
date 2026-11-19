@@ -33,16 +33,17 @@ type chatUI struct {
 
 // chatSessionOptions describe how this interface was started.
 type chatSessionOptions struct {
-	startedAt         time.Time
-	workspaceLabel    string
-	trackAgentState   bool
-	persistentSession bool
-	remotePlaces      []string // /remote's choices: "" for this device, then remotes
-	pendingLine       string   // a command a menu choice runs, such as /remote NAME
-	resumeAtStart     bool
-	resumeLatest      bool
-	lastAgentState    string
-	manualApprovals   bool // auto mode is the default
+	startedAt           time.Time
+	workspaceLabel      string
+	trackAgentState     bool
+	persistentSession   bool
+	sharedTurnSelection bool     // the session applies model and effort to queued and manually sent turns
+	remotePlaces        []string // /remote's choices: "" for this device, then remotes
+	pendingLine         string   // a command a menu choice runs, such as /remote NAME
+	resumeAtStart       bool
+	resumeLatest        bool
+	lastAgentState      string
+	manualApprovals     bool // auto mode is the default
 }
 
 // chatTurnState lives while a turn runs.
@@ -99,7 +100,8 @@ type chatComposerState struct {
 	queuedPrompts       []chatQueuedPrompt
 	queuePromptSequence uint64
 	queueEditRequest    uint64
-	prefill             string // text to put back in the input box
+	prefill             string              // text to put back in the input box
+	vimCommand          func(string) string // provided by the full-screen editor
 }
 
 // chatBrowserState covers the pickers and the changes pane.
@@ -120,5 +122,6 @@ type chatExtras struct {
 	images         map[int]string           // [Image #N] placeholders → data URLs
 	customCommands []protocol.CustomCommand // prompt files usable as slash commands
 	login          chatLoginState
+	project        chatProjectStatus
 	backgroundRuns chan chatBackgroundNote // the output of /mcp changes or /usage while it runs; nil otherwise
 }

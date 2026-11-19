@@ -75,6 +75,15 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 				}
 				continue
 			}
+			if message.Method == chatProjectLocationMethod {
+				if len(message.ID) > 0 {
+					stateMu.Lock()
+					cwd := state.CWD
+					stateMu.Unlock()
+					handleChatProjectLocationRequest(message.ID, cwd, client)
+				}
+				continue
+			}
 			if message.Method == "jara/shell" {
 				if len(message.ID) > 0 {
 					stateMu.Lock()
@@ -264,6 +273,13 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 	case "turn/completed":
 		state.ActiveTurn = false
 		changed = true
+	case protocol.TurnSelectionUpdated:
+		var update protocol.TurnSelectionUpdate
+		if json.Unmarshal(message.Params, &update) == nil && update.ThreadID == state.Conversation &&
+			update.Applied != nil && update.Applied.Model != "" {
+			state.Agent = protocol.AgentForModel(update.Applied.Model)
+			changed = true
+		}
 	}
 	stateMu.Unlock()
 	if len(message.ID) > 0 && message.Method == "" {

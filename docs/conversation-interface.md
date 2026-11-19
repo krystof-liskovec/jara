@@ -66,10 +66,10 @@ new authentication flow.
 
 Interactive terminals use a full-screen conversation view: the transcript fills
 the screen from the top, with styled user/agent/tool messages, an activity row,
-and a bordered composer above the model and reasoning controls. The transcript scrolls independently of your draft and reflows when
-the terminal is resized. Narrow terminals use the same controls with a compact
-layout. Message groups have clearer spacing, and Codex's concise reasoning
-summaries update the activity row instead of appearing as transcript messages.
+and a bordered composer above the model and reasoning controls. The workspace
+path and current Git branch appear above the composer. The transcript scrolls
+independently of your draft and reflows when the terminal is resized. Codex's
+concise reasoning summaries update the activity row.
 Subagent activity appears inline with its delegation prompt, lifecycle updates,
 and any status or result text the agent reports in the parent thread. While a
 conversation has subagents, a strip above the input box lists the main agent
@@ -105,11 +105,11 @@ return to the chat. `/resume ID` still opens a specific conversation directly.
 `/models` and bare `/model` open an interactive model picker. Use F2 from any
 prompt to open it directly. `/reasoning` and F3 open the selected model's
 supported reasoning choices. Use the arrow keys and Enter to choose, or Escape
-to close. Between turns, Shift+Up raises reasoning effort and Shift+Down lowers
-it. The controls below the composer show the choices for this conversation.
-The model control names the concrete model: the conversation's model, or before
-a conversation opens, the model a new one would use. For Claude Code's default
-entry it shows the model Claude Code reports once it starts.
+to close. Shift+Up raises reasoning effort and Shift+Down lowers it.
+Model and reasoning changes made during a turn apply to the next prompt Jara
+starts, including queued prompts. The controls show the selection below the
+composer. For Claude Code's default entry, the model control shows the concrete
+model Claude Code reports once it starts.
 
 `/default` opens the same picker to set the default model for new conversations
 on this host; `/default ID` or `/default N` sets it directly. The default model
@@ -136,8 +136,8 @@ details for elapsed time, token progress, and how to interrupt.
 `JARA_REDUCED_MOTION=1` keeps the row but stops the shimmer. Message headers show their timestamps when Codex
 provides them.
 
-Bracketed paste inserts text, including multiple lines, without submitting it.
-Input history and cursor editing work in the composer. Text typed while an agent
+Bracketed paste inserts multiline text without submitting it. The composer has
+input history and [Vim editing](tui.md#vim-editing-in-conversations). Text typed while an agent
 is streaming remains a draft if submission is unavailable; control commands such
 as `/cancel`, `/answer`, and `/approve` remain usable during a turn.
 

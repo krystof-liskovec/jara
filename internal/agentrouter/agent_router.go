@@ -56,6 +56,7 @@ type agentRouter struct {
 	codexIn        *json.Encoder
 	codexCmd       *exec.Cmd
 	codexCalls     map[string]codexCall
+	turnSelections map[string]turnSelectionRequest // settings used by turns awaiting a start response
 	sequence       int
 	defaultAgent   string
 	agentExplicit  bool     // defaultAgent was chosen explicitly, not configured
@@ -166,6 +167,7 @@ func (r *agentRouter) reply(id json.RawMessage, result any) {
 }
 
 func (r *agentRouter) fail(id json.RawMessage, message string) {
+	r.finishTurnSelection(id, false)
 	r.send(map[string]any{"id": id, "error": map[string]any{"code": -32000, "message": message}})
 }
 
@@ -226,6 +228,7 @@ func (r *agentRouter) fromCodex(m rpcMessage) error {
 		}
 		m.Result = r.postProcessCodexResult(call, m.Result, m.Error)
 		r.noteCodexSettings(call.method, m.Result, m.Error)
+		r.finishTurnSelection(m.ID, m.Error == nil)
 		r.send(m)
 		return nil
 	}
@@ -331,6 +334,9 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 		return r.startThread(m.ID, params)
 	case "thread/resume":
 		return r.resumeThread(m.ID, params)
+	case protocol.TurnSelectionGet, protocol.TurnSelectionSet:
+		r.handleTurnSelection(m.ID, m.Method, params)
+		return nil
 	case "turn/start":
 		if forward, thread, ok := r.subagentTurn(params); ok {
 			if strings.HasPrefix(thread, protocol.ClaudeSubagentThreadPrefix) {

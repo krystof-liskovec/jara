@@ -19,16 +19,18 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 		return frame
 	}
 	composerRows, controlRows := 1, 0
+	projectLabel := model.ProjectLocation.label(width)
+	projectRows := btoi(projectLabel != "" && height > 1)
 	controlModel := compactChatModelText(textutil.SanitizeText(model.ControlModel), 24)
 	controlReasoning := compactChatModelText(textutil.SanitizeText(model.ControlReasoning), 20)
-	if height > 1 {
+	if height > composerRows+projectRows {
 		controlRows = 1
 		combined := "M:" + controlModel + " · R:" + controlReasoning + " (F2/F3)"
 		if height > 3 && uniseg.StringWidth(combined) > width {
 			controlRows = 2
 		}
 	}
-	available := max(0, height-composerRows-controlRows)
+	available := max(0, height-composerRows-controlRows-projectRows)
 	queueRows := min(min(chatQueueViewRowLimit, len(model.QueuedPrompts)), available)
 	completionRows := min(4, min(len(model.Suggestions), max(0, available-queueRows)))
 	activityRows := 0
@@ -90,6 +92,13 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	if model.QueueEditing {
 		prefix = "Edit> "
 	}
+	if model.VimMode != chatVimOff && width >= 5 {
+		mode := "[" + string(model.VimMode[0]) + "] "
+		if width > uniseg.StringWidth(mode+prefix) {
+			mode += prefix
+		}
+		prefix = mode
+	}
 	composerWidth := max(1, width-uniseg.StringWidth(prefix))
 	composerLines, cursorLine, cursorColumn := wrapChatComposer(model.Composer, model.CursorLine, model.CursorColumn, composerWidth)
 	if len(composerLines) == 0 {
@@ -98,6 +107,9 @@ func renderCompactChatView(model chatViewModel, width, height int, palette menuP
 	cursorLine = min(max(0, cursorLine), len(composerLines)-1)
 	visible, start, leftMore := chatViewWindow(composerLines[cursorLine], max(0, composerWidth), cursorColumn)
 	composerRow := height - controlRows - 1
+	if projectRows > 0 {
+		frame.Lines[composerRow-1] = paintChatViewLine(projectLabel, "controls", "", false, width, palette, color)
+	}
 	if controlRows == 1 {
 		controls := "M:" + controlModel + " · R:" + controlReasoning + " (F2/F3)"
 		frame.Lines[height-1] = paintChatViewLine(fitChatView(controls, width), "controls", "", false, width, palette, color)

@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
-
-	"krystof.liskovec/jara/internal/textutil"
 )
 
 // /fallback names a model, usually from the other provider, that takes over
@@ -80,7 +78,10 @@ func (u *chatUI) retryOnFallback(params json.RawMessage) (bool, error) {
 		return false, nil
 	}
 	fallback, prompt := u.defaults.Fallback, u.lastPrompt
-	current := textutil.FirstNonEmpty(u.nextModel, u.effectiveModel)
+	if u.nextModel != "" || u.nextReasoning != "" {
+		return false, nil // a newer user selection takes precedence over an automatic retry
+	}
+	current := u.effectiveModel
 	if fallback == "" || prompt == "" || u.fallbackRetried || fallback == current || !u.threadReady ||
 		!chatCrunchIsUsageLimit(event.Turn.Error.CodexErrorInfo, event.Turn.Error.Message) {
 		return false, nil

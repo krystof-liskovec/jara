@@ -38,6 +38,7 @@ type chatLoopOptions struct {
 	cwd, id, workspaceLabel string
 	trackAgentState         bool
 	persistentSession       bool
+	sharedTurnSelection     bool
 	initialized             bool
 	attachedTurnActive      bool
 	resumeAtStart           bool
@@ -54,10 +55,11 @@ func chatLoopWithOptions(c *appConnection, input io.Reader, output io.Writer, op
 	u := &chatUI{
 		c: c, out: output, cwd: options.cwd, thread: options.id, busy: true, startedAt: time.Now(),
 		workspaceLabel: options.workspaceLabel, trackAgentState: options.trackAgentState,
-		persistentSession:  options.persistentSession,
-		connected:          options.initialized,
-		attachedTurnActive: options.attachedTurnActive,
-		resumeAtStart:      options.resumeAtStart, resumeLatest: options.resumeLatest,
+		persistentSession:   options.persistentSession,
+		sharedTurnSelection: options.sharedTurnSelection,
+		connected:           options.initialized,
+		attachedTurnActive:  options.attachedTurnActive,
+		resumeAtStart:       options.resumeAtStart, resumeLatest: options.resumeLatest,
 		pending: map[string]chatPending{}, pendingTurnModels: map[string]chatTurnRequest{},
 		items: map[string]json.RawMessage{},
 	}

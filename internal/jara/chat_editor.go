@@ -27,6 +27,7 @@ const (
 	chatEditorModelPicker     chatEditorKey = "model-picker"
 	chatEditorReasoningPicker chatEditorKey = "reasoning-picker"
 	chatEditorClipboardImage  chatEditorKey = "clipboard-image"
+	chatEditorToggleVim       chatEditorKey = "toggle-vim"
 )
 
 type chatEditorInput struct {
@@ -55,6 +56,8 @@ const (
 )
 
 type chatEditor struct {
+	vim                 chatVimMode
+	vimDeletePending    bool
 	private             bool // the text is a secret: it stays out of the history
 	text                string
 	cursor              int
@@ -83,12 +86,16 @@ func (e *chatEditor) CursorByte() int { return e.cursor }
 // SetText restores a rejected submission to the composer without adding it to
 // history. Input is sanitized and bounded using the same rules as pasted text.
 func (e *chatEditor) SetText(text string) {
+	e.vimDeletePending = false
 	text = cleanChatEditorText(text)
 	text, _ = truncateChatGraphemes(text, e.maxBytes)
 	e.text = text
 	e.cursor = len(text)
 	e.pastePreviews = nil
 	e.afterEdit()
+	if !e.private && e.vim == chatVimNormal {
+		e.clampVimCursor()
+	}
 }
 
 // CursorPosition returns zero-based line and terminal-cell column values.
@@ -135,6 +142,10 @@ func (e *chatEditor) Completions() []chatCompletionChoice {
 }
 
 func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
+	if !e.private && e.vim == chatVimNormal && input.Key == chatEditorText {
+		return e.applyVimNormal(input.Text)
+	}
+	e.vimDeletePending = false
 	result := chatEditorResult{}
 	switch input.Key {
 	case chatEditorText, chatEditorPaste:
@@ -171,7 +182,7 @@ func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
 			result.Changed = e.applySelectedCompletion()
 			break
 		}
-		if e.cursor > 0 && e.text[e.cursor-1] == '\\' {
+		if (e.private || e.vim != chatVimNormal) && e.cursor > 0 && e.text[e.cursor-1] == '\\' {
 			// A trailing backslash continues the message on a new line, for
 			// keyboards (phones) that cannot send Shift+Enter or Ctrl+J.
 			e.text = e.text[:e.cursor-1] + "\n" + e.text[e.cursor:]
@@ -196,6 +207,9 @@ func (e *chatEditor) Apply(input chatEditorInput) chatEditorResult {
 			e.dismissed = true
 			result.Changed = true
 		}
+	}
+	if result.Changed && !e.private && e.vim == chatVimNormal {
+		e.clampVimCursor()
 	}
 	return result
 }
@@ -295,26 +309,22 @@ func (e *chatEditor) moveRight() bool {
 }
 
 func (e *chatEditor) moveHome() bool {
-	lineStart := strings.LastIndexByte(e.text[:e.cursor], '\n') + 1
-	if lineStart == e.cursor {
-		return false
-	}
-	e.cursor = lineStart
-	e.afterCursorMove()
-	return true
+	return e.moveCursorTo(e.lineStart())
 }
 
 func (e *chatEditor) moveEnd() bool {
-	lineEnd := len(e.text)
+	return e.moveCursorTo(e.lineEnd())
+}
+
+func (e *chatEditor) lineStart() int {
+	return strings.LastIndexByte(e.text[:e.cursor], '\n') + 1
+}
+
+func (e *chatEditor) lineEnd() int {
 	if next := strings.IndexByte(e.text[e.cursor:], '\n'); next >= 0 {
-		lineEnd = e.cursor + next
+		return e.cursor + next
 	}
-	if lineEnd == e.cursor {
-		return false
-	}
-	e.cursor = lineEnd
-	e.afterCursorMove()
-	return true
+	return len(e.text)
 }
 
 func (e *chatEditor) backspace() bool {
@@ -323,10 +333,7 @@ func (e *chatEditor) backspace() bool {
 	}
 	previous := e.cursor
 	e.moveLeft()
-	e.removePastePreviewsInRange(e.cursor, previous)
-	e.text = e.text[:e.cursor] + e.text[previous:]
-	e.afterEdit()
-	return true
+	return e.deleteRange(e.cursor, previous)
 }
 
 func (e *chatEditor) deleteForward() bool {
@@ -335,9 +342,16 @@ func (e *chatEditor) deleteForward() bool {
 	}
 	next := e.cursor
 	e.moveRight()
-	e.removePastePreviewsInRange(next, e.cursor)
-	e.text = e.text[:next] + e.text[e.cursor:]
-	e.cursor = next
+	return e.deleteRange(next, e.cursor)
+}
+
+func (e *chatEditor) deleteRange(start, end int) bool {
+	if start == end {
+		return false
+	}
+	e.removePastePreviewsInRange(start, end)
+	e.text = e.text[:start] + e.text[end:]
+	e.cursor = start
 	e.afterEdit()
 	return true
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 func chatAlreadyInitialized(message string) bool {
@@ -30,6 +32,9 @@ func (u *chatUI) recoverChatRequest(pending chatPending, detail string) bool {
 	switch pending.method {
 	case "initialize":
 		return false
+	case protocol.TurnSelectionSet:
+		u.rejectChatTurnSelection(pending.action, detail)
+		return true
 	case "turn/start":
 		u.resetFailedTurn()
 		u.setAgentState("idle")

@@ -232,6 +232,7 @@ func (s *claudeSession) openTurn(id json.RawMessage) {
 	s.turnStarted, s.tokens = time.Now(), 0
 	turn := map[string]any{"id": s.turnID, "status": "inProgress"}
 	if id != nil {
+		s.r.finishTurnSelection(id, true)
 		s.r.reply(id, map[string]any{"turn": turn})
 	}
 	s.r.notify("turn/started", map[string]any{"threadId": s.thread.ID, "turn": turn})

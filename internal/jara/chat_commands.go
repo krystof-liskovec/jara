@@ -8,6 +8,9 @@ import (
 func (u *chatUI) line(line string) (bool, error) {
 	if u.composing {
 		trimmed := strings.TrimSpace(line)
+		if name, args := splitChatCommand(trimmed); name == "/vim" {
+			return false, u.runChatVimCommand(args)
+		}
 		if isChatPlanCommand(trimmed) {
 			return false, u.runChatPlanCommand(trimmed)
 		}
@@ -416,11 +419,13 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 		"input":    append([]any{map[string]any{"type": "text", "text": message}}, u.takeChatImages(message)...),
 		"summary":  "concise",
 	}
-	if u.nextModel != "" {
-		params["model"] = u.nextModel
-	}
-	if u.nextReasoning != "" {
-		params["effort"] = u.nextReasoning
+	if !u.sharedTurnSelection {
+		if u.nextModel != "" {
+			params["model"] = u.nextModel
+		}
+		if u.nextReasoning != "" {
+			params["effort"] = u.nextReasoning
+		}
 	}
 	return u.requestTurnWithQueuedPrompt(params, queuedPrompt)
 }

@@ -71,16 +71,25 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 	case chatEditorReasoningPicker:
 		t.openPicker("reasoning")
 		return false, nil
+	case chatEditorToggleVim:
+		if u.login.secret == "" {
+			t.dirty = true
+			return false, u.runChatVimCommand("")
+		}
+		return false, nil
 	}
 	chatTerminalAttachImages(u, input)
 	menuOpen := t.picker.active() || t.sessionPicker || t.queueEditor.active()
-	if answer := chatApprovalKey(u, t.editor, *input); answer != "" && !(menuOpen && input.Key == chatEditorEnter) {
-		t.dirty = true
-		return u.line(answer)
-	}
-	if handled, err := t.handleQuestionKey(*input); handled || err != nil {
-		t.dirty = true
-		return false, err
+	normalTextKey := t.editor.vim == chatVimNormal && u.login.secret == "" && input.Key == chatEditorText
+	if !normalTextKey {
+		if answer := chatApprovalKey(u, t.editor, *input); answer != "" && !(menuOpen && input.Key == chatEditorEnter) {
+			t.dirty = true
+			return u.line(answer)
+		}
+		if handled, err := t.handleQuestionKey(*input); handled || err != nil {
+			t.dirty = true
+			return false, err
+		}
 	}
 	if t.handlePickerKey(*input) || t.handleSessionPickerKey(*input) {
 		t.dirty = true
@@ -132,9 +141,8 @@ func (t *chatTerminal) openPicker(kind string) {
 }
 
 // handleEscape applies Escape: it closes or steps back out of whatever is
-// open, the innermost first; with nothing open it stops a running turn, as
-// Ctrl+C does. A waiting question is left alone, so a stray Escape does not
-// throw it away.
+// open, the innermost first, and switches the Vim composer to Normal mode.
+// Without Vim or an open menu, Escape can stop a running turn.
 func (t *chatTerminal) handleEscape(input chatEditorInput) error {
 	u := t.u
 	t.dirty = true
@@ -142,15 +150,18 @@ func (t *chatTerminal) handleEscape(input chatEditorInput) error {
 	case u.diff.fullScreen():
 		u.diff.hideOnScreen()
 		return nil
-	case t.queueEditor.active():
-		t.queueEditor.cancel(u, t.editor)
-		t.scroll(0)
-		return nil
 	case t.handlePickerKey(input) || t.handleSessionPickerKey(input):
 		return nil
 	case u.login.secret != "":
 		t.editor.SetText("")
 		u.stopSecretEntry("Sign-in cancelled.")
+		return nil
+	case t.editor.vimEscape():
+		u.noteChatComposer(t.editor.Text(), t.editor.CursorByte())
+		return nil
+	case t.queueEditor.active():
+		t.queueEditor.cancel(u, t.editor)
+		t.scroll(0)
 		return nil
 	}
 	if handled, err := t.handleQuestionKey(input); handled || err != nil {
@@ -160,7 +171,7 @@ func (t *chatTerminal) handleEscape(input chatEditorInput) error {
 		t.editor.Apply(input) // back from a subagent, or suggestions hidden
 		return nil
 	}
-	if _, asking := t.questionChoices(); asking || !u.agentTurnActive() {
+	if _, asking := t.questionChoices(); asking || t.editor.vim == chatVimNormal || !u.agentTurnActive() {
 		return nil
 	}
 	return u.interrupt()

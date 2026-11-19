@@ -12,6 +12,7 @@ type remoteChatServerReady struct {
 	Conversation   string `json:"conversation,omitempty"`
 	Initialized    bool   `json:"initialized,omitempty"`
 	ActiveTurn     bool   `json:"active_turn,omitempty"`
+	TurnSelection  bool   `json:"turn_selection,omitempty"`
 	Error          string `json:"error,omitempty"`
 	ManagedSession bool   `json:"managed_session,omitempty"`
 	Notice         string `json:"-"` // where the agent runs, shown after reconnecting

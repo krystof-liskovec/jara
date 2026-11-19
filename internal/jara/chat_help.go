@@ -22,6 +22,7 @@ var chatHelpSections = []struct {
 		{"/compose", "", "Write a multi-line message"},
 		{"/send", "", "Send the composed message"},
 		{"/discard", "", "Discard the composed message"},
+		{"/vim", "[on or off or status]", "Toggle Vim editing in this terminal's composer (F7)"},
 	}},
 	{"Models", []chatHelpEntry{
 		{"/models", "", "Browse and select models, by provider"},
@@ -75,7 +76,7 @@ var chatHelpKeys = []string{
 	"`Tab` while a turn runs queues the message for after it",
 	"`F2` and `F3` open the model and reasoning menus; `Shift+↑/↓` raises or lowers reasoning",
 	"`Shift+Tab` toggles auto mode",
-	"`Esc` closes what is open; with nothing open it stops a running turn",
+	"`Esc` closes menus or enters Vim Normal mode. With Vim off and nothing open, it stops a running turn",
 	"`Ctrl+C` stops a running turn; on an idle one it closes the session and the next `jara` starts a new conversation (`jara resume --latest` returns)",
 	"`Ctrl+D` on an empty input detaches: the session keeps running and the next `jara` comes back to it",
 	"`←` on an empty input opens recent sessions; in menus `→` chooses and `←` goes back",

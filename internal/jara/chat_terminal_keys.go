@@ -183,6 +183,9 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 		return &chatTerminalKeyEvent{paneScroll: -chatDiffPaneScrollStep}
 	case 6:
 		return &chatTerminalKeyEvent{paneScroll: chatDiffPaneScrollStep}
+	case 7:
+		event := editorEvent(chatEditorToggleVim)
+		return &event
 	}
 	switch sequence {
 	case "\x1b[1;2A", "\x1b[1;2:1A", "\x1b[2A", "\x1b[57352;2u", "\x1b[57352;2:1u": // Shift+Up
@@ -329,8 +332,8 @@ func editorEvent(key chatEditorKey, text ...string) chatTerminalKeyEvent {
 	return chatTerminalKeyEvent{input: &input}
 }
 
-// chatFunctionKey returns N for an F1-F6 key sequence, or 0. Terminals encode
-// these keys differently: SS3 P-S (xterm, tmux), CSI 11-17 ~ (VT220), and,
+// chatFunctionKey returns N for an F1-F7 key sequence, or 0. Terminals encode
+// these keys differently: SS3 P-S (xterm, tmux), CSI 11-18 ~ (VT220), and,
 // with the kitty keyboard protocol Jara enables, CSI P, Q, S and CSI 13 ~ for
 // F1-F4. Modified keys add ";MODIFIERS" (CSI 1;2Q, CSI 13;5~) and kitty may
 // append ":EVENT"; any modifier still selects the key.
@@ -358,6 +361,8 @@ func chatFunctionKey(sequence string) int {
 			return int(params[0][1] - '0')
 		case "17":
 			return 6
+		case "18":
+			return 7
 		}
 		return 0
 	}

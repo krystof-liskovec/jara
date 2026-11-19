@@ -173,7 +173,7 @@ running:
 			stateMu.Lock()
 			ready := remoteChatServerReady{
 				CWD: state.CWD, Workspace: state.Workspace, Conversation: state.Conversation,
-				Initialized: state.Initialized, ActiveTurn: state.ActiveTurn,
+				Initialized: state.Initialized, ActiveTurn: state.ActiveTurn, TurnSelection: true,
 			}
 			stateMu.Unlock()
 			client, err := clients.attach(conn, ready)

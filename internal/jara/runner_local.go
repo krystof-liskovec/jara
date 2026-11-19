@@ -124,8 +124,9 @@ func openLocalRunner(o localRunnerOpen, q Request) error {
 	options := chatLoopOptions{
 		cwd: ready.CWD, id: conversation, workspaceLabel: ready.Workspace,
 		persistentSession: true, initialized: ready.Initialized, attachedTurnActive: ready.ActiveTurn,
-		resumeAtStart: q.Conversation == "" && (q.Resume || q.ResumeLatest),
-		resumeLatest:  q.Conversation == "" && q.ResumeLatest,
+		sharedTurnSelection: ready.TurnSelection,
+		resumeAtStart:       q.Conversation == "" && (q.Resume || q.ResumeLatest),
+		resumeLatest:        q.Conversation == "" && q.ResumeLatest,
 		reconnect: func(thread string) (*appConnection, remoteChatServerReady, error) {
 			return connectLocalRunner(o, chatRequestFor(q, thread), false)
 		},

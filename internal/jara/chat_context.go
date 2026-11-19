@@ -133,6 +133,7 @@ var chatExtraCommands = map[string]func(u *chatUI, args string) error{
 	"/export":  func(u *chatUI, args string) error { u.runChatExportCommand(args); return nil },
 	"/diff":    func(u *chatUI, _ string) error { u.runChatDiffCommand(); return nil },
 	"/notify":  func(u *chatUI, args string) error { return u.runChatNotifyCommand(args) },
+	"/vim":     (*chatUI).runChatVimCommand,
 }
 
 func splitChatCommand(line string) (name, args string) {
@@ -171,6 +172,8 @@ func (u *chatUI) acceptChatExtraResponse(m appMessage, p chatPending) bool {
 		u.acceptChatNotifyResponse(m, p)
 	case "jara/git/diff":
 		u.acceptGitDiffResponse(m)
+	case chatProjectLocationMethod:
+		u.acceptChatProjectLocation(m)
 	default:
 		return false
 	}
@@ -183,6 +186,8 @@ func (u *chatUI) expireChatExtraRequest(id string, pending chatPending) bool {
 	switch pending.method {
 	case "jara/git/diff":
 		u.expireGitDiffRequest()
+	case chatProjectLocationMethod:
+		u.project.requesting = false
 	case "fuzzyFileSearch", "jara/commands/list":
 	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
 		u.printRole("system", "Notifications: no reply in time.\n")

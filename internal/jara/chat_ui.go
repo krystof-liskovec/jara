@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"krystof.liskovec/jara/internal/protocol"
 )
 
 type chatPending struct {
@@ -302,6 +304,7 @@ func (u *chatUI) response(m appMessage) error {
 		}
 		u.labelReplies()
 		u.threadReady = true
+		u.loadChatTurnSelection()
 		u.busy = p.method == "thread/resume" && u.attachedTurnActive
 		if u.busy {
 			u.setActivityLabel("Thinking")
@@ -341,6 +344,8 @@ func (u *chatUI) response(m appMessage) error {
 		return u.acceptChatSessionPage(m.Result)
 	case "model/list":
 		return u.acceptChatModelPage(m.Result)
+	case protocol.TurnSelectionGet:
+		u.acceptChatTurnSelection(m.Result)
 	case "thread/goal/get", "thread/goal/set", "thread/goal/clear":
 		return u.acceptChatGoalResponse(m, p.method, p.action)
 	case "jara/schedule/create", "jara/schedule/list", "jara/schedule/cancel":
@@ -388,6 +393,11 @@ func (u *chatUI) response(m appMessage) error {
 			if u.cancel {
 				return u.interrupt()
 			}
+		} else {
+			// Completion can arrive before the start response. A local
+			// follow-up that was still waiting can now start.
+			_, err := u.dispatchQueuedPrompt()
+			return err
 		}
 	}
 	return nil

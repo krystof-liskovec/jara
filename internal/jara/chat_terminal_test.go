@@ -45,6 +45,8 @@ func typeChatKeys(t *testing.T, term *chatTerminal, data string) bool {
 func TestChatTerminalShiftArrowsStepReasoning(t *testing.T) {
 	term, wire := newTestChatTerminal(t)
 	term.u.effectiveModel = "test-model"
+	term.u.effectiveReasoning = "medium"
+	term.u.busy, term.u.turn = true, "turn-live"
 	typeChatKeys(t, term, "draft\x1b[1;2A")
 	requests := decodeModelRequests(t, wire)
 	if len(requests) != 1 || requests[0].Method != "model/list" {
@@ -72,6 +74,10 @@ func TestChatTerminalShiftArrowsStepReasoning(t *testing.T) {
 	if got := term.editor.Text(); got != "draft" {
 		t.Fatalf("shortcut changed the draft to %q", got)
 	}
+	if term.u.effectiveReasoning != "medium" || term.u.turn != "turn-live" {
+		t.Fatalf("shortcut changed the active turn's reasoning to %q", term.u.effectiveReasoning)
+	}
+	term.u.busy, term.u.turn = false, ""
 	typeChatKeys(t, term, "\r")
 	requests = decodeModelRequests(t, wire)
 	if len(requests) != 2 || requests[1].Method != "turn/start" || string(requests[1].Params["effort"]) != `"low"` {

@@ -50,8 +50,9 @@ func openRemoteJaraClient(remote Remote, request Request) (bool, error) {
 	options := chatLoopOptions{
 		cwd: ready.CWD, id: conversation, workspaceLabel: ready.Workspace,
 		persistentSession: true, initialized: ready.Initialized, attachedTurnActive: ready.ActiveTurn,
-		resumeAtStart: request.Conversation == "" && (request.Resume || request.ResumeLatest),
-		resumeLatest:  request.Conversation == "" && request.ResumeLatest,
+		sharedTurnSelection: ready.TurnSelection,
+		resumeAtStart:       request.Conversation == "" && (request.Resume || request.ResumeLatest),
+		resumeLatest:        request.Conversation == "" && request.ResumeLatest,
 	}
 	if request.Reconnect {
 		options.reconnect = func(thread string) (*appConnection, remoteChatServerReady, error) {
@@ -99,8 +100,9 @@ func runRemoteChatClientConnection(request Request, connection net.Conn) error {
 	options := chatLoopOptions{
 		cwd: ready.CWD, id: conversation, workspaceLabel: ready.Workspace,
 		persistentSession: true, initialized: ready.Initialized, attachedTurnActive: ready.ActiveTurn,
-		resumeAtStart: request.Conversation == "" && (request.Resume || request.ResumeLatest),
-		resumeLatest:  request.Conversation == "" && request.ResumeLatest,
+		sharedTurnSelection: ready.TurnSelection,
+		resumeAtStart:       request.Conversation == "" && (request.Resume || request.ResumeLatest),
+		resumeLatest:        request.Conversation == "" && request.ResumeLatest,
 	}
 	return chatLoopWithOptions(app, os.Stdin, os.Stdout, options)
 }

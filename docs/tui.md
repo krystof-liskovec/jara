@@ -80,6 +80,20 @@ shows its terminal processes, while the root `Terminals` action includes all
 terminals on Jara's socket. Terminal records are not conversation history.
 `All Codex conversations` provides Codex's native picker as a fallback.
 
+## Vim editing in conversations
+
+Press **F7** or submit `/vim` to toggle Vim editing in the full-screen
+conversation composer. Use `/vim on`, `/vim off`, or `/vim status` to set
+or check it explicitly. The setting starts off in each new Jara window.
+
+Vim editing starts in **Insert** mode. Press **Esc** to enter **Normal** mode.
+Use `h`, `j`, `k`, and `l` to move within the draft, `w` and `b` to move by
+word, and `0` and `$` to move to the start or end of a line. Use `x` to delete
+a character, `D` to delete to the end of the line, or `dd` to delete a line.
+Use `i` or `a` to insert before or after the cursor, `I` to insert at the
+first nonblank character, or `A` to append at the end. Switch to Insert mode to type slash
+commands. **Enter** still sends the draft and **Ctrl+C** interrupts the agent.
+
 ## History and terminal identity
 
 Jara reads conversation summaries through Codex's documented app-server

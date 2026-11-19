@@ -181,7 +181,7 @@ func TestChatModelDefaultTurnOmitsOverride(t *testing.T) {
 	}
 }
 
-func TestChatModelSelectionBusyRejectionAndFailedTurnPreservation(t *testing.T) {
+func TestChatModelSelectionWhileBusyAndFailedTurnPreservation(t *testing.T) {
 	t.Setenv("TMUX", "")
 	t.Setenv("TMUX_PANE", "")
 	var output, wire bytes.Buffer
@@ -192,14 +192,11 @@ func TestChatModelSelectionBusyRejectionAndFailedTurnPreservation(t *testing.T) 
 	if _, err := u.line("/model next-model"); err != nil {
 		t.Fatal(err)
 	}
-	if u.nextModel != "" || wire.Len() != 0 || !strings.Contains(output.String(), "wait for the current turn") {
-		t.Fatalf("busy model selection was not rejected: next=%q wire=%q output=%q", u.nextModel, wire.String(), output.String())
+	if u.nextModel != "next-model" || u.effectiveModel != "current" || wire.Len() != 0 {
+		t.Fatalf("busy selection changed the active turn: next=%q effective=%q wire=%q", u.nextModel, u.effectiveModel, wire.String())
 	}
 	u.busy = false
 	u.turn = ""
-	if _, err := u.line("/model next-model"); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := u.line("try selected model"); err != nil {
 		t.Fatal(err)
 	}
@@ -262,6 +259,13 @@ func TestChatModelStartResponseAfterCompletionConfirmsOnlySentSelection(t *testi
 	var output, wire bytes.Buffer
 	u := newChatCommandTestUI(&output, &wire)
 	u.effectiveModel = "old-model"
+	u.effectiveReasoning = "high"
+	u.models = &chatModelBrowser{complete: true}
+	for _, id := range []string{"sent-model", "new-selection"} {
+		u.models.models = append(u.models.models, protocol.CodexModel{
+			ID: id, SupportedReasoningEfforts: []protocol.ReasoningEffortOption{{Value: "high"}},
+		})
+	}
 	if err := u.chooseChatModel("sent-model"); err != nil {
 		t.Fatal(err)
 	}
@@ -270,6 +274,9 @@ func TestChatModelStartResponseAfterCompletionConfirmsOnlySentSelection(t *testi
 	}
 	requests := decodeModelRequests(t, &wire)
 	turn := requests[0]
+	if err := u.queuePrompt(u.thread, "follow up"); err != nil {
+		t.Fatal(err)
+	}
 	if err := u.event(appMessage{Method: "turn/completed", Params: json.RawMessage(`{"turn":{"id":"turn-1","status":"completed"}}`)}); err != nil {
 		t.Fatal(err)
 	}
@@ -281,6 +288,11 @@ func TestChatModelStartResponseAfterCompletionConfirmsOnlySentSelection(t *testi
 	}
 	if u.effectiveModel != "sent-model" || u.nextModel != "new-selection" {
 		t.Fatalf("late response should confirm its model without clearing newer selection: effective=%q next=%q", u.effectiveModel, u.nextModel)
+	}
+	requests = decodeModelRequests(t, &wire)
+	followUp := requests[len(requests)-1]
+	if followUp.Method != "turn/start" || string(followUp.Params["model"]) != `"new-selection"` || string(followUp.Params["effort"]) != `"high"` {
+		t.Fatalf("queued turn missed the newer selection after a late reply: %+v", followUp)
 	}
 }
 

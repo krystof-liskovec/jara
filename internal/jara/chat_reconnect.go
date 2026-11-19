@@ -136,6 +136,7 @@ func (u *chatUI) acceptReconnect(result chatReconnectResult) error {
 	noteChatRunner(result.ready)
 	u.connected = result.ready.Initialized
 	u.attachedTurnActive = result.ready.ActiveTurn
+	u.sharedTurnSelection = result.ready.TurnSelection
 	u.resumeAtStart = false
 	if u.thread == "" {
 		u.thread = result.ready.Conversation
@@ -150,6 +151,7 @@ func (u *chatUI) acceptReconnect(result chatReconnectResult) error {
 	if result.ready.CWD != "" {
 		u.cwd = result.ready.CWD
 	}
+	u.project = chatProjectStatus{}
 	if result.ready.Notice != "" {
 		u.afterHistory = result.ready.Notice + "\n"
 	}

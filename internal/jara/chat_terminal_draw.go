@@ -67,15 +67,17 @@ func (t *chatTerminal) frame(width, height int, now time.Time) chatFrame {
 	}
 	agentLines, agentTargets := chatAgentStrip(u, now)
 	composerTitle := ""
+	vimMode := editor.vim
 	if agent := u.viewedAgent(); agent != nil {
 		composerTitle = chatAgentComposerLabel(agent)
 	}
 	if u.login.secret != "" {
 		composerTitle = " " + chatSecretLabel(u.login.secret) + " · hidden "
+		vimMode = chatVimOff
 	}
 	frame := renderChatView(chatViewModel{
 		TranscriptLines: transcript, Agents: agentLines, AgentTargets: agentTargets, ComposerTitle: composerTitle,
-		Composer: composerText, CursorByte: composerCursor,
+		Composer: composerText, CursorByte: composerCursor, VimMode: vimMode, ProjectLocation: u.chatProjectLocation(),
 		CursorLine: cursorLine, CursorColumn: cursorColumn, Suggestions: suggestions,
 		ScrollOffset: t.scrollOffset, Activity: activity, ActivityElapsed: elapsed,
 		ActivityFrame: int(now.UnixMilli() / 120), ActivitySeed: u.turnStartedAt.UnixNano(), ActivityHint: chatActivityHint(u),

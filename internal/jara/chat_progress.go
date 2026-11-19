@@ -17,13 +17,14 @@ func (u *chatUI) streamReasoningSummary(itemID string, index int, delta string) 
 		u.reasoningSummaryStreamed = map[string]bool{}
 		u.reasoningSummaryIndexes = map[string]int{}
 	}
-	if previous, ok := u.reasoningSummaryIndexes[itemID]; ok && previous != index {
-		u.printRole("progress", "\n")
-	}
+	previous, hadPart := u.reasoningSummaryIndexes[itemID]
 	u.reasoningSummaryIndexes[itemID] = index
 	u.reasoningSummaryStreamed[itemID] = true
 	u.appendChatActivitySummary(itemID, index, delta)
 	if !chatUIIsInteractive(u) {
+		if hadPart && previous != index {
+			u.printRole("progress", "\n")
+		}
 		u.printRole("progress", delta)
 	}
 }

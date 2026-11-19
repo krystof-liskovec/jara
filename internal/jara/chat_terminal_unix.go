@@ -68,6 +68,7 @@ func newChatTerminal(u *chatUI, output *os.File) *chatTerminal {
 		lastActivityFrame:   -1, dirty: true,
 	}
 	u.out = t.transcript
+	u.vimCommand = t.editor.vimCommand
 	u.alert = func(sequence string) { _, _ = io.WriteString(output, sequence) }
 	return t
 }
@@ -214,7 +215,7 @@ func (t *chatTerminal) interrupt() (done bool, err error) {
 func (t *chatTerminal) tick(now time.Time) error {
 	u := t.u
 	if event := t.parser.flushEscape(now); event != nil && event.input != nil {
-		if err := t.handleEscape(*event.input); err != nil { // a lone Escape key
+		if _, err := t.handleKey(*event); err != nil { // a lone Escape key
 			return err
 		}
 	}
@@ -244,6 +245,9 @@ func (t *chatTerminal) tick(now time.Time) error {
 		return err
 	}
 	u.refreshGitDiffWhileShown(now)
+	if u.refreshChatProjectLocation(now) {
+		t.dirty = true
+	}
 	if u.busy && u.turnStartedAt.IsZero() && u.activityLabel != "" {
 		// Preserve a useful timer while the start request is pending.
 		u.turnStartedAt = now

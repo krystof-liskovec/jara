@@ -94,9 +94,6 @@ func (u *chatUI) reasoningModel() *protocol.CodexModel {
 }
 
 func (u *chatUI) canChooseChatReasoning() error {
-	if u.busy || u.turn != "" {
-		return fmt.Errorf("wait for the current turn to finish before changing reasoning effort")
-	}
 	if !u.threadReady {
 		return fmt.Errorf("open a conversation before selecting reasoning effort")
 	}
@@ -167,6 +164,9 @@ func (u *chatUI) chooseChatReasoning(value string) error {
 	}
 	if !chatSupportsReasoning(model, value) {
 		return fmt.Errorf("reasoning effort %q is not supported by %s", value, chatModelDisplayName(model))
+	}
+	if err := u.publishChatTurnSelection(u.nextModel, value); err != nil {
+		return err
 	}
 	u.nextReasoning = value
 	u.reasoningSelectionGeneration++

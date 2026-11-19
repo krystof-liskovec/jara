@@ -18,6 +18,8 @@ type chatViewModel struct {
 	Messages          []chatViewMessage
 	TranscriptLines   []chatViewLine
 	Composer          string
+	VimMode           chatVimMode
+	ProjectLocation   chatProjectLocation
 	CursorByte        int
 	CursorLine        int
 	CursorColumn      int
@@ -120,16 +122,18 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 	}
 	controlRows := len(controlLines)
 	approvalRows := btoi(model.ApprovalPending)
+	projectLabel := model.ProjectLocation.label(width - 2)
+	projectRows := btoi(projectLabel != "")
 	composerText := sanitizeChatViewText(model.Composer)
 	composerLines, cursorLine, cursorColumn := wrapChatComposer(composerText, model.CursorLine, model.CursorColumn, max(1, width-4))
 	queueReserve := 0
 	if len(model.QueuedPrompts) > 0 {
 		queueReserve = 1
 	}
-	maxInputRows := max(1, min(4, height-controlRows-approvalRows-2-queueReserve))
+	maxInputRows := max(1, min(4, height-controlRows-approvalRows-2-queueReserve-projectRows))
 	inputRows := max(1, min(maxInputRows, len(composerLines)))
 	composerRows := inputRows + 2
-	spare := max(0, height-controlRows-approvalRows-composerRows)
+	spare := max(0, height-controlRows-approvalRows-composerRows-projectRows)
 	queueRows := min(min(chatQueueViewRowLimit, len(model.QueuedPrompts)), spare)
 	agentLimit := len(model.Agents)
 	if short {
@@ -205,7 +209,11 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 		row++
 	}
 	if approvalRows > 0 {
-		line := " ⚠ Approve?  [ ⏎/y Allow ]  [ n Deny ]"
+		allow, deny := "[ ⏎/y Allow ]", "[ n Deny ]"
+		if model.VimMode == chatVimNormal {
+			allow, deny = "[ ⏎ Allow ]", "[ Deny ]"
+		}
+		line := " ⚠ Approve?  " + allow + "  " + deny
 		if countdown := model.ApprovalCountdown; countdown != "" {
 			if uniseg.StringWidth(line+"  "+countdown) > width {
 				countdown = strings.TrimPrefix(countdown, "Auto-allow in ") // phones show only the time
@@ -213,13 +221,20 @@ func renderChatView(model chatViewModel, width, height int, palette menuPalette,
 			line += "  " + countdown
 		}
 		frame.Lines[row] = paintChatViewLine(fitChatView(line, width), "approval", "", false, width, palette, color)
-		frame.addTarget(row, line, "[ ⏎/y Allow ]", "approve")
-		frame.addTarget(row, line, "[ n Deny ]", "deny")
+		frame.addTarget(row, line, allow, "approve")
+		frame.addTarget(row, line, deny, "deny")
+		row++
+	}
+	if projectRows > 0 {
+		frame.Lines[row] = paintChatViewLine("  "+projectLabel, "controls", "", false, width, palette, color)
 		row++
 	}
 	composerStart := row
 	composerParts, visibleStart := chatComposerWindow(composerLines, cursorLine, inputRows)
 	composerLabel, sendLabel := chatComposerLabels(model)
+	if model.VimMode != chatVimOff {
+		composerLabel = string(model.VimMode) + composerLabel
+	}
 	frame.Lines[row] = paintChatViewLine(chatComposerBorder(width, "╭", "╮", composerLabel, visibleStart > 0), "composer-border", "", false, width, palette, color)
 	row++
 	innerWidth := max(1, width-4)
@@ -350,12 +365,18 @@ func chatComposerLabels(model chatViewModel) (string, string) {
 		if model.QueueEditNumber > 0 {
 			label = " Edit #" + strconv.Itoa(model.QueueEditNumber) + " "
 		}
+		if model.VimMode == chatVimInsert {
+			return label, " Enter save · Esc normal "
+		}
 		return label, " Enter save · Esc cancel "
 	}
 	if strings.HasSuffix(model.ComposerTitle, " · hidden ") {
 		return model.ComposerTitle, " Enter save · Esc cancel "
 	}
 	if model.ComposerTitle != "" {
+		if model.VimMode == chatVimInsert {
+			return model.ComposerTitle, " Esc normal "
+		}
 		return model.ComposerTitle, " Esc main "
 	}
 	return "", ""

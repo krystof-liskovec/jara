@@ -46,6 +46,7 @@ var chatCommandCompletions = []chatCommandCompletion{
 	{name: "/goal", description: "Set or manage a persistent goal", arguments: true},
 	{name: "/plan", description: "Switch this conversation to Plan mode", arguments: true},
 	{name: "/auto", description: "Turn auto-approval mode on or off", arguments: true},
+	{name: "/vim", description: "Toggle Vim editing in the composer", arguments: true},
 	{name: "/btw", description: "Ask a side question without adding it to the conversation", arguments: true},
 	{name: "/agents", description: "List subagents, or view one by number", arguments: true},
 	{name: "/compact", description: "Compact the context now, or set idle compaction", arguments: true},

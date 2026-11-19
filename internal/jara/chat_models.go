@@ -300,9 +300,6 @@ func (u *chatUI) printChatModels() {
 }
 
 func (u *chatUI) chooseChatModel(value string) error {
-	if u.busy || u.turn != "" {
-		return fmt.Errorf("wait for the current turn to finish before changing models")
-	}
 	if !u.threadReady {
 		return fmt.Errorf("open a conversation before selecting its model")
 	}
@@ -314,28 +311,25 @@ func (u *chatUI) chooseChatModel(value string) error {
 	if err != nil {
 		return err
 	}
-	u.nextModel = model
-	u.nextModelLabel = label
-	u.modelSelectionGeneration++
-	catalogModel := u.modelByID(model)
-	if catalogModel == nil {
-		if u.nextReasoning != "" {
-			u.nextReasoning = ""
-			u.reasoningSelectionGeneration++
-		}
-	} else {
-		effort := u.nextReasoning
+	effort := ""
+	if catalogModel := u.modelByID(model); catalogModel != nil {
+		effort = u.nextReasoning
 		if effort == "" {
 			effort = u.effectiveReasoning
 		}
 		if !chatSupportsReasoning(catalogModel, effort) {
 			effort = chatNearestReasoning(catalogModel, effort)
 		}
-		if effort != u.nextReasoning {
-			u.nextReasoning = effort
-			u.reasoningSelectionGeneration++
-		}
 	}
+	if err := u.publishChatTurnSelection(model, effort); err != nil {
+		return err
+	}
+	u.nextModel, u.nextModelLabel = model, label
+	u.modelSelectionGeneration++
+	if effort != "" || u.nextReasoning != "" {
+		u.reasoningSelectionGeneration++
+	}
+	u.nextReasoning = effort
 	return nil
 }
 
@@ -353,12 +347,12 @@ func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt
 		u.pendingTurnModels = map[string]chatTurnRequest{}
 	}
 	request := chatTurnRequest{thread: u.thread}
-	if u.nextModel != "" {
-		request.model = u.nextModel
+	if model, _ := params["model"].(string); model != "" {
+		request.model = model
 		request.modelGeneration = u.modelSelectionGeneration
 	}
-	if u.nextReasoning != "" {
-		request.effort = u.nextReasoning
+	if effort, _ := params["effort"].(string); effort != "" {
+		request.effort = effort
 		request.effortGeneration = u.reasoningSelectionGeneration
 	}
 	u.pendingTurnModels[id] = request
