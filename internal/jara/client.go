@@ -478,7 +478,7 @@ func run(args []string) error {
 	}
 	if action == "sync" {
 		syncReportsUnchanged = true
-		return syncWorkspace(r, b, root, direction, *force, *includeIgnored, *deleteMissing)
+		return syncWorkspaceOfferingHistoryReplacement(r, b, root, direction, *force, nil, *includeIgnored, *deleteMissing)
 	}
 	if isGit && !useLocal {
 		var info Workspace

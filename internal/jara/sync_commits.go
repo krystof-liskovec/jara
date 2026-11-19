@@ -18,19 +18,23 @@ func syncCommits(r Remote, b Binding, root, direction string, force bool) (*comm
 	if local.Head == "" {
 		return nil, nil
 	}
-	var remote gitCheckoutState
-	if err := rpc(r, Request{Op: "git-state", ID: b.Workspace}, nil, &remote); err != nil {
+	var answer gitStateAnswer
+	if err := rpc(r, Request{Op: "git-state", ID: b.Workspace, Commit: local.Head}, nil, &answer); err != nil {
 		if !strings.Contains(err.Error(), "unknown RPC operation") {
 			return nil, err
 		}
 		fmt.Fprintln(os.Stderr, "The remote Jara cannot transfer commits yet, so committed changes sync as files; upgrade it with `jara deployment upgrade`.")
 		return nil, nil
 	}
+	remote := answer.gitCheckoutState
 	if remote.Head == "" || remote.Head == local.Head {
 		return nil, nil
 	}
 	if remote.Branch != local.Branch {
 		return nil, fmt.Errorf("this checkout is on %s but the remote checkout is on %s; switch one so both match, then retry (nothing transferred)", local.describe(), remote.describe())
+	}
+	if diverged(root, local, remote, answer.Contains) {
+		return nil, newDivergedHistoryError(root, local, remote)
 	}
 	if direction == "push" {
 		return pushCommits(r, b, root, local, remote, force)
@@ -38,12 +42,20 @@ func syncCommits(r Remote, b Binding, root, direction string, force bool) (*comm
 	return pullCommits(r, b, root, local, remote, force)
 }
 
+// diverged reports whether neither checkout's commit builds on the other's.
+// When this checkout lacks the remote commit, the remote says whether its
+// commit builds on the local one (remoteContainsLocal); a host too old to say
+// is assumed to be ahead, which a pull then checks.
+func diverged(root string, local, remote gitCheckoutState, remoteContainsLocal *bool) bool {
+	if !hasCommit(root, remote.Head) {
+		return remoteContainsLocal != nil && !*remoteContainsLocal
+	}
+	return !isAncestor(root, remote.Head, local.Head) && !isAncestor(root, local.Head, remote.Head)
+}
+
 func pushCommits(r Remote, b Binding, root string, local, remote gitCheckoutState, force bool) (*commitAdvance, error) {
-	switch {
-	case !hasCommit(root, remote.Head) || isAncestor(root, local.Head, remote.Head):
+	if !hasCommit(root, remote.Head) || isAncestor(root, local.Head, remote.Head) {
 		return nil, fmt.Errorf("the remote checkout has commits this checkout lacks; run `jara sync pull` first (nothing transferred)")
-	case !isAncestor(root, remote.Head, local.Head):
-		return nil, fmt.Errorf("local and remote histories have diverged; merge or rebase with Git, then retry (nothing transferred)")
 	}
 	bundle, cleanup, err := repositoryBundle(root, remote.Head)
 	if err != nil {

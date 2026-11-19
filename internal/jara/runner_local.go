@@ -98,6 +98,21 @@ func openLocalRunner(o localRunnerOpen, q Request) error {
 	}
 	chatPlace = chatPlacement{root: o.root, session: q.ID} // the agent runs here
 	connection, ready, err := connectLocalRunner(o, q, true)
+	// Before the chat UI owns the terminal, offer to reconcile histories that
+	// diverged (after a force-push): after this checkout moves onto the host's
+	// history, the host's uncommitted edits come along before starting.
+	kept, offerErr := offerHistoryReplacement(o.remote, o.binding, o.root, nil, err)
+	if offerErr != nil {
+		return offerErr
+	}
+	if kept == historyKeptRemote {
+		if err = syncWorkspace(o.remote, o.binding, o.root, "pull", false, o.includeIgnored); err != nil {
+			return fmt.Errorf("bring the remote's uncommitted changes here: %w", err)
+		}
+	}
+	if kept != historyKeptNeither {
+		connection, ready, err = connectLocalRunner(o, q, true)
+	}
 	if err != nil {
 		return err
 	}

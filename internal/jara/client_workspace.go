@@ -82,7 +82,7 @@ func syncLocalChangesBeforeSession(r Remote, b Binding, root, remoteName string,
 		fmt.Fprintln(os.Stderr, message)
 		return nil
 	}
-	if err = syncWorkspace(r, b, root, "push", false, includeIgnored, summary.Deletions); err != nil {
+	if err = syncWorkspaceOfferingHistoryReplacement(r, b, root, "push", false, reader, includeIgnored, summary.Deletions); err != nil {
 		return fmt.Errorf("local changes could not be synced: %w; retry with `jara sync push`", err)
 	}
 	return nil

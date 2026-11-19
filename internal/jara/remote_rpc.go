@@ -169,7 +169,7 @@ func remoteRPC(q Request) error {
 	case "standby-prepare", "standby-git", "standby-checkpoint":
 		q.Peer = "you"
 		return standbyRPC(q, os.Stdin)
-	case "git-state", "git-bundle", "git-advance", "git-switch":
+	case "git-state", "git-bundle", "git-advance", "git-switch", "git-replace":
 		return syncGitRPC(q)
 	case "clone":
 		return remoteCloneRepository(q)
