@@ -93,9 +93,11 @@ func chatTerminalLoop(u *chatUI, input, output *os.File) (returnErr error) {
 	}
 	inputChunks := make(chan []byte, 16)
 	inputErrors := make(chan error, 1)
-	readerDone := make(chan struct{})
-	defer close(readerDone)
-	go readChatTerminal(input, inputChunks, inputErrors, readerDone)
+	stopReader, err := startChatTerminalReader(input, inputChunks, inputErrors)
+	if err != nil {
+		return fmt.Errorf("read interactive terminal: %w", err)
+	}
+	defer stopReader()
 
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGWINCH)
@@ -260,28 +262,6 @@ func (t *chatTerminal) tick(now time.Time) error {
 		return t.redraw(now)
 	}
 	return nil
-}
-
-func readChatTerminal(input *os.File, chunks chan<- []byte, errors chan<- error, done <-chan struct{}) {
-	buffer := make([]byte, 4096)
-	for {
-		n, err := input.Read(buffer)
-		if n > 0 {
-			data := append([]byte(nil), buffer[:n]...)
-			select {
-			case chunks <- data:
-			case <-done:
-				return
-			}
-		}
-		if err != nil {
-			select {
-			case errors <- err:
-			case <-done:
-			}
-			return
-		}
-	}
 }
 
 // menuWidthForChatTerminal is the width menus above the input box get: the
