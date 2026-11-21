@@ -23,7 +23,7 @@ func syncCommits(r Remote, b Binding, root, direction string, force bool) (*comm
 		if !strings.Contains(err.Error(), "unknown RPC operation") {
 			return nil, err
 		}
-		fmt.Fprintln(os.Stderr, "The remote Jara cannot transfer commits yet, so committed changes sync as files; upgrade it with `jara deployment upgrade`.")
+		fmt.Fprintln(syncProgress.notices(), "The remote Jara cannot transfer commits yet, so committed changes sync as files; upgrade it with `jara deployment upgrade`.")
 		return nil, nil
 	}
 	remote := answer.gitCheckoutState
@@ -66,7 +66,7 @@ func pushCommits(r Remote, b Binding, root string, local, remote gitCheckoutStat
 	if err = rpc(r, q, bundle, nil); err != nil {
 		return nil, fmt.Errorf("commits were not transferred: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Fast-forwarded the remote checkout to %s (%s).\n", shortCommit(local.Head), commitCount(root, remote.Head, local.Head))
+	fmt.Fprintf(syncProgress.notices(), "Fast-forwarded the remote checkout to %s (%s).\n", shortCommit(local.Head), commitCount(root, remote.Head, local.Head))
 	return &commitAdvance{From: remote.Head, To: local.Head}, nil
 }
 
@@ -98,7 +98,7 @@ func pullCommits(r Remote, b Binding, root string, local, remote gitCheckoutStat
 	if err := fastForwardCheckout(root, local, remote.Head, bundlePath); err != nil {
 		return nil, fmt.Errorf("commits were not applied here: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "Fast-forwarded this checkout to %s (%s).\n", shortCommit(remote.Head), commitCount(root, local.Head, remote.Head))
+	fmt.Fprintf(syncProgress.notices(), "Fast-forwarded this checkout to %s (%s).\n", shortCommit(remote.Head), commitCount(root, local.Head, remote.Head))
 	return &commitAdvance{From: local.Head, To: remote.Head}, nil
 }
 

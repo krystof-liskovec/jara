@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"krystof.liskovec/jara/internal/fsutil"
 )
@@ -27,14 +28,17 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	if len(options) > 1 {
 		deleteMissing = options[1]
 	}
+	syncProgress.stage("Comparing commits", 0.1, 2*time.Second)
 	advance, err := syncCommits(r, b, root, direction, force)
 	if err != nil {
 		return err
 	}
+	syncProgress.stage("Scanning local files", 0.25, 2*time.Second)
 	local, err := manifestWithIgnored(root, includeIgnored)
 	if err != nil {
 		return err
 	}
+	syncProgress.stage("Scanning remote files", 0.4, 2*time.Second)
 	var remote Snapshot
 	remoteHasManifest := true
 	if err = rpc(r, Request{Op: "manifest", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &remote); err != nil {
@@ -108,6 +112,11 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 		}
 	}
 	if len(u.Files) > 0 {
+		if direction == "push" {
+			syncProgress.stage(fmt.Sprintf("Reading %d changed file(s)", len(u.Files)), 0.45, time.Second)
+		} else {
+			syncProgress.stage(fmt.Sprintf("Downloading %d file(s)", len(u.Files)), 0.85, 5*time.Second)
+		}
 		files, readErr := changedFileData(r, b, root, direction, remoteHasManifest, u.Files)
 		if readErr != nil {
 			return readErr
@@ -120,7 +129,14 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 			if e != nil {
 				return e
 			}
-			if err = rpc(r, Request{Op: "apply", ID: b.Workspace, Force: force}, bytes.NewReader(payload), nil); err != nil {
+			size := updateDataSize(u.Files)
+			label := fmt.Sprintf("Uploading %d file(s), %s", len(u.Files), formatSyncSize(size))
+			if len(u.Files) == 0 {
+				label = fmt.Sprintf("Removing %d deleted file(s)", len(u.Deletes))
+			}
+			syncProgress.stage(label, 0.97, transferExpectation(int64(len(payload))))
+			upload := &progressReader{r: bytes.NewReader(payload), total: int64(len(payload)), report: syncProgress.advance}
+			if err = rpc(r, Request{Op: "apply", ID: b.Workspace, Force: force}, upload, nil); err != nil {
 				return err
 			}
 			for p, f := range metadata(u.Files) {
@@ -136,6 +152,7 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 			if err = rpc(r, Request{Op: "guard", ID: b.Workspace, Force: force}, nil, nil); err != nil {
 				return err
 			}
+			syncProgress.stage(fmt.Sprintf("Writing %d file(s)", len(u.Files)+len(u.Deletes)), 0.97, time.Second)
 			if err = applyUpdate(root, u); err != nil {
 				return err
 			}
@@ -174,9 +191,8 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 		return err
 	}
 	// Before a session starts, a sync that changed nothing stays silent.
-	if len(u.Files) > 0 || len(u.Deletes) > 0 || syncReportsUnchanged {
-		fmt.Fprintf(os.Stderr, "Transferred %d file(s), deleted %d previously synchronized file(s).\n", len(u.Files), len(u.Deletes))
-	}
+	syncProgress.done(fmt.Sprintf("Transferred %d file(s), deleted %d previously synchronized file(s).", len(u.Files), len(u.Deletes)),
+		len(u.Files) > 0 || len(u.Deletes) > 0 || syncReportsUnchanged)
 	return nil
 }
 
@@ -399,7 +415,7 @@ func repositoryBundle(root string, exclude ...string) (io.Reader, func(), error)
 		args = append(args, "^"+commit)
 	}
 	cmd := exec.Command("git", args...)
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = syncProgress.notices()
 	if err = cmd.Run(); err != nil {
 		os.Remove(p)
 		return nil, func() {}, err

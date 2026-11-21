@@ -63,6 +63,7 @@ type upgradeBoard struct {
 	out      io.Writer
 	live     bool
 	color    bool
+	theme    upgradeTheme
 	width    func() int
 	rows     []*upgradeRow
 	drawn    int
@@ -75,10 +76,13 @@ type upgradeBoard struct {
 // newUpgradeBoard animates when out is a terminal, and otherwise prints one
 // line per stage.
 func newUpgradeBoard(out io.Writer) *upgradeBoard {
-	b := &upgradeBoard{out: out, width: func() int { return 80 }}
+	b := &upgradeBoard{out: out, width: func() int { return 80 }, theme: plainUpgradeTheme}
 	if f, ok := out.(*os.File); ok && os.Getenv("TERM") != "dumb" && term.IsTerminal(int(f.Fd())) {
 		b.live = true
 		b.color = os.Getenv("NO_COLOR") == ""
+		if b.color {
+			b.theme = upgradeThemeFor(menuColorsForTerminal())
+		}
 		b.width = func() int {
 			if w, _, err := term.GetSize(int(f.Fd())); err == nil && w > 0 {
 				return w
@@ -175,14 +179,14 @@ func (b *upgradeBoard) paint(code, text string) string {
 }
 
 func (b *upgradeBoard) renderRow(r *upgradeRow, nameWidth, width int) string {
-	icon, tint := upgradeSpinner[b.frame%len(upgradeSpinner)], "36"
+	icon, tint := upgradeSpinner[b.frame%len(upgradeSpinner)], b.theme.running
 	switch r.state {
 	case rowDone:
-		icon, tint = "✓", "32"
+		icon, tint = "✓", b.theme.done
 	case rowSkipped:
-		icon, tint = "–", "33"
+		icon, tint = "–", b.theme.skipped
 	case rowFailed:
-		icon, tint = "✗", "31"
+		icon, tint = "✗", b.theme.failed
 	}
 	fraction := min(max(r.shown, 0), 1)
 	label := r.label
@@ -194,9 +198,10 @@ func (b *upgradeBoard) renderRow(r *upgradeRow, nameWidth, width int) string {
 	percent := fmt.Sprintf("%3d%%", int(math.Round(fraction*100)))
 	fixed := 2 + 1 + 1 + nameWidth + 2 + upgradeBarWidth + 2 + len(percent) + 2 + 3 + len(elapsed) + 1
 	label = truncateUpgradeLabel(label, width-fixed)
-	line := "  " + b.paint(tint, icon) + " " + b.paint("1", name) + "  " + b.renderBar(r, fraction, tint) + "  " + percent + "  " + label
+	line := "  " + b.paint(tint, icon) + " " + b.paint(b.theme.name, name) + "  " + b.renderBar(r, fraction, tint) + "  " +
+		b.paint(b.theme.label, percent+"  "+label)
 	if label != "" {
-		line += b.paint("2", " · "+elapsed)
+		line += b.paint(b.theme.muted, " · "+elapsed)
 	}
 	return line
 }
@@ -213,7 +218,7 @@ func (b *upgradeBoard) renderBar(r *upgradeRow, fraction float64, tint string) s
 	}
 	for i := 0; i < full; i++ {
 		if i == pulse || i == pulse-1 {
-			bar.WriteString(b.paint("1;"+brightTint(tint), "━"))
+			bar.WriteString(b.paint(b.theme.pulse[tint], "━"))
 		} else {
 			bar.WriteString(b.paint(tint, "━"))
 		}
@@ -227,15 +232,8 @@ func (b *upgradeBoard) renderBar(r *upgradeRow, fraction float64, tint string) s
 	if b.color {
 		track = "━"
 	}
-	bar.WriteString(b.paint("90", strings.Repeat(track, rest)))
+	bar.WriteString(b.paint(b.theme.track, strings.Repeat(track, rest)))
 	return bar.String()
-}
-
-func brightTint(code string) string {
-	if n, err := strconv.Atoi(code); err == nil && n >= 30 && n <= 37 {
-		return strconv.Itoa(n + 60)
-	}
-	return code
 }
 
 func truncateUpgradeLabel(label string, width int) string {

@@ -79,7 +79,7 @@ func createClientWorkspace(r Remote, chosen, root, origin string, copyMode, incl
 		}
 	}
 	if copyMode {
-		if err = syncWorkspace(r, b, root, "push", false, includeIgnored, false); err != nil {
+		if err = syncShowingProgress(r, b, root, "push", false, includeIgnored, false); err != nil {
 			return Binding{}, err
 		}
 	}

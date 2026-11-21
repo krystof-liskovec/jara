@@ -68,16 +68,16 @@ const (
 // pull (bringing the remote's uncommitted edits) after this checkout moved.
 // reader may be nil.
 func syncWorkspaceOfferingHistoryReplacement(r Remote, b Binding, root, direction string, force bool, reader *bufio.Reader, options ...bool) error {
-	err := syncWorkspace(r, b, root, direction, force, options...)
+	err := syncShowingProgress(r, b, root, direction, force, options...)
 	kept, offerErr := offerHistoryReplacement(r, b, root, reader, err)
 	switch {
 	case offerErr != nil:
 		return offerErr
 	case kept == historyKeptLocal:
-		return syncWorkspace(r, b, root, direction, force, options...)
+		return syncShowingProgress(r, b, root, direction, force, options...)
 	case kept == historyKeptRemote:
 		includeIgnored := len(options) > 0 && options[0]
-		return syncWorkspace(r, b, root, "pull", false, includeIgnored)
+		return syncShowingProgress(r, b, root, "pull", false, includeIgnored)
 	}
 	return err
 }
