@@ -106,6 +106,20 @@ func runInternalCommand(args []string) (bool, error) {
 			return true, err
 		}
 		return true, runLocalBackground(q)
+	case "_device-link", "_device-open":
+		var q Request
+		if len(args) != 2 || decode(args[1], &q) != nil {
+			return true, fmt.Errorf("invalid device invocation")
+		}
+		if args[0] == "_device-link" {
+			return true, runDeviceLink(q)
+		}
+		return true, runDeviceOpen(q)
+	case "_join":
+		if len(args) != 2 {
+			return true, fmt.Errorf("invalid join invocation")
+		}
+		return true, runJoin(args[1], os.Stdin)
 	case "_runner-daemon":
 		if len(args) != 2 {
 			return true, fmt.Errorf("invalid local runner invocation")

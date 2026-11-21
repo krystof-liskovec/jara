@@ -81,6 +81,7 @@ func adoptLegacySession(legacy, id string) error {
 
 // startLocalOnlyRunner starts the session of a folder without a remote.
 func startLocalOnlyRunner(q Request) (*appConnection, remoteChatServerReady, error) {
+	applyDaemonResume(&q)
 	if err := updateLocalRunnerMarker(q.ID, func(m *localRunnerMarker) { m.Root = q.Root }); err != nil {
 		return nil, remoteChatServerReady{}, err
 	}

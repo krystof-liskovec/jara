@@ -101,7 +101,11 @@ func peerRPC(q Request, body io.Reader) error {
 // hostPublicKeys lists this host's sshd keys, for peers to pin.
 func hostPublicKeys() []string {
 	var keys []string
-	for _, pattern := range []string{"/var/lib/jara/ssh/ssh_host_*_key.pub", "/etc/ssh/ssh_host_*_key.pub"} {
+	patterns := []string{"/var/lib/jara/ssh/ssh_host_*_key.pub", "/etc/ssh/ssh_host_*_key.pub"}
+	if custom := os.Getenv("JARA_HOST_KEY_FILES"); custom != "" {
+		patterns = []string{custom} // an sshd with its own host keys
+	}
+	for _, pattern := range patterns {
 		matches, _ := filepath.Glob(pattern)
 		for _, path := range matches {
 			data, err := os.ReadFile(path)
@@ -136,10 +140,7 @@ func authorizePeers(peers map[string]string) error {
 			return err
 		}
 	}
-	if os.Getenv("JARA_PEER_KEYS_COMMAND") == "1" {
-		return nil
-	}
-	return writeManagedAuthorizedKeys(peerAuthorizedLines(peerDir()))
+	return refreshManagedKeys()
 }
 
 // peerAuthorizedLines renders the authorized peers with their forced command.
@@ -165,8 +166,9 @@ func runPeerKeys(home string) error {
 	if !filepath.IsAbs(home) {
 		return fmt.Errorf("invalid home directory")
 	}
-	dir := filepath.Join(home, ".local", "share", "jara", "peers")
-	for _, line := range peerAuthorizedLines(dir) {
+	dir := filepath.Join(home, ".local", "share", "jara")
+	lines := append(peerAuthorizedLines(filepath.Join(dir, "peers")), networkAuthorizedLines(filepath.Join(dir, "network"))...)
+	for _, line := range lines {
 		fmt.Println(line)
 	}
 	return nil

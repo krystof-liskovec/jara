@@ -151,23 +151,23 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(args) > 0 && args[0] == "remote" {
-		return remoteCommand(&c, args[1:])
-	}
-	if len(args) > 0 && args[0] == "workspace" {
-		return workspaceCommand(&c, args[1:])
-	}
-	if len(args) > 0 && args[0] == "runner" {
-		return runnerCommand(c, args[1:])
-	}
-	if len(args) > 0 && args[0] == "config" {
-		return configCommand(&c, args[1:])
-	}
-	if len(args) > 0 && args[0] == "auth" {
-		return authCommand(c, args[1:])
-	}
-	if len(args) > 0 && args[0] == "editor" {
-		return editorImport(c, args[1:])
+	if len(args) > 0 {
+		switch args[0] {
+		case "remote":
+			return remoteCommand(&c, args[1:])
+		case "workspace":
+			return workspaceCommand(&c, args[1:])
+		case "runner":
+			return runnerCommand(c, args[1:])
+		case "config":
+			return configCommand(&c, args[1:])
+		case "auth":
+			return authCommand(c, args[1:])
+		case "editor":
+			return editorImport(c, args[1:])
+		case "ps", "attach", "daemon", "device", "network", "join":
+			return liveCommand(c, args[0], args[1:])
+		}
 	}
 	action := "open"
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {

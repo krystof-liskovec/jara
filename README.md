@@ -47,7 +47,7 @@ jara run "Fix the flaky test"   # non-interactive, in the background
 jara handoff       # continue the work with the other agent
 ```
 
-The session keeps running when you close the window; `jara` reattaches.
+The session keeps running when you close the window; `jara` or `jara attach` reattaches, `jara ps` lists running sessions on every machine, `jara daemon install` keeps them in a [background service](docs/local-runner.md#background-daemon), and devices that allow it, or join with a code, form a [network](docs/network.md).
 `jara setup` checks the installed CLIs. Without Codex, Claude Code opens in its
 own terminal. A folder stays local until you attach it to a remote.
 

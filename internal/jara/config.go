@@ -26,6 +26,9 @@ type Remote struct {
 	// is the address other hosts reach it at, when it differs from yours.
 	Standby  bool   `json:"standby,omitempty"`
 	PeerHost string `json:"peer_host,omitempty"`
+	// KnownHosts pins the host keys of a remote learned by joining a Jara
+	// network (jara join), instead of the user's known_hosts.
+	KnownHosts string `json:"known_hosts,omitempty"`
 }
 type Binding struct {
 	Remote    string `json:"remote"`
@@ -66,7 +69,10 @@ type Config struct {
 	// every remote; MCPSynced remembers what each remote last received.
 	MCPServers map[string]sharedMCPServer `json:"mcp_servers,omitempty"`
 	MCPSynced  map[string]string          `json:"mcp_synced,omitempty"`
-	original   [32]byte
+	// DeviceCallable lets other devices start and join agent sessions on
+	// this one through its remote hosts (jara device allow).
+	DeviceCallable bool `json:"device_callable,omitempty"`
+	original       [32]byte
 }
 
 var nameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)

@@ -32,6 +32,14 @@ func hubRunnerRoute(q *Request) (net.Conn, error) {
 		}
 		return nil, fmt.Errorf("%s runs this conversation and is reconnecting; try again shortly", lease.Owner)
 	}
+	if q.Attach {
+		// Attaching in place never replaces a device: only its owner, or an
+		// explicit open, moves the conversation.
+		if lease.Owner != "" {
+			return nil, fmt.Errorf("%s runs this conversation but is offline; open it with jara to continue it", lease.Owner)
+		}
+		return nil, nil
+	}
 	imported := false
 	lease, err = updateRunnerLease(paths, q.ID, func(lease *runnerLease) error {
 		if lease.Owner != "" {

@@ -16,7 +16,8 @@ type runnerHeartbeat struct {
 	Busy         bool   `json:"busy,omitempty"`
 	Pending      bool   `json:"pending,omitempty"`
 	Conversation string `json:"conversation,omitempty"`
-	Sleep        bool   `json:"sleep,omitempty"` // the device is about to suspend
+	Sleep        bool   `json:"sleep,omitempty"`    // the device is about to suspend or stop
+	Shutdown     bool   `json:"shutdown,omitempty"` // with Sleep: it shuts down or its session was stopped
 }
 
 // runRunnerLink is `jara _runner-link` on the remote host: the command of
@@ -65,7 +66,11 @@ func runRunnerLink(q Request) error {
 			return err // replaced; the device's next tunnel attempt learns it
 		}
 		if beat.Sleep {
-			return continueOnHub(q.ID, "went to sleep", func(lease runnerLease) bool { return lease.Link == q.Link })
+			reason := "went to sleep"
+			if beat.Shutdown {
+				reason = "shut down"
+			}
+			return continueOnHub(q.ID, reason, func(lease runnerLease) bool { return lease.Link == q.Link })
 		}
 	}
 	return nil // a silent or disconnected device is runRunnerWatch's to handle

@@ -12,6 +12,10 @@ import (
 	"krystof.liskovec/jara/internal/agentrouter"
 )
 
+// offlineBudget bounds the final checkpoint of a session stopped while it
+// works; the Jara daemon waits longer than this for its sessions to stop.
+const offlineBudget = 15 * time.Second
+
 // runLocalRunnerDaemon is `jara _runner-daemon`: the persistent conversation
 // service of a workspace whose agent runs on this device. It is the remote
 // host's chat daemon, run against the local checkout with the local agent
@@ -89,6 +93,14 @@ func runLocalRunnerDaemon(q Request) error {
 		stopServer()
 		return fmt.Errorf("load crunch task: %w", err)
 	}
+	if q.Continue != "" && q.Conversation != "" {
+		// Work interrupted when this device last stopped continues first.
+		if _, err = schedules.add(q.Conversation, q.Continue, time.Now().Add(time.Second)); err != nil {
+			listener.Close()
+			stopServer()
+			return err
+		}
+	}
 	state := chatDaemonState{WorkspaceID: q.ID, Workspace: filepath.Base(q.Root), CWD: cwd, Conversation: q.Conversation, PID: os.Getpid(), CreatedAt: time.Now().UnixNano()}
 	if err = writeChatDaemonState(paths, state); err != nil {
 		listener.Close()
@@ -100,7 +112,17 @@ func runLocalRunnerDaemon(q Request) error {
 		return saved
 	}
 	if !attached {
-		return serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state)
+		// Nothing else can continue a local-only folder's work: record what
+		// was running for the Jara daemon, or the next window, to continue.
+		hooks := chatDaemonRunnerHooks{interrupted: func(stopped chatDaemonState, _ bool) {
+			if err := saveDaemonResume(q, stopped); err != nil {
+				fmt.Fprintln(os.Stderr, "Could not record the interrupted work:", err)
+			}
+		}}
+		if q.Headless {
+			hooks.bootstrap = q.Conversation
+		}
+		return serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state, hooks)
 	}
 	status := func() runnerHeartbeat {
 		saved := current()
@@ -109,14 +131,21 @@ func runLocalRunnerDaemon(q Request) error {
 	runner := newLocalRunner(remote, q, paths, status)
 	go runner.linkLoop(paths.socket)
 	go runner.midTurnCheckpoints(current)
-	go watchSleep(runner.stop, func() { runner.goingToSleep(current(), sleepBudget) })
+	go watchSleep(runner.stop, func(shutdown bool) { runner.goingToSleep(current(), shutdown, sleepBudget) })
 	// Conversations this device had before it was attached, or kept while
 	// another machine ran the workspace, reach the host without waiting for
 	// a turn.
 	if hasUnsentThreads(q.ID, q.Root) {
 		runner.checkpointLater(state)
 	}
-	result := serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state, runner.hooks())
+	hooks := runner.hooks()
+	// Stopped while working (shutdown, logout, the Jara daemon stopping):
+	// the remote host continues at once instead of the work being dropped.
+	hooks.interrupted = func(stopped chatDaemonState, pending bool) {
+		runner.goOffline(stopped, runnerHeartbeat{Busy: stopped.ActiveTurn, Pending: pending,
+			Conversation: stopped.Conversation, Shutdown: true}, offlineBudget)
+	}
+	result := serveChatDaemon(listener, server, input, output, paths, schedules, crunch, &state, hooks)
 	runner.stopLink()
 	if !runner.isLost() && !runner.released {
 		// The session ended here (for example /quit): save the final state and

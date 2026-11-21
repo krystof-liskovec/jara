@@ -31,6 +31,17 @@ func runRemoteChatServer(q Request) error {
 	} else if conn != nil {
 		return proxyChatDaemon(conn)
 	}
+	if q.Attach {
+		// Join the host's running session; never start one.
+		if !chatDaemonRunning(q.ID) {
+			return fmt.Errorf("no Jara session is running in this workspace")
+		}
+		conn, err := connectExistingChatDaemon(q.ID)
+		if err != nil {
+			return err
+		}
+		return proxyChatDaemon(conn)
+	}
 	conn, managed, err := ensureChatDaemon(q)
 	if err != nil {
 		return err

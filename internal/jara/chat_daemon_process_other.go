@@ -27,3 +27,7 @@ func killPersistentChatProcess(cmd *exec.Cmd) {
 		_ = cmd.Process.Kill()
 	}
 }
+
+func runDaemonSupervisor() error {
+	return fmt.Errorf("the Jara daemon requires Linux or macOS")
+}

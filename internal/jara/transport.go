@@ -33,7 +33,13 @@ func sshArgs(r Remote, tty bool) []string {
 	// sessions stream redraws, while devices may be on slow or metered
 	// connections. SSH compresses packet by packet, so typing waits for
 	// nothing.
-	a := []string{"-o", "StrictHostKeyChecking=ask", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "Compression=yes"}
+	// OpenSSH keeps the first value of an option: a remote joined from a
+	// network checks its pinned host keys strictly.
+	hostKeys := []string{"-o", "StrictHostKeyChecking=ask"}
+	if r.KnownHosts != "" {
+		hostKeys = []string{"-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=" + r.KnownHosts}
+	}
+	a := append(hostKeys, "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "Compression=yes")
 	config := os.Getenv("JARA_SSH_CONFIG")
 	if config != "" {
 		a = append(a, "-F", config)
@@ -110,6 +116,7 @@ type Request struct {
 	Since      int64  `json:"since,omitempty"`   // export checkpoints after this one
 	Wait       bool   `json:"wait,omitempty"`    // a busy runner may hand over after its turn
 	Passive    bool   `json:"passive,omitempty"` // a reconnecting window: never displace another device
+	Attach     bool   `json:"attach,omitempty"`  // join a running session in place: never start, claim or move one
 	Headless   bool   `json:"headless,omitempty"`
 	Continue   string `json:"continue,omitempty"` // prompt that continues an interrupted turn
 	Root       string `json:"root,omitempty"`

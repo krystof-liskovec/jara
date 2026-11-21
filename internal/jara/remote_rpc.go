@@ -148,6 +148,12 @@ func remoteRPC(q Request) error {
 			Idle   bool            `json:"idle,omitempty"`
 			State  chatDaemonState `json:"state,omitempty"`
 		}{Active: active, Idle: active && busy == "", State: state})
+	case "device-tunnel", "device-list":
+		return deviceRPC(q)
+	case "network-invite", "network-joined", "network-authorize", "network-revoke", "network-devices":
+		return networkRPC(q, os.Stdin)
+	case "live-sessions":
+		return json.NewEncoder(os.Stdout).Encode(hubLiveSessions())
 	case "workspace-list":
 		workspaces, err := remoteWorkspaces()
 		if err != nil {

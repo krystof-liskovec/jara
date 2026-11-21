@@ -163,6 +163,8 @@ type daemonHarnessOptions struct {
 	setup      func(h *daemonHarness)
 	// dir places the daemon files there instead of a fresh temporary directory.
 	dir string
+	// hooks connects the daemon to a runner, as a session on a device has.
+	hooks chatDaemonRunnerHooks
 }
 
 func startDaemonHarness(t *testing.T, options daemonHarnessOptions) *daemonHarness {
@@ -196,7 +198,7 @@ func startDaemonHarness(t *testing.T, options daemonHarnessOptions) *daemonHarne
 	}
 	process := exitedServerProcess(t, options.exitStatus)
 	go func() {
-		h.done <- serveChatDaemon(h.listener, process, input, output, h.paths, h.schedules, h.crunch, &state)
+		h.done <- serveChatDaemon(h.listener, process, input, output, h.paths, h.schedules, h.crunch, &state, options.hooks)
 	}()
 	t.Cleanup(func() {
 		select {

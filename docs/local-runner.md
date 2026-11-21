@@ -32,6 +32,9 @@ jara --run-remote           # run this session on the remote host instead
 JARA_RUN_REMOTE=1 jara      # the same, for every session in this shell
 jara new                    # a new conversation, running here
 jara runner status          # where the agent runs, online or not, last checkpoint
+jara ps                     # running sessions: this device, remote hosts, other devices
+jara attach 2               # join one where it runs, without moving it
+jara daemon install         # run this device's sessions in a background service
 jara --take-over            # take over although the other device still looks online
 jara runner prefer laptop desktop  # who gets a conversation back first
 jara remote order jellyfish backup # rank remote hosts; the first is the default
@@ -84,11 +87,16 @@ increases whenever the runner changes, and the latest **checkpoint**.
 
 ## Sleep, network loss and coming back
 
-- **Going to sleep with Linux and systemd.** Jara holds a logind delay lock.
-  Just before suspend, if a turn is running or work is waiting (queued or
-  scheduled prompts, a `/crunch` task), it
-  saves a checkpoint (within about three seconds) and tells the remote host,
-  which continues at once.
+- **Going to sleep or shutting down with Linux and systemd.** Jara holds
+  logind delay locks for suspend and shutdown (suspend alone where polkit
+  refuses the shutdown lock). Just before either, if a turn is running or
+  work is waiting (queued or scheduled prompts, a `/crunch` task), it saves a
+  checkpoint (within about three seconds) and tells the remote host, which
+  continues at once.
+- **A session stopped while working** (SIGTERM at logout or shutdown, the
+  [background daemon](#background-daemon) stopping, or its agent server
+  exiting) does the same with up to 15 seconds for the checkpoint, instead of
+  releasing the workspace and dropping the turn.
 - **Disappearing without warning** (macOS sleep, network loss, a crash). When
   the heartbeats stop for 30 seconds, a watcher on the remote host takes over
   if a turn was running or work was waiting, and starts the session without a
@@ -222,3 +230,51 @@ including Codex-only ones, so the fallback always has something to replay.
   settings apply.
 - The remote host's `sshd_config` sets `StreamLocalBindUnlink yes` and
   `ClientAliveInterval 30`, so dropped device tunnels are noticed and replaced.
+
+## Background daemon
+
+`jara daemon install` sets up a per-user service (a systemd user unit, or a
+launchd agent on macOS, which is unvalidated) running `jara daemon run`.
+Sessions you open then start as its children instead of in your terminal:
+
+- They outlive the terminal and logging out, and the service starts at boot
+  without a login. On Linux that needs lingering: a user service runs inside
+  your systemd user manager, which logind otherwise stops after your last
+  logout. Install turns it on (`loginctl enable-linger`); `--no-linger` ties
+  the daemon to your logins instead. A macOS launch agent runs while you are
+  logged in.
+- Each session still runs your `jara` binary with the environment of the
+  `jara` command that started it, so `PATH`, credentials and `JARA_*`
+  settings are the same as without the daemon. Without a running daemon,
+  sessions start directly, as before.
+- At shutdown the service stops the daemon first (`KillMode=mixed`); it asks
+  each session to stop and waits up to 25 seconds. Attached folders hand
+  running work to their remote host as described above.
+- Local-only folders have nowhere to continue, so a session stopped while
+  working records itself under `~/.local/share/jara/daemon/resume/`. The
+  daemon continues it when it next starts (at boot), with a note telling the agent it was interrupted; or the next
+  `jara` in that folder does. Entries older than a week are dropped.
+- Suspend needs nothing special for local-only folders: the session resumes
+  with the machine.
+
+`jara daemon status` shows whether it runs, its sessions, lingering, and
+interrupted work waiting to continue; `jara daemon uninstall` removes it.
+
+## Attaching in place
+
+`jara ps` lists every running Jara-interface session: this device's, each
+remote host's own, and those other devices run in workspaces of a remote host
+(reached through their runner tunnel). `jara attach` opens a window on one of
+them by number, workspace or session ID, name or folder; without an argument
+it picks this folder's session, the only one running, or asks.
+
+Attaching never moves anything: it does not claim the workspace, does not
+ask a busy device to hand over, does not replace a device that went offline
+(that needs an explicit `jara`), and does not start a session that is not
+running. Closing the window leaves the session where it runs. If the session
+moves while you watch, the window follows it.
+
+Sessions of devices that allow calls (`jara device allow`), including
+local-only folders, are listed and attached through the hosts they link to;
+see [network of devices](network.md). Listing a host requires the same Jara
+version there (`jara deployment upgrade --remote NAME`).

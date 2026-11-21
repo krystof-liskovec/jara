@@ -59,7 +59,7 @@ func commandHelpKey(args []string) string {
 		return "root"
 	case "open", "resume", "new", "run", "connect", "sessions", "clone", "edit", "doctor", "forward", "reverse", "tunnel", "setup", "menu", "ui", "keygen", "environment", "migrate", "version", "handoff", "delegation", "mcp":
 		return command
-	case "sync", "tools", "runner":
+	case "sync", "tools", "runner", "ps", "attach", "daemon", "device", "network", "join":
 		return command
 	case "key":
 		if len(args) > 1 {

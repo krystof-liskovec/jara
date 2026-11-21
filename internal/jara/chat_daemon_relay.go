@@ -80,6 +80,18 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		writeState()
 		clients.broadcast(notice, appMessage{Method: "jara/idleCompaction/started"})
 	}
+	// interrupted reports a session stopping without being asked to (a
+	// signal at shutdown or logout, or the agent server exiting) while a turn
+	// runs or work waits, so the work continues elsewhere or later.
+	interrupted := func() {
+		stateMu.Lock()
+		snapshot := state
+		stateMu.Unlock()
+		pendingWork := schedules.hasPending() || crunch.hasPending()
+		if runner.interrupted != nil && (snapshot.ActiveTurn || pendingWork) {
+			runner.interrupted(snapshot, pendingWork)
+		}
+	}
 	isDetachedAndIdle := func() bool {
 		stateMu.Lock()
 		idle := !state.ActiveTurn
@@ -285,6 +297,7 @@ running:
 			}
 		case err := <-serverDone:
 			serverExited = true
+			interrupted()
 			if err != nil && !errors.Is(err, io.EOF) {
 				result = fmt.Errorf("Codex app-server stopped: %w", err)
 			}
@@ -302,6 +315,7 @@ running:
 			shutdown.Store(true)
 			break running
 		case <-signals:
+			interrupted()
 			reconnect = true
 			shutdown.Store(true)
 			break running
@@ -352,6 +366,9 @@ type chatDaemonRunnerHooks struct {
 	lost      <-chan struct{}            // closed when another machine took over
 	handBack  func() bool                // the host: a device waits for the workspace
 	bootstrap string                     // conversation to load without a window
+	// interrupted runs when the session stops unasked with a turn running
+	// (state.ActiveTurn) or scheduled work waiting (pending).
+	interrupted func(state chatDaemonState, pending bool)
 }
 
 // bootstrapChatDaemon starts a session no window has opened yet. Responses

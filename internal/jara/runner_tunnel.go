@@ -176,12 +176,22 @@ func (lr *localRunner) handOver(state chatDaemonState) error {
 	return nil
 }
 
-// goingToSleep runs just before the device suspends. Idle sessions stay
-// here; a running turn or scheduled work is checkpointed as far as the short
-// sleep delay allows, and the host continues it.
-func (lr *localRunner) goingToSleep(state chatDaemonState, budget time.Duration) {
-	beat := lr.status()
-	if !beat.Busy && !beat.Pending {
+// goingToSleep runs just before the device suspends or shuts down. Idle
+// sessions stay here; a running turn or scheduled work is checkpointed as far
+// as the short delay allows, and the host continues it.
+func (lr *localRunner) goingToSleep(state chatDaemonState, shutdown bool, budget time.Duration) {
+	if beat := lr.status(); beat.Busy || beat.Pending {
+		beat.Shutdown = shutdown
+		lr.goOffline(state, beat, budget)
+	}
+}
+
+// goOffline hands running work to the host before this device stops: it
+// saves a checkpoint as far as budget allows, tells the host to continue at
+// once, and gives up the session. beat says what is running; Shutdown in it
+// tells the host this device is powering off rather than suspending.
+func (lr *localRunner) goOffline(state chatDaemonState, beat runnerHeartbeat, budget time.Duration) {
+	if lr.isLost() {
 		return
 	}
 	done := make(chan struct{})

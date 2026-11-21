@@ -141,6 +141,9 @@ func TestAgentRouterClaudeDefaultInterruptAndGoals(t *testing.T) {
 		t.Fatalf("an unhandled request for a Claude conversation was not refused clearly: %v", unsupported)
 	}
 	h.Response(h.Request("thread/settings/update", map[string]any{"threadId": thread, "collaborationMode": map[string]any{"mode": "plan"}}))
+	// The router answers once it wrote the change to the running process;
+	// the effort change below restarts that process, so let it arrive first.
+	agentfake.WaitForLog(t, "claude-control", "set_permission_mode")
 	h.Request("turn/start", map[string]any{"threadId": thread, "model": "claude/opus", "effort": "high", "input": []any{map[string]any{"type": "text", "text": "plan it"}}})
 	_, seen := h.WaitFor(agentfake.IsMethod("turn/completed"))
 	if !strings.Contains(agentfake.AgentMessages(seen), "claude: plan it") {

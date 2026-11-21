@@ -111,6 +111,17 @@ See [Go's `os.Root` behavior](https://go.dev/blog/osroot).
   a wider bind. The host owner can opt in to `clientspecified` with
   `JARA_GATEWAY_PORTS=clientspecified`; use that only for trusted users.
   See [OpenSSH GatewayPorts](https://man.openbsd.org/sshd_config#GatewayPorts).
+- Devices that run `jara device allow` are reachable through every host they
+  link to: anyone, or any agent, that can log in as `agent` on such a host can
+  start agents on those devices, as their user and outside any container. Their
+  consent is local and revocable (`jara device deny`); keep hosts on a private
+  network. See [network of devices](network.md).
+- Devices that joined with a code log in with keys the host lists through
+  `jara _peer-keys` (or Jara's managed `authorized_keys` block). That list
+  lives in the `agent` account's data directory, so, unlike your own keys in
+  the root-owned file, an agent on the host can add a login key there; the
+  standby-peer keys it also lists stay forced to their restricted command.
+  Remove unknown entries with `jara network revoke`.
 - Publishing SSH alone is not a constrained agent execution service:
   authorized keys grant ordinary shell/SFTP and network access by design.
 - The seccomp profile relaxes namespace/mount-related syscall filters for Codex's

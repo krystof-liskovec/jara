@@ -167,3 +167,22 @@ func HasResponse(seen []map[string]any, id float64) bool {
 	}
 	return false
 }
+
+// WaitForLog waits until a fake agent logged an entry of kind containing
+// text. A request the router merely forwarded may not have reached the fake
+// yet, and a process restarted meanwhile would never log it.
+func WaitForLog(t *testing.T, kind, text string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		for _, entry := range ReadLog(t, kind) {
+			if strings.Contains(entry, text) {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the fake agent never logged %s %q; it logged %q", kind, text, ReadLog(t, kind))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

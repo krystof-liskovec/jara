@@ -13,10 +13,10 @@ var commandHelp = map[string]helpEntry{
 		usage:   "jara [COMMAND] [OPTIONS]",
 		summary: "Run Codex or Claude Code in the current folder on this device; attach a remote host for device handoffs and phone access.",
 		commands: []string{
-			"open, resume, new, run, sessions, handoff\tAgent sessions; local unless the folder is attached to a remote.",
+			"open, resume, new, run, sessions, handoff, ps, attach\tAgent sessions; local unless the folder is attached to a remote; ps and attach reach running ones anywhere.",
 			"connect, clone, sync, edit, tools, doctor\tWork with a remote workspace.",
-			"remote, workspace, config, auth\tManage workspaces and credentials.",
-			"setup, deployment, host, uninstall\tSet up and maintain Jara hosts.",
+			"remote, workspace, config, auth, network, join, device\tManage workspaces, credentials, and your network of hosts and devices.",
+			"setup, deployment, host, uninstall, daemon\tSet up and maintain Jara hosts, and this device's background daemon.",
 			"forward, reverse, tunnel\tForward ports over SSH.",
 			"menu/ui, version, keygen, key\tClient and SSH key tools.",
 			"usage, update, environment, docker, migrate, help\tOther commands.",

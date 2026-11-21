@@ -10,11 +10,15 @@ import (
 )
 
 func startChatDaemonProcess(request Request, logPath string) (int, error) {
-	command := "_chat-daemon"
-	if request.Runner != "" {
-		command = "_runner-daemon" // the agent runs on this device
+	if request.Runner == "" {
+		return startDetachedJara("_chat-daemon", request, logPath)
 	}
-	return startDetachedJara(command, request, logPath)
+	// The agent runs on this device: under the Jara daemon when it runs, so
+	// the session outlives this terminal and logging out.
+	if pid, err := spawnViaDaemon("_runner-daemon", request, logPath); err == nil {
+		return pid, nil
+	}
+	return startDetachedJara("_runner-daemon", request, logPath)
 }
 
 // startDetachedJara runs `jara COMMAND REQUEST` in its own session, so it
