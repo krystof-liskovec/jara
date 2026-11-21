@@ -32,6 +32,27 @@ func TestReconnectingRelayArgs(t *testing.T) {
 	}
 }
 
+func TestLinkArgs(t *testing.T) {
+	link := token(Request{Runner: "phone", Link: "0123456789abcdef"})
+	for name, test := range map[string]struct {
+		args []string
+		want bool
+	}{
+		"device link":   {[]string{"/usr/local/bin/jara", "_device-link", link}, true},
+		"runner link":   {[]string{"jara", "_runner-link", link}, true},
+		"missing nonce": {[]string{"jara", "_device-link", token(Request{Runner: "phone"})}, false},
+		"device open":   {[]string{"jara", "_device-open", link}, false},
+		"shell wrapper": {[]string{"sh", "-c", "jara _device-link " + link}, false},
+		"invalid token": {[]string{"jara", "_device-link", "%%%"}, false},
+		"missing token": {[]string{"jara", "_device-link"}, false},
+		"empty":         {nil, false},
+	} {
+		if got := linkArgs(test.args); got != test.want {
+			t.Errorf("%s: got %v, want %v", name, got, test.want)
+		}
+	}
+}
+
 func TestChatPeerPIDIdentifiesSocketPeer(t *testing.T) {
 	socket := filepath.Join(shortTempDir(t), "peer.sock")
 	listener, err := net.Listen("unix", socket)

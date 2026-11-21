@@ -47,7 +47,10 @@ RUN test -n "$CODEX_VERSION" \
       && rm /usr/local/bin/claude; \
     fi \
  && printf '%s\n' '#!/bin/sh' \
-      '# Keep mosh on the UDP ports Compose publishes (60001-60004).' \
+      '# Keep mosh on the UDP ports Compose publishes (60001-60004), and end a' \
+      '# server whose client has been silent for a day: an abandoned one keeps' \
+      '# its tmux session attached and holds one of the four ports.' \
+      ': "${MOSH_SERVER_NETWORK_TMOUT:=86400}"; export MOSH_SERVER_NETWORK_TMOUT' \
       'if [ "$1" = new ] && ! printf "%s\n" "$@" | grep -qx -- "-p"; then shift; exec /usr/bin/mosh-server new -p 60001:60004 "$@"; fi' \
       'exec /usr/bin/mosh-server "$@"' > /usr/local/bin/mosh-server \
  && chmod 755 /usr/local/bin/mosh-server \

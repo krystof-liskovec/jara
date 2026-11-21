@@ -44,10 +44,23 @@ func reconnectingChatRelay(pid int) bool {
 	return reconnectingRelayArgs(strings.Split(string(bytes.TrimRight(raw, "\x00")), "\x00"))
 }
 
-// reconnectingRelayAncestors lists every ancestor of reconnecting relays, so
-// the SSH connections carrying them do not count as open interactive sessions.
+// reconnectingRelayAncestors lists every ancestor of reconnecting relays and
+// device or runner links, so the SSH connections carrying them do not count as open
+// interactive sessions: their clients reconnect by themselves after an update.
 func reconnectingRelayAncestors() map[int]bool {
-	return processAncestors(reconnectingChatRelay)
+	return processAncestors(func(pid int) bool { return reconnectingChatRelay(pid) || linkProcess(pid) })
+}
+
+// linkProcess reports whether pid is the host end of a device or runner link.
+func linkProcess(pid int) bool {
+	if pid < 2 {
+		return false
+	}
+	raw, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
+	if err != nil {
+		return false
+	}
+	return linkArgs(strings.Split(string(bytes.TrimRight(raw, "\x00")), "\x00"))
 }
 
 func processAncestors(match func(pid int) bool) map[int]bool {

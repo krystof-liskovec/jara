@@ -154,7 +154,9 @@ image includes `mosh-server`, and Compose publishes UDP ports 60001-60004 on
 `61001-61004`). Enable Mosh on the Termius host and allow those UDP ports
 through any firewall; a jump-host tunnel carries only SSH, so mosh needs the
 ports reachable directly. Connect-only keys run `jara connect` and cannot start
-`mosh-server`.
+`mosh-server`. A mosh server whose client stays silent for 24 hours exits, so
+an abandoned one does not keep its terminal attached or hold one of the four
+ports; set `MOSH_SERVER_NETWORK_TMOUT` (seconds) in the container to change it.
 
 ## Verification
 

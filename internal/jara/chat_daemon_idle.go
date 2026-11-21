@@ -193,3 +193,17 @@ func reconnectingRelayArgs(args []string) bool {
 	}
 	return false
 }
+
+// linkArgs reports whether a command line is the host end of a link a client
+// keeps open and re-establishes by itself: `jara _device-link` for a device's
+// daemon or `jara _runner-link` for a conversation running on another machine.
+func linkArgs(args []string) bool {
+	for index := 0; index+2 < len(args); index++ {
+		if filepath.Base(args[index]) != "jara" || args[index+1] != "_device-link" && args[index+1] != "_runner-link" {
+			continue
+		}
+		var request Request
+		return decode(args[index+2], &request) == nil && request.Link != ""
+	}
+	return false
+}
