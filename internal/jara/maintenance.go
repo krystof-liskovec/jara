@@ -39,6 +39,18 @@ func activeMaintenance() (maintenanceLease, bool, error) {
 	}
 	return lease, time.Now().Before(lease.Expires), nil
 }
+
+// leaseRemaining says how long a lease still runs. It is a duration rather
+// than a clock time because the container's time zone (usually UTC) need not
+// match the reader's.
+func leaseRemaining(expires time.Time) string {
+	left := time.Until(expires).Round(time.Second)
+	if left < time.Second {
+		return "under a second more"
+	}
+	return "another " + left.String()
+}
+
 func admitWorkspace() error {
 	_, active, err := activeMaintenance()
 	if err != nil {
@@ -80,7 +92,7 @@ func maintenanceCommand(args []string) error {
 	}
 	activeLease := func() maintenanceStatus {
 		return maintenanceStatus{Busy: true, Reason: "another update is in progress",
-			Blockers: []string{"another update holds the maintenance lease until " + lease.Expires.Local().Format("15:04:05")}}
+			Blockers: []string{"another update holds the maintenance lease for " + leaseRemaining(lease.Expires)}}
 	}
 	switch args[0] {
 	case "status":

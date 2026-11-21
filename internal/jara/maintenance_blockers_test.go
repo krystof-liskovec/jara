@@ -104,3 +104,12 @@ func TestForcedMaintenanceTakesLeaseAndListsBlockers(t *testing.T) {
 		t.Fatalf("status during the update = %+v", again)
 	}
 }
+
+func TestLeaseRemainingIsZoneFree(t *testing.T) {
+	if got := leaseRemaining(time.Now().Add(9*time.Minute + 30*time.Second + 200*time.Millisecond)); got != "another 9m30s" {
+		t.Fatalf("leaseRemaining = %q", got)
+	}
+	if got := leaseRemaining(time.Now().Add(-time.Minute)); got != "under a second more" {
+		t.Fatalf("expired leaseRemaining = %q", got)
+	}
+}
