@@ -123,6 +123,18 @@ func refreshUpdateCheck(c Config, check updateCheck) updateCheck {
 	return check
 }
 
+// rememberUpgradedRemote records what name runs after an upgrade, so the
+// cached check does not offer the same upgrade again.
+func rememberUpgradedRemote(c Config, name string) {
+	remote, ok := c.Remotes[name]
+	if !ok {
+		return
+	}
+	check := loadUpdateCheck()
+	check.Remotes[name] = fetchRemoteVersions(remote)
+	saveUpdateCheck(check)
+}
+
 func fetchRemoteVersions(remote Remote) remoteVersions {
 	var versions remoteVersions
 	err := rpc(remote, Request{Op: "versions"}, nil, &versions.machineVersions)

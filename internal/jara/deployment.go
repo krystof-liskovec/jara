@@ -82,14 +82,19 @@ func deploymentUpgradeCommand(c Config, args []string) error {
 	if err := validateRemote(deployment.Admin); err != nil {
 		return fmt.Errorf("invalid saved host connection: %w", err)
 	}
+	var err error
 	if verbose {
-		return upgradeGuidedHost(name, deployment, deploymentBundle(), Version, options, verboseUpgrade{out: os.Stdout})
+		err = upgradeGuidedHost(name, deployment, deploymentBundle(), Version, options, verboseUpgrade{out: os.Stdout})
+	} else {
+		board := newUpgradeBoard(os.Stdout)
+		row := board.row(name)
+		board.start()
+		err = upgradeGuidedHost(name, deployment, deploymentBundle(), Version, options, row)
+		row.settle(err)
+		board.close()
 	}
-	board := newUpgradeBoard(os.Stdout)
-	row := board.row(name)
-	board.start()
-	err := upgradeGuidedHost(name, deployment, deploymentBundle(), Version, options, row)
-	row.settle(err)
-	board.close()
+	if err == nil {
+		rememberUpgradedRemote(c, name)
+	}
 	return err
 }
