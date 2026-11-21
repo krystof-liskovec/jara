@@ -198,7 +198,7 @@ func (r *agentRouter) resumeThread(id json.RawMessage, params json.RawMessage) e
 		}
 	}
 	if thread == nil {
-		return r.callCodex(codexCall{uiID: id, method: "thread/resume"}, params)
+		return r.resumeUntrackedCodexThread(id, request.ThreadID, params)
 	}
 	thread.selectReviewer(params)
 	segment := thread.Current()

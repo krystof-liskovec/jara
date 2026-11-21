@@ -121,3 +121,43 @@ func TestEmptyPortableCodexThreadPropagatesOtherResumeErrors(t *testing.T) {
 		t.Fatalf("resume should report the original error: %v", resumed)
 	}
 }
+
+// A Codex conversation opened but closed before its first turn has no rollout
+// and no Jara record; reopening it must still give a usable conversation.
+func TestUntrackedCodexThreadResumesWithoutRollout(t *testing.T) {
+	agentfake.Setup(t)
+	const threadID = "codex-unsaved"
+	t.Setenv("JARA_FAKE_CODEX_RESUME_ERROR", "no rollout found for thread id "+threadID)
+	h := startRouterHarness(t, protocol.AgentCodex)
+	h.Response(h.Request("initialize", map[string]any{}))
+	resumed := h.Response(h.Request("thread/resume", map[string]any{"threadId": threadID, "cwd": t.TempDir()}))
+	if resumed["error"] != nil {
+		t.Fatalf("resume: %v", resumed)
+	}
+	if thread := resumed["result"].(map[string]any)["thread"].(map[string]any); thread["id"] != threadID {
+		t.Fatalf("resumed with a different conversation ID: %v", thread)
+	}
+	seen := routedTurn(h, threadID, textInput("first prompt"))
+	if ids := agentfake.ThreadIDs(seen); len(ids) != 1 || !ids[threadID] {
+		t.Fatalf("turn notifications must retain the conversation ID: %v", ids)
+	}
+	turns := agentfake.ReadLog(t, "codex-turn")
+	if len(turns) != 1 || strings.HasPrefix(turns[0], threadID+"|") || !strings.HasSuffix(turns[0], "|first prompt") {
+		t.Fatalf("first prompt should reach a new Codex session verbatim: %q", turns)
+	}
+	if got := LoadThread(threadID); got == nil || got.Rebrief || got.Current().BackendID == threadID {
+		t.Fatalf("recovered conversation was not saved: %+v", got)
+	}
+}
+
+func TestUntrackedCodexThreadPropagatesOtherResumeErrors(t *testing.T) {
+	agentfake.Setup(t)
+	const failure = "conversation is already active"
+	t.Setenv("JARA_FAKE_CODEX_RESUME_ERROR", failure)
+	h := startRouterHarness(t, protocol.AgentCodex)
+	h.Response(h.Request("initialize", map[string]any{}))
+	resumed := h.Response(h.Request("thread/resume", map[string]any{"threadId": "codex-other"}))
+	if rpcError, _ := resumed["error"].(map[string]any); rpcError == nil || rpcError["message"] != failure {
+		t.Fatalf("resume error was not propagated: %v", resumed)
+	}
+}
