@@ -37,7 +37,10 @@ const liveSessionTimeout = 20 * time.Second
 
 // hubLiveSessions is the live-sessions RPC: the remote host's own running
 // sessions and those of online devices that hold one of its workspaces.
-func hubLiveSessions() []liveSession {
+func hubLiveSessions() []liveSession { return hubLiveSessionsWith(hubDevices()) }
+
+// hubLiveSessionsWith lists the host's sessions, given its linked devices.
+func hubLiveSessionsWith(linked []deviceInfo) []liveSession {
 	out := []liveSession{}
 	devices := map[string]bool{}
 	entries, _ := os.ReadDir(filepath.Join(fsutil.DataRoot(), "runners"))
@@ -65,7 +68,7 @@ func hubLiveSessions() []liveSession {
 		out = append(out, liveSession{Workspace: session.Workspace, Name: hubWorkspaceName(session.Workspace),
 			Runner: runnerHub, Conversation: session.Conversation, Busy: session.AgentState == "running", Attached: session.Attached})
 	}
-	return append(out, deviceLiveSessions(devices)...)
+	return append(out, deviceLiveSessions(devices, linked)...)
 }
 
 // hubWorkspaceName names a host workspace the way its owner knows it.
@@ -118,7 +121,22 @@ func collectLiveSessions(c Config, onlyRemote string, includeLocal bool) (sessio
 	if onlyRemote != "" {
 		names = []string{onlyRemote}
 	}
-	results := make([][]liveSession, len(names))
+	results, errs := askEachHost[[]liveSession](c, names, "live-sessions")
+	for i, name := range names {
+		if err := errs[i]; err != nil {
+			if strings.Contains(err.Error(), "unknown RPC operation") {
+				err = fmt.Errorf("its Jara cannot list sessions yet; upgrade it with jara deployment upgrade --remote %s", name)
+			}
+			problems = append(problems, fmt.Sprintf("%s: %v", name, err))
+		}
+	}
+	return mergeLiveSessions(c, names, results, errs, sessions), problems
+}
+
+// askEachHost runs one RPC on each named remote host at once, giving each
+// liveSessionTimeout to answer.
+func askEachHost[T any](c Config, names []string, op string) ([]T, []error) {
+	results := make([]T, len(names))
 	errs := make([]error, len(names))
 	var wg sync.WaitGroup
 	for i, name := range names {
@@ -131,32 +149,38 @@ func collectLiveSessions(c Config, onlyRemote string, includeLocal bool) (sessio
 		go func() {
 			defer wg.Done()
 			done := make(chan struct{})
+			var result T
+			var err error
 			go func() {
-				errs[i] = rpc(remote, Request{Op: "live-sessions"}, nil, &results[i])
+				err = rpc(remote, Request{Op: op}, nil, &result)
 				close(done)
 			}()
 			select {
 			case <-done:
+				results[i], errs[i] = result, err
 			case <-time.After(liveSessionTimeout):
 				errs[i] = fmt.Errorf("no answer within %s", liveSessionTimeout)
 			}
 		}()
 	}
 	wg.Wait()
+	return results, errs
+}
+
+// mergeLiveSessions appends what each host reported to this device's own
+// sessions, in rank order: a session this device runs, or one a device linked
+// to several hosts runs, is listed once.
+func mergeLiveSessions(c Config, names []string, results [][]liveSession, errs []error, sessions []liveSession) []liveSession {
 	here := runnerDeviceName()
-	seenDevice := map[string]bool{} // a device linked to several hosts is listed once
+	seenDevice := map[string]bool{}
 	for i, name := range names {
-		if err := errs[i]; err != nil {
-			if strings.Contains(err.Error(), "unknown RPC operation") {
-				err = fmt.Errorf("its Jara cannot list sessions yet; upgrade it with jara deployment upgrade --remote %s", name)
-			}
-			problems = append(problems, fmt.Sprintf("%s: %v", name, err))
+		if errs[i] != nil {
 			continue
 		}
 		for _, session := range results[i] {
 			session.Remote = name
 			if session.Runner == here && (session.DeviceFolder != "" || runsLocally(sessions, name, session.Workspace)) {
-				continue // listed above as this device's own session
+				continue // listed as this device's own session
 			}
 			if session.DeviceFolder != "" {
 				key := session.Runner + "\x00" + session.DeviceFolder
@@ -173,7 +197,7 @@ func collectLiveSessions(c Config, onlyRemote string, includeLocal bool) (sessio
 			sessions = append(sessions, session)
 		}
 	}
-	return sessions, problems
+	return sessions
 }
 
 func runsLocally(sessions []liveSession, remote, workspace string) bool {

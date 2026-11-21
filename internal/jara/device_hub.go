@@ -33,10 +33,11 @@ type deviceRecord struct {
 	Name     string `json:"name"`
 	Link     string `json:"link"`
 	LastSeen int64  `json:"last_seen"`
+	Closed   bool   `json:"closed,omitempty"` // its link ended; LastSeen says when
 }
 
 func (d deviceRecord) online() bool {
-	return d.LastSeen > 0 && time.Since(time.Unix(d.LastSeen, 0)) < runnerLinkTimeout()
+	return !d.Closed && d.LastSeen > 0 && time.Since(time.Unix(d.LastSeen, 0)) < runnerLinkTimeout()
 }
 
 func deviceHubDir() string { return filepath.Join(fsutil.DataRoot(), "devices") }
@@ -132,7 +133,7 @@ func runDeviceLink(q Request) error {
 		}
 	}
 	if current, ok := loadDeviceRecord(q.Runner); ok && current.Link == q.Link {
-		current.LastSeen = 0 // gone now, not after the link timeout
+		current.Closed, current.LastSeen = true, time.Now().Unix() // gone now, not after the link timeout
 		_ = fsutil.WriteJSON(deviceRecordPath(q.Runner), current)
 	}
 	return nil
@@ -227,9 +228,9 @@ func sendChatError(err error) error {
 // deviceLiveSessions adds the running sessions of linked devices to the
 // host's live-sessions answer, except those already listed through the
 // workspaces of this host they run.
-func deviceLiveSessions(listed map[string]bool) []liveSession {
+func deviceLiveSessions(listed map[string]bool, devices []deviceInfo) []liveSession {
 	var out []liveSession
-	for _, device := range hubDevices() {
+	for _, device := range devices {
 		for _, folder := range device.Folders {
 			if !folder.Running || folder.Workspace != "" && listed[folder.Workspace] {
 				continue

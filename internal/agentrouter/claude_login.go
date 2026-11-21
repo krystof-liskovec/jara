@@ -225,3 +225,7 @@ func claudeCredentialSource() string {
 	}
 	return ""
 }
+
+// ClaudeSignedIn reports whether Claude Code on this machine is signed in,
+// by its own login or a token from the environment or Jara.
+func ClaudeSignedIn() bool { return claudeAuthStatus()["loggedIn"] == true }

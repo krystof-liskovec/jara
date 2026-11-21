@@ -6,6 +6,7 @@ knows, so any client of the network can start or join an agent session on it.
 A new device joins with a one-time code instead of being set up by hand.
 
 ```sh
+jara network                 # the whole network: hosts, devices, running sessions
 jara network invite          # on a device already in the network: prints a code
 jara join jara1.eyJ…         # on the new device: adds every host
 jara device allow            # on a device others may run agents on
@@ -20,6 +21,18 @@ start agents on every device that allows calls, as you and outside any
 container. Reach the hosts over a private network such as
 [Tailscale](https://tailscale.com) and do not expose their SSH port to the
 internet.
+
+## Overview
+
+`jara network` asks every host at once and shows one view: each host with
+its rank, address and Jara version (or why it does not answer), every device
+the hosts know (accepting calls now and through which hosts, or offline and
+when it was last linked; devices that joined with a code are marked), and the
+sessions running anywhere, numbered for `jara attach N`. This device comes
+first, with what it still needs to accept calls. Devices you added by hand
+and never linked are not known to the hosts and do not appear. Colour follows
+the terminal's background and is off with `NO_COLOR` or when the output is not
+a terminal.
 
 ## Devices
 
@@ -73,6 +86,13 @@ The code carries a secret and the first host's address and SSH host keys:
    pinned to their host keys in `~/.local/share/jara/known_hosts`, and checks
    each lets it in. Remotes it already has under the same name stay as they
    are.
+
+4. Finally it offers to sign the agent CLIs in, so the device can run agents
+   itself as well as use the hosts: Codex on this device and on any host
+   not signed in yet, each with its own device code (`jara auth codex --all`),
+   and Claude Code on this device only, in the browser or with a token from
+   `claude setup-token`, so the hosts keep their accounts. Without a terminal,
+   or with `--no-sign-in`, it prints those commands instead.
 
 A device joining under a name another device already uses gets a numbered
 name (`laptop-2`). `jara network devices` lists the devices a host accepts and

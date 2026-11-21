@@ -19,15 +19,20 @@ import (
 	"krystof.liskovec/jara/internal/portable"
 )
 
-const networkUsage = "use jara network invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE"
+const networkUsage = "use jara network [status] | invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE"
 
 // networkCommand is `jara network`: inviting devices into your network of
 // remote hosts, and listing or removing the devices that joined.
 func networkCommand(c Config, args []string) error {
 	if len(args) == 0 {
-		return errors.New(networkUsage)
+		return networkOverview(c)
 	}
 	switch args[0] {
+	case "status":
+		if len(args) != 1 {
+			return errors.New(networkUsage)
+		}
+		return networkOverview(c)
 	case "invite":
 		f := flag.NewFlagSet("network invite", flag.ContinueOnError)
 		remote := f.String("remote", "", "the host the new device connects to first (default: the primary)")
@@ -192,6 +197,7 @@ func authorizeJoinedDevice(c Config, others []networkHost, joined networkJoined)
 func joinCommand(c Config, args []string) error {
 	f := flag.NewFlagSet("join", flag.ContinueOnError)
 	name := f.String("name", runnerDeviceName(), "this device's name in the network")
+	noSignIn := f.Bool("no-sign-in", false, "do not offer to sign the agent CLIs in")
 	var positional []string
 	for {
 		if err := f.Parse(args); err != nil {
@@ -203,7 +209,7 @@ func joinCommand(c Config, args []string) error {
 		positional, args = append(positional, f.Arg(0)), f.Args()[1:]
 	}
 	if len(positional) != 1 || !deviceNameOK.MatchString(*name) {
-		return errors.New("use jara join CODE [--name NAME]")
+		return errors.New("use jara join CODE [--name NAME] [--no-sign-in]")
 	}
 	token, err := decodeJoinToken(positional[0])
 	if err != nil {
@@ -217,7 +223,11 @@ func joinCommand(c Config, args []string) error {
 	if err != nil {
 		return err
 	}
-	return installNetwork(c, answer.Registry, keyPath, answer.Device)
+	if err = installNetwork(c, answer.Registry, keyPath, answer.Device); err != nil {
+		return err
+	}
+	signInAfterJoin(*noSignIn)
+	return nil
 }
 
 // ensureNetworkKey returns this device's key for the network, creating it.

@@ -45,21 +45,25 @@ func init() {
 		examples: []string{"jara device allow", "jara device list", "jara device open desktop ~/src/api", "jara device open desktop 2 --new"},
 	}
 	commandHelp["network"] = helpEntry{
-		usage: "jara network invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE",
-		summary: "Invite a device into your network of remote hosts with a one-time code, list the devices that joined, or revoke one. " +
-			"invite prints a code for jara join, waits for it, then lets the new device log in to every host.",
+		usage: "jara network [status] | invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE",
+		summary: "Without a subcommand, show the whole network: your hosts and whether they answer, every device they know " +
+			"(accepting calls now, or when it was last linked), and the sessions running anywhere. " +
+			"invite prints a one-time code for jara join, waits for it, then lets the new device log in to every host; " +
+			"devices lists the devices that joined with a code, and revoke removes one.",
 		options: []string{
 			"--remote NAME       The host the new device joins through (default: the primary).",
 			"--address HOST      How other devices reach that host, when your SSH alias or address only works here.",
 			"--minutes N         How long the code works (default 15, at most 60).",
 		},
-		examples: []string{"jara network invite", "jara network invite --address work.tailnet.ts.net:2222", "jara network revoke old-laptop"},
+		examples: []string{"jara network", "jara network invite", "jara network invite --address work.tailnet.ts.net:2222", "jara network revoke old-laptop"},
 	}
 	commandHelp["join"] = helpEntry{
-		usage: "jara join CODE [--name NAME]",
+		usage: "jara join CODE [--name NAME] [--no-sign-in]",
 		summary: "Join a network with a code from jara network invite: adds its remote hosts here, pinned to their host keys, " +
-			"with a new key ~/.ssh/jara_ed25519 they accept.",
-		options:  []string{"--name NAME         This device's name in the network (default: its host name)."},
+			"with a new key ~/.ssh/jara_ed25519 they accept. Then it offers to sign the agent CLIs in: Codex on this device and on " +
+			"any host not signed in yet, Claude Code on this device only, so the hosts keep their accounts.",
+		options: []string{"--name NAME         This device's name in the network (default: its host name).",
+			"--no-sign-in        Skip the sign-in offer (it is also skipped without a terminal)."},
 		examples: []string{"jara join jara1.eyJ…"},
 	}
 	addHelpExamples("root", "jara ps", "jara attach")

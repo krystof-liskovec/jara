@@ -148,6 +148,8 @@ func remoteRPC(q Request) error {
 			Idle   bool            `json:"idle,omitempty"`
 			State  chatDaemonState `json:"state,omitempty"`
 		}{Active: active, Idle: active && busy == "", State: state})
+	case "network-status":
+		return networkStatusRPC()
 	case "device-tunnel", "device-list":
 		return deviceRPC(q)
 	case "network-invite", "network-joined", "network-authorize", "network-revoke", "network-devices":

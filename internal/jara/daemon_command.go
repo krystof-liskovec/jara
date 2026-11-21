@@ -182,16 +182,17 @@ func installDaemon(linger bool) error {
 	state := lingering()
 	if state == "no" && linger {
 		if err = runServiceTool("loginctl", "enable-linger"); err != nil {
-			fmt.Println("Could not turn on lingering, so the daemon stops when you log out of every session:", err)
-		} else {
-			state = "yes"
+			fmt.Println("Could not turn on lingering, so the daemon starts at your next login, not at boot, "+
+				"and stops when you log out of every session:", err)
+			return nil
 		}
+		state = "yes"
 	}
 	switch state {
 	case "yes":
-		fmt.Println("It runs from boot, without a login, and keeps running after you log out.")
+		fmt.Println("It starts at boot, without a login, and keeps running after you log out.")
 	case "no":
-		fmt.Println("It stops when you log out of every session and starts at your next login (--no-linger).")
+		fmt.Println("It starts at your next login, not at boot, and stops when you log out of every session (--no-linger).")
 	}
 	return nil
 }
