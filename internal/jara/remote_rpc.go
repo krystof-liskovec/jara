@@ -152,7 +152,7 @@ func remoteRPC(q Request) error {
 		return networkStatusRPC()
 	case "device-tunnel", "device-list":
 		return deviceRPC(q)
-	case "network-invite", "network-joined", "network-authorize", "network-revoke", "network-devices":
+	case "network-invite", "network-joined", "network-authorize", "network-revoke", "network-devices", "network-hosts":
 		return networkRPC(q, os.Stdin)
 	case "live-sessions":
 		return json.NewEncoder(os.Stdout).Encode(hubLiveSessions())

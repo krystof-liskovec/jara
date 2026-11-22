@@ -119,8 +119,14 @@ func remoteOpen(q Request) error {
 			return err
 		}
 
-		if selected.Kind == "tools" {
-			return showHostDiagnostics()
+		if selected.Kind == "network-host" {
+			return hopToNetworkHost(selected.Group)
+		}
+		if selected.Kind == "device-session" {
+			if q.Background {
+				return fmt.Errorf("background runs on a device start there; use jara run on it")
+			}
+			return openHubDeviceSession(selected.Group, selected.Path, selected.Action == "new")
 		}
 		if selected.Kind == "history" {
 			if q.Background {

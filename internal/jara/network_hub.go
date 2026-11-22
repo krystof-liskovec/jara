@@ -136,6 +136,8 @@ func networkRPC(q Request, body io.Reader) error {
 			return err
 		}
 		return refreshManagedKeys()
+	case "network-hosts":
+		return saveNetworkHosts(body)
 	case "network-devices":
 		paths, _ := filepath.Glob(filepath.Join(networkDir(), "devices", "*.pub"))
 		names := []string{}

@@ -17,7 +17,10 @@ StreamLocalBindUnlink yes
 ClientAliveInterval 30
 ClientAliveCountMax 3
 X11Forwarding no
-AllowAgentForwarding no
+# A phone that forwards its SSH agent can hop from jara connect to the
+# network's other hosts. Agents here run as the same user and can use the
+# forwarded agent while that connection lasts; forward it only when hopping.
+AllowAgentForwarding yes
 PermitUserEnvironment no
 Subsystem sftp internal-sftp
 PrintMotd no

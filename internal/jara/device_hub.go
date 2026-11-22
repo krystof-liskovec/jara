@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -181,15 +180,7 @@ func askDevice(name string, request deviceRequest, answer any) error {
 
 // hubDevices lists the online devices and the folders each has opened.
 func hubDevices() []deviceInfo {
-	entries, _ := os.ReadDir(deviceHubDir())
-	var names []string
-	for _, entry := range entries {
-		if name, ok := strings.CutSuffix(entry.Name(), ".json"); ok {
-			if record, found := loadDeviceRecord(name); found && record.online() {
-				names = append(names, name)
-			}
-		}
-	}
+	names := onlineDeviceNames()
 	devices := make([]deviceInfo, len(names))
 	var wg sync.WaitGroup
 	for i, name := range names {

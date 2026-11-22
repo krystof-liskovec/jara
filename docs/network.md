@@ -14,7 +14,11 @@ jara device list             # reachable devices and the folders each has opened
 jara device open desktop api # start or join that folder's session on desktop
 jara ps                      # running sessions everywhere, devices included
 jara attach desktop:/src/api # join one of them
+jara network share           # let jara connect on each host hop to the others
 ```
+
+From a phone, `jara connect` on a host lists the linked devices and, after
+`jara network share`, the other hosts; see [plain SSH](plain-ssh.md).
 
 **Keep the hosts private.** Anyone who can log in to one of your hosts can
 start agents on every device that allows calls, as you and outside any

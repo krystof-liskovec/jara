@@ -45,17 +45,18 @@ func init() {
 		examples: []string{"jara device allow", "jara device list", "jara device open desktop ~/src/api", "jara device open desktop 2 --new"},
 	}
 	commandHelp["network"] = helpEntry{
-		usage: "jara network [status] | invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE",
+		usage: "jara network [status] | invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE | share",
 		summary: "Without a subcommand, show the whole network: your hosts and whether they answer, every device they know " +
 			"(accepting calls now, or when it was last linked), and the sessions running anywhere. " +
 			"invite prints a one-time code for jara join, waits for it, then lets the new device log in to every host; " +
-			"devices lists the devices that joined with a code, and revoke removes one.",
+			"devices lists the devices that joined with a code, and revoke removes one; " +
+			"share gives every host the addresses and host keys of the others, so jara connect on one can hop to the rest.",
 		options: []string{
 			"--remote NAME       The host the new device joins through (default: the primary).",
 			"--address HOST      How other devices reach that host, when your SSH alias or address only works here.",
 			"--minutes N         How long the code works (default 15, at most 60).",
 		},
-		examples: []string{"jara network", "jara network invite", "jara network invite --address work.tailnet.ts.net:2222", "jara network revoke old-laptop"},
+		examples: []string{"jara network", "jara network invite", "jara network invite --address work.tailnet.ts.net:2222", "jara network revoke old-laptop", "jara network share"},
 	}
 	commandHelp["join"] = helpEntry{
 		usage: "jara join CODE [--name NAME] [--no-sign-in]",

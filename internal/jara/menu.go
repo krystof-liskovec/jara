@@ -114,10 +114,14 @@ func menuKindIcon(kind string) string {
 		return "●"
 	case "project", "workspace":
 		return "◇"
-	case "new":
+	case "new", "new-conversation":
 		return "+"
-	case "tools":
+	case "tools", "diagnostics", "refresh":
 		return "✦"
+	case "devices", "device", "hosts", "network-host":
+		return "⇄"
+	case "device-folder", "device-session":
+		return "◇"
 	case "group":
 		return "…"
 	case "history":

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"krystof.liskovec/jara/internal/fsutil"
-	"krystof.liskovec/jara/internal/protocol"
 )
 
 type conversationProject struct {
@@ -147,63 +146,74 @@ func projectDetail(p conversationProject) string {
 }
 
 // Each level has one job: choose a project, then a conversation or terminal.
+// Starting something new comes first, since a phone keyboard makes search slow.
 func browseProjects() (menuItem, error) {
-	selectedWorkspace, selectedPath := "", ""
+	selectedWorkspace, selectedPath, selected := "", "", 0
 	for {
 		data, err := loadProjectBrowser()
 		if err != nil {
 			return menuItem{}, err
 		}
 		projects, terminals, historyErr := data.Projects, data.Terminals, data.HistoryError
-		items := []menuItem{}
+		items := []menuItem{{Title: "New conversation", Detail: "Start an agent in a project", Kind: "new-conversation"}}
 		for _, p := range projects {
 			items = append(items, menuItem{Title: projectName(p), Detail: projectDetail(p), Kind: "project"})
 		}
-		fallback := len(items)
+		if devices := onlineDeviceNames(); len(devices) > 0 {
+			items = append(items, menuItem{Title: "Devices", Detail: strings.Join(devices, ", "), Kind: "devices"})
+		}
+		if hosts := otherNetworkHosts(); len(hosts) > 0 {
+			names := make([]string, len(hosts))
+			for i, h := range hosts {
+				names[i] = h.Name
+			}
+			items = append(items, menuItem{Title: "Other hosts", Detail: strings.Join(names, ", "), Kind: "hosts"})
+		}
 		detail := "Codex's native picker"
 		if historyErr != nil {
 			detail = "History unavailable: " + historyErr.Error()
 		}
-		items = append(items, menuItem{Title: "All Codex conversations", Detail: detail, Kind: "history"}, menuItem{Title: "Terminals", Detail: fmt.Sprintf("%d terminal records", len(terminals)), Kind: "terminals"}, menuItem{Title: "Diagnostics", Detail: "Host health", Kind: "tools"}, menuItem{Title: "Refresh projects", Detail: "Reload chats and running terminals", Kind: "tools"})
-		n, e := selectMenuAt("Projects", items, projectBrowserSelection(projects, selectedWorkspace, selectedPath))
+		items = append(items, menuItem{Title: "All Codex conversations", Detail: detail, Kind: "history"}, menuItem{Title: "Terminals", Detail: fmt.Sprintf("%d terminal records", len(terminals)), Kind: "terminals"}, menuItem{Title: "Diagnostics", Detail: "Host health", Kind: "diagnostics"}, menuItem{Title: "Refresh projects", Detail: "Reload chats and running terminals", Kind: "refresh"})
+		if selectedWorkspace != "" || selectedPath != "" {
+			selected = 1 + projectBrowserSelection(projects, selectedWorkspace, selectedPath)
+		}
+		n, e := selectMenuAt("Projects", items, selected)
 		if e != nil {
 			return menuItem{}, e
 		}
-		if n == fallback {
+		selectedWorkspace, selectedPath, selected = "", "", n
+		var chosen menuItem
+		switch items[n].Kind {
+		case "history":
 			return items[n], nil
+		case "refresh":
+			continue
+		case "diagnostics":
+			e = showHostDiagnostics()
+		case "terminals":
+			chosen, e = browseTerminals("Terminals", terminals)
+		case "new-conversation":
+			chosen, e = chooseNewConversation(projects)
+		case "devices":
+			chosen, e = browseDevices()
+		case "hosts":
+			chosen, e = browseNetworkHosts()
+		case "project":
+			p := projects[n-1]
+			selectedWorkspace, selectedPath = p.Workspace.ID, p.Path
+			chosen, e = browseProject(p, terminals)
 		}
-		if n == fallback+3 {
+		if errors.Is(e, io.EOF) || e == nil && chosen.Kind == "" {
 			continue
 		}
-		if n == fallback+2 {
-			if e = showHostDiagnostics(); e != nil && !errors.Is(e, io.EOF) {
-				return menuItem{}, e
-			}
-			continue
-		}
-		if n == fallback+1 {
-			chosen, e := browseTerminals("Terminals", terminals)
-			if e != nil {
-				if errors.Is(e, io.EOF) {
-					continue
-				}
-				return menuItem{}, e
-			}
-			return chosen, nil
-		}
-		selectedWorkspace, selectedPath = projects[n].Workspace.ID, projects[n].Path
-		selected, e := browseProject(projects[n], terminals)
-		if errors.Is(e, io.EOF) {
-			continue
-		}
-		return selected, e
+		return chosen, e
 	}
 }
 
 func browseProject(p conversationProject, terminals []Session) (menuItem, error) {
 	selectedConversation := 0
 	for {
-		rows := []menuItem{}
+		rows := newConversationRows(p)
 		if p.HistoryError != nil {
 			rows = append(rows, menuItem{Title: "Open Codex history", Detail: "History unavailable: " + p.HistoryError.Error(), Kind: "history"})
 		}
@@ -230,11 +240,6 @@ func browseProject(p conversationProject, terminals []Session) (menuItem, error)
 			}
 			detail += " · " + conversationAge(c.Updated)
 			rows = append(rows, menuItem{Title: title, Detail: detail, Workspace: p.Workspace.ID, Path: c.CWD, Kind: "conversation", Action: c.ID, Agent: c.Agent})
-		}
-		if p.Workspace.Ready {
-			for _, runtime := range installedAgentRuntimes() {
-				rows = append(rows, menuItem{Title: "New " + protocol.AgentDisplayName(runtime) + " conversation", Detail: "Start an agent terminal", Workspace: p.Workspace.ID, Kind: "new", Agent: runtime})
-			}
 		}
 		if len(p.Terminals) > 0 {
 			rows = append(rows, menuItem{Title: "Project terminals", Detail: fmt.Sprintf("%d terminals", len(p.Terminals)), Kind: "terminals"})

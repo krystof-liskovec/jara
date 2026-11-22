@@ -63,11 +63,28 @@ jara connect --worktree WORKSPACE_ID    # New terminal in a separate Git worktre
 jara connect --takeover WORKSPACE_ID    # Detach other clients and attach here
 ```
 
-The menu opens on **Projects**. Choose a project to see its saved conversations,
-then select a prompt or conversation name to resume. Conversations with a matched
+The menu opens on **Projects**. Its first entry, **New conversation**, asks for
+a project (and the agent, when Claude Code is installed too) and starts one.
+Choose a project to see its saved conversations, with new conversations at the
+top, then select a prompt or conversation name to resume. Conversations with a matched
 running terminal show a `live` count. Opening one reattaches to that terminal;
 multiple terminals offer a short chooser. Codex's reported active state appears
 as `working` when available.
+
+**Devices** appears while a computer that ran `jara device allow` is linked
+to this host (see [network of devices](network.md)). Choose one, then a folder
+it has opened with Jara: a running session offers to join it or to start a new
+conversation in it; otherwise the folder's session starts on that computer.
+The host relays it, so the computer needs no SSH server.
+
+**Other hosts** lists the network's other Jara hosts once your computer has run
+`jara network share` (rerun it after adding or removing a remote). Choosing one
+opens its `jara connect` menu, logging in with your phone's key through
+SSH agent forwarding: enable **Agent Forwarding** on the Termius host, and
+authorize the same key on every host. The target's host key is pinned from the
+shared list. While forwarding is on, agents on the host can use your key too, so
+enable it only on the Termius host you hop from. Leaving the other host's menu
+ends the connection.
 
 Project terminals and all host terminals have their own entries. They include
 older terminals whose conversation cannot be identified. `All Codex conversations`

@@ -122,6 +122,12 @@ See [Go's `os.Root` behavior](https://go.dev/blog/osroot).
   the root-owned file, an agent on the host can add a login key there; the
   standby-peer keys it also lists stay forced to their restricted command.
   Remove unknown entries with `jara network revoke`.
+- SSH agent forwarding is allowed so `jara connect` can hop to the network's
+  other hosts with your phone's key (`jara network share` gives each host
+  their addresses and pinned host keys; hosts get no keys for each other).
+  While a connection forwards an agent, any process running as `agent` on
+  that host, including the agents, can use it to log in wherever that key
+  works. Forward the agent only on connections you use to hop.
 - Publishing SSH alone is not a constrained agent execution service:
   authorized keys grant ordinary shell/SFTP and network access by design.
 - The seccomp profile relaxes namespace/mount-related syscall filters for Codex's

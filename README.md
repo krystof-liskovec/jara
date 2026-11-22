@@ -150,8 +150,8 @@ its configuration and any explicitly supplied startup arguments. See
 Connect from Termius or another SSH client as `agent`, then run `jara connect` for
 the workspace/running-session browser. No Jara installation is needed on the phone.
 Set Termius's host Startup Command to `jara connect` to open it on connection.
-The browser adapts to terminal size, shows readable project names and session
-status, and supports single-key selection plus keyboard navigation and paging.
+It starts new conversations, opens sessions on linked devices, hops to other
+hosts, and adapts to terminal size with single-key selection and paging.
 See [phone setup, keys and direct workspace commands](docs/plain-ssh.md).
 
 ## Register and connect

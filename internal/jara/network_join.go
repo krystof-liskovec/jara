@@ -19,7 +19,7 @@ import (
 	"krystof.liskovec/jara/internal/portable"
 )
 
-const networkUsage = "use jara network [status] | invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE"
+const networkUsage = "use jara network [status] | invite [--remote NAME] [--address HOST[:PORT]] [--minutes N] | devices [--remote NAME] | revoke DEVICE | share"
 
 // networkCommand is `jara network`: inviting devices into your network of
 // remote hosts, and listing or removing the devices that joined.
@@ -58,6 +58,11 @@ func networkCommand(c Config, args []string) error {
 		}
 		fmt.Printf("Devices that joined through a code, as %s knows them: %s\n", name, strings.Join(devices, ", "))
 		return nil
+	case "share":
+		if len(args) != 1 {
+			return errors.New(networkUsage)
+		}
+		return shareNetworkHosts(c)
 	case "revoke":
 		if len(args) != 2 || !deviceNameOK.MatchString(args[1]) {
 			return errors.New(networkUsage)
