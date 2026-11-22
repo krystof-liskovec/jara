@@ -4,8 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
+	"os/exec"
+	"strconv"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,6 +17,28 @@ import (
 )
 
 // Regressions for bugs the daemon tests found.
+
+// A session ending (/quit) closes its socket but lives on while it hands the
+// workspace over; a window opened then must not wait out the startup timeout.
+func TestConnectingToAnEndingSessionReturnsWhenItExits(t *testing.T) {
+	useChatDaemonData(t)
+	paths := chatDaemonTestPaths(t, "w-1")
+	ending := exec.Command("/bin/sh", "-c", "sleep 0.5")
+	if err := ending.Start(); err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = ending.Wait() }() // reaped, so the PID stops existing
+	if err := os.WriteFile(paths.pid, []byte(strconv.Itoa(ending.Process.Pid)+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	if _, err := connectExistingChatDaemon("w-1"); !errors.Is(err, errChatDaemonStopped) {
+		t.Fatalf("connect to an ending session = %v", err)
+	}
+	if waited := time.Since(started); waited > 10*time.Second {
+		t.Fatalf("waited %s for a session that had exited", waited)
+	}
+}
 
 func TestHandoffWaitsForTheDaemonGreeting(t *testing.T) {
 	useChatDaemonData(t)

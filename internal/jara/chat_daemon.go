@@ -2,6 +2,7 @@ package jara
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -261,6 +262,11 @@ func startChatDaemon(q Request, paths chatDaemonPaths) (net.Conn, bool, error) {
 	return nil, false, fmt.Errorf("remote chat service startup timed out")
 }
 
+// errChatDaemonStopped means the session's process exited while a client
+// waited for it. A session that ends (/quit) closes its socket at once but
+// may live on for a few seconds to hand its work over.
+var errChatDaemonStopped = errors.New("the persistent Jara session stopped")
+
 func connectExistingChatDaemon(id string) (net.Conn, error) {
 	paths, err := chatDaemonPathSet(id)
 	if err != nil {
@@ -274,6 +280,9 @@ func connectExistingChatDaemon(id string) (net.Conn, error) {
 		conn, dialErr := net.DialTimeout("unix", paths.socket, 500*time.Millisecond)
 		if dialErr == nil {
 			return conn, nil
+		}
+		if chatDaemonPID(paths) == 0 {
+			return nil, errChatDaemonStopped
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

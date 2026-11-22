@@ -173,14 +173,20 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 			return nil, remoteChatServerReady{}, fmt.Errorf("this folder's session is running without a remote; end it with /quit, then open it again to attach it to %s", o.remoteName)
 		}
 		conn, err := connectExistingChatDaemon(q.ID)
-		if err != nil {
+		if err == nil {
+			notice := ""
+			if o.remoteName != "" {
+				notice = "The agent runs on this device."
+			}
+			return readyLocalRunner(conn, notice)
+		}
+		if !errors.Is(err, errChatDaemonStopped) {
 			return nil, remoteChatServerReady{}, err
 		}
-		notice := ""
-		if o.remoteName != "" {
-			notice = "The agent runs on this device."
-		}
-		return readyLocalRunner(conn, notice)
+		// The session was ending (/quit hands the workspace over before it
+		// exits) when this window started: open a new one, from the state
+		// that hand-over left.
+		marker = loadLocalRunnerMarker(q.ID)
 	}
 	if o.remoteName == "" {
 		return startLocalOnlyRunner(q)
