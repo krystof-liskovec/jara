@@ -2,6 +2,7 @@ package agentrouter
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,6 +114,25 @@ func TestDefaultModelChoosesTheStartingAgent(t *testing.T) {
 	}
 	if reply := h.Response(h.Request("jara/fallbackModel/set", map[string]any{"model": "gpt-x"})); reply["error"] != nil || LoadModelPrefs().Fallback != "gpt-x" {
 		t.Fatalf("fallback not saved: %v", reply)
+	}
+}
+
+func TestExplicitAgentOnlyAppliesToTheFirstConversation(t *testing.T) {
+	agentfake.Setup(t)
+	if err := saveModelPrefs(modelPrefs{Default: "claude/opus"}); err != nil {
+		t.Fatal(err)
+	}
+	h := agentfake.StartHarness(t, func(input io.Reader, output io.Writer) error {
+		return runRouter(input, output, agentfake.CodexCommand(), protocol.AgentCodex, true)
+	})
+	h.Response(h.Request("initialize", map[string]any{}))
+	first := h.Response(h.Request("thread/start", map[string]any{"cwd": t.TempDir()}))["result"].(map[string]any)
+	if first["model"] == "claude/opus" {
+		t.Fatalf("the explicitly chosen agent must open the first conversation: %v", first)
+	}
+	second := h.Response(h.Request("thread/start", map[string]any{"cwd": t.TempDir()}))["result"].(map[string]any)
+	if second["model"] != "claude/opus" {
+		t.Fatalf("later new conversations must follow the default model: %v", second)
 	}
 }
 

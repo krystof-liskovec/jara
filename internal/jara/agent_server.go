@@ -15,7 +15,8 @@ import (
 
 // agentServerCommand wraps the Codex app-server command in the router.
 // An explicitly chosen agent (--agent or the browser's "New ... conversation")
-// starts new conversations even when a default model names the other agent.
+// opens the session's first conversation even when a default model names the
+// other agent; later new conversations follow the default model.
 func agentServerCommand(binary string, args []string, defaultAgent string, explicit bool, claudeArgs []string) (string, []string) {
 	self, err := os.Executable()
 	if err != nil {

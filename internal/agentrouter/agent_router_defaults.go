@@ -99,6 +99,7 @@ func (r *agentRouter) setDefaultModel(id json.RawMessage, params json.RawMessage
 			r.fail(id, "could not save the default model: "+err.Error())
 			return
 		}
+		r.agentExplicit = false // the new default now decides new conversations
 		r.reply(id, map[string]any{"model": request.Model})
 	}
 	if protocol.AgentForModel(request.Model) == protocol.AgentClaude {

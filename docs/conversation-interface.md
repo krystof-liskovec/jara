@@ -115,7 +115,9 @@ model Claude Code reports once it starts.
 on this host; `/default ID` or `/default N` sets it directly. The default model
 also picks the provider: with a Claude default, new conversations start on
 Claude Code even when the configured agent is Codex. Only an explicit choice
-(`--agent`, or "New … conversation" in the project browser) overrides it. Jara
+(`--agent`, or "New … conversation" in the project browser) overrides it, and
+only for the conversation the session opens with; `/new` afterwards follows the
+default model. Jara
 also saves the model in the agent's own configuration (`model` in Codex's
 `config.toml`, or in Claude Code's `settings.json`), so that agent's terminals
 on the host use it too.

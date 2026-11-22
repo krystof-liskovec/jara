@@ -162,6 +162,9 @@ func (t *Thread) lastTurn() *TranscriptTurn {
 
 func (r *agentRouter) startThread(id json.RawMessage, params json.RawMessage) error {
 	agent, model := r.startAgent()
+	// An explicitly chosen agent applies to the conversation the session
+	// opened with; later new conversations follow the default model.
+	r.agentExplicit = false
 	if agent != protocol.AgentClaude {
 		if model != "" {
 			params = withJSONField(params, "model", model)
