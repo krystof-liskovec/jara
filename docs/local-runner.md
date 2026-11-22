@@ -212,8 +212,15 @@ including Codex-only ones, so the fallback always has something to replay.
   next checkpoint.
 - Handing back to a waking device ends other windows attached to the remote
   host's session, such as a phone; reconnect them to follow the conversation.
-- Each checkpoint opens several SSH connections, so connection multiplexing
-  (`ControlMaster`) in your SSH config makes them faster. Checkpoints send
+- Short requests to a remote share one SSH connection (OpenSSH
+  `ControlMaster`, sockets in `$XDG_RUNTIME_DIR/jara-ssh` or
+  `/tmp/jara-ssh-<uid>`), which closes after a minute without requests, so
+  opening a session or checkpointing pays for authentication once. Terminals,
+  live conversations and tunnels keep their own connections.
+  `JARA_SSH_MULTIPLEX=0` turns sharing off. Claiming a session also returns
+  the host checkout's branch, commit and file list, so a start without changes
+  needs one round trip before the agent runs (hosts before this send none, and
+  the device asks for each). Checkpoints send
   only the bytes appended to each agent session file since the host's copy,
   zstd-compressed, like every other Jara request and answer (file sync
   included) between Jara versions that support it. The remote host checks that each delta continues its copy, and at the

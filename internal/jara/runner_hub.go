@@ -25,6 +25,8 @@ type runnerClaim struct {
 	Root         string `json:"root,omitempty"`
 	// Changed lists the conversations checkpointed after the claim's Since.
 	Changed []string `json:"changed,omitempty"`
+	// State is the workspace's sync state, when the claim asked for it.
+	State *remoteWorkspaceState `json:"state,omitempty"`
 }
 
 // runnerCheckpointAnswer is the host's answer to a checkpoint: its number, or
@@ -81,6 +83,10 @@ func runnerRPC(q Request) error {
 		claim, err := claimRunner(q, paths)
 		if err != nil {
 			return err
+		}
+		if q.SyncState && !claim.Wait {
+			// Best effort: without it, the device asks for each part.
+			claim.State, _ = readRemoteWorkspaceState(q)
 		}
 		return out.Encode(claim)
 	case "runner-export":

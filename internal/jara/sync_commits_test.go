@@ -18,6 +18,9 @@ func serveSyncRPCIfRequested() {
 	}
 	var q Request
 	err := decode(raw, &q)
+	if log := os.Getenv("JARA_SYNC_RPC_LOG"); err == nil && log != "" {
+		err = appendRPCLog(log, q.Op)
+	}
 	if err == nil {
 		err = remoteRPC(q)
 	}

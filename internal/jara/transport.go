@@ -105,6 +105,7 @@ type Request struct {
 	Worktree           bool     `json:"worktree,omitempty"`
 	Force              bool     `json:"force,omitempty"`
 	IncludeIgnored     bool     `json:"include_ignored,omitempty"`
+	SyncState          bool     `json:"sync_state,omitempty"` // a runner claim also returns the workspace's sync state
 	CodexArgs          []string `json:"codex_args,omitempty"`
 	AgentArgs          []string `json:"agent_args,omitempty"` // Claude Code arguments for the Jara UI
 	Reconnect          bool     `json:"reconnect,omitempty"`  // the client reconnects if the session stops
@@ -131,8 +132,15 @@ func rpcToken(q Request) string {
 	return token(q)
 }
 
+// rpcCommand runs one short remote call over the connection shared with
+// other calls to r (see sshMuxArgs).
+func rpcCommand(r Remote, wire string) *exec.Cmd {
+	args := append(sshArgs(r, false), sshMuxArgs(r)...)
+	return exec.Command("ssh", append(args, "--", r.Host, shellArgs("jara", "_rpc", wire))...)
+}
+
 func rpc(r Remote, q Request, input io.Reader, v any) error {
-	cmd := sshCommand(r, false, shellArgs("jara", "_rpc", rpcToken(q)))
+	cmd := rpcCommand(r, rpcToken(q))
 	cmd.Stdin = compressRequestInput(r, input)
 	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
@@ -154,7 +162,7 @@ func rpc(r Remote, q Request, input io.Reader, v any) error {
 
 // rpcStream copies the remote command's raw output to out.
 func rpcStream(r Remote, q Request, input io.Reader, out io.Writer) error {
-	cmd := sshCommand(r, false, shellArgs("jara", "_rpc", token(q)))
+	cmd := rpcCommand(r, token(q))
 	cmd.Stdin = input
 	var stderr bytes.Buffer
 	cmd.Stdout = out

@@ -28,8 +28,16 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	if len(options) > 1 {
 		deleteMissing = options[1]
 	}
+	return syncWorkspaceKnown(r, b, root, direction, force, nil, includeIgnored, deleteMissing)
+}
+
+// syncWorkspaceKnown syncs using what known already holds about the host
+// (see remoteWorkspaceState) and asks the host for the rest. known is used
+// up: afterwards it holds nothing.
+func syncWorkspaceKnown(r Remote, b Binding, root, direction string, force bool, known *remoteWorkspaceState, includeIgnored, deleteMissing bool) error {
+	defer known.forget()
 	syncProgress.stage("Comparing commits", 0.1, 2*time.Second)
-	advance, err := syncCommits(r, b, root, direction, force)
+	advance, err := syncCommits(r, b, root, direction, force, known)
 	if err != nil {
 		return err
 	}
@@ -38,16 +46,12 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	if err != nil {
 		return err
 	}
-	syncProgress.stage("Scanning remote files", 0.4, 2*time.Second)
-	var remote Snapshot
+	// Once commits moved, known's list may be out of date.
+	remote, listed := known.manifest(includeIgnored)
 	remoteHasManifest := true
-	if err = rpc(r, Request{Op: "manifest", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &remote); err != nil {
-		if !strings.Contains(err.Error(), "unknown RPC operation") {
-			return err
-		}
-		// Older hosts return full snapshots; keep them usable until their Jara deployment is upgraded.
-		remoteHasManifest = false
-		if err = rpc(r, Request{Op: "snapshot", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &remote); err != nil {
+	if !listed || advance != nil {
+		syncProgress.stage("Scanning remote files", 0.4, 2*time.Second)
+		if remote, remoteHasManifest, err = remoteManifest(r, b, includeIgnored); err != nil {
 			return err
 		}
 	}
@@ -194,6 +198,21 @@ func syncWorkspace(r Remote, b Binding, root, direction string, force bool, opti
 	syncProgress.done(fmt.Sprintf("Transferred %d file(s), deleted %d previously synchronized file(s).", len(u.Files), len(u.Deletes)),
 		len(u.Files) > 0 || len(u.Deletes) > 0 || syncReportsUnchanged)
 	return nil
+}
+
+// remoteManifest lists the host's files. Older hosts answer with full
+// snapshots (hasManifest false); they stay usable until their Jara deployment
+// is upgraded.
+func remoteManifest(r Remote, b Binding, includeIgnored bool) (files Snapshot, hasManifest bool, err error) {
+	if err = rpc(r, Request{Op: "manifest", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &files); err == nil {
+		return files, true, nil
+	}
+	if !strings.Contains(err.Error(), "unknown RPC operation") {
+		return nil, false, err
+	}
+	files = nil
+	err = rpc(r, Request{Op: "snapshot", ID: b.Workspace, IncludeIgnored: includeIgnored}, nil, &files)
+	return files, false, err
 }
 
 func hasUpdate(update Update) bool {

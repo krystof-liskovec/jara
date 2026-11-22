@@ -82,6 +82,8 @@ type localRunnerOpen struct {
 	isGit          bool
 	includeIgnored bool
 	takeOver       bool
+	// known is what the latest claim told about the host's checkout.
+	known *remoteWorkspaceState
 }
 
 // openLocalRunner opens a workspace's conversation with its agent running on
@@ -186,7 +188,14 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 	var claim runnerClaim
 	// A window reconnecting by itself only reclaims the conversation from the
 	// host; it never displaces another device the user moved to.
-	wire := Request{Op: "runner-claim", ID: o.binding.Workspace, Runner: q.Runner, Force: first && o.takeOver, Wait: true, Passive: !first, Since: marker.Seq}
+	// The claim also brings the host's sync state, saving a round trip each
+	// for its branch, commits and files.
+	head := ""
+	if o.isGit {
+		head = checkoutState(o.root).Head
+	}
+	wire := Request{Op: "runner-claim", ID: o.binding.Workspace, Runner: q.Runner, Force: first && o.takeOver, Wait: true, Passive: !first, Since: marker.Seq,
+		SyncState: true, Commit: head, IncludeIgnored: o.includeIgnored}
 	if err := rpc(o.remote, wire, nil, &claim); err != nil {
 		if strings.Contains(err.Error(), "unknown RPC operation") {
 			err = errRunnerUnsupported
@@ -197,6 +206,7 @@ func connectLocalRunner(o localRunnerOpen, q Request, first bool) (*appConnectio
 		return watchRunner(o, q, claim.Runner)
 	}
 	q.Epoch = claim.Epoch
+	o.known = claimedState(claim.State, head)
 	release := func() {
 		_ = rpc(o.remote, Request{Op: "runner-release", ID: o.binding.Workspace, Runner: q.Runner, Epoch: claim.Epoch}, nil, nil)
 	}
@@ -290,6 +300,7 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64, claim runner
 	marker := loadLocalRunnerMarker(q.ID)
 	displaced := marker.Lost
 	if displaced {
+		o.known.forget() // setting work aside may move this checkout's commits
 		if err := setAsideLocalWork(o, q.ID); err != nil {
 			return err
 		}
@@ -310,7 +321,7 @@ func catchUpLocalRunner(o localRunnerOpen, q *Request, since int64, claim runner
 		// aside, so this checkout is the newer copy of that branch.
 		direction, force = "push", true
 	}
-	if err = syncWorkspace(o.remote, o.binding, o.root, direction, force, o.includeIgnored, true); err != nil {
+	if err = syncWorkspaceKnown(o.remote, o.binding, o.root, direction, force, o.known, o.includeIgnored, true); err != nil {
 		return fmt.Errorf("bring this checkout up to date: %w", err)
 	}
 	checkpoint, briefed, err := fetchCheckpoint(o, since, claim.Root, claim.Changed)

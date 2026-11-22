@@ -84,7 +84,7 @@ func chatViewLineStyle(kind, role string, selected bool, palette menuPalette) (b
 		fg = palette.text
 	case "queued-prompt-edit":
 		fg, bold = palette.green, "\x1b[1m"
-	case "queued-prompt-more":
+	case "queued-prompt-header", "queued-prompt-more":
 		fg = palette.muted
 	case "composer", "composer-border":
 		// The composer sits on the canvas; its accent border sets it apart.

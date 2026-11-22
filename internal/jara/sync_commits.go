@@ -12,14 +12,14 @@ type commitAdvance struct{ From, To string }
 // syncCommits transfers commits before file sync, so committed work arrives
 // as commits instead of as uncommitted edits. It only fast-forwards the
 // destination and does nothing when either side is not a Git checkout or both
-// already share HEAD.
-func syncCommits(r Remote, b Binding, root, direction string, force bool) (*commitAdvance, error) {
+// already share HEAD. known may already hold the host's state.
+func syncCommits(r Remote, b Binding, root, direction string, force bool, known *remoteWorkspaceState) (*commitAdvance, error) {
 	local := checkoutState(root)
 	if local.Head == "" {
 		return nil, nil
 	}
-	var answer gitStateAnswer
-	if err := rpc(r, Request{Op: "git-state", ID: b.Workspace, Commit: local.Head}, nil, &answer); err != nil {
+	answer, err := known.gitState(r, b, local.Head)
+	if err != nil {
 		if !strings.Contains(err.Error(), "unknown RPC operation") {
 			return nil, err
 		}

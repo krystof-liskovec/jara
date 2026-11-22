@@ -170,6 +170,9 @@ func (u *chatUI) queuedPromptByID(id uint64) (int, int, chatQueuedPrompt, bool) 
 	return -1, 0, chatQueuedPrompt{}, false
 }
 
+// queueViewLines shows this conversation's queue above the composer: a
+// dimmed header with the count, then one numbered row per prompt in the order
+// they run (› marks the one being edited).
 func (u *chatUI) queueViewLines(editingID uint64) []chatViewLine {
 	var lines []chatViewLine
 	number := 0
@@ -178,17 +181,20 @@ func (u *chatUI) queueViewLines(editingID uint64) []chatViewLine {
 			continue
 		}
 		number++
-		kind := "queued-prompt"
-		marker := "  "
+		kind, marker := "queued-prompt", " "
 		if prompt.id == editingID {
-			kind, marker = "queued-prompt-edit", "› "
+			kind, marker = "queued-prompt-edit", "›"
 		}
 		lines = append(lines, chatViewLine{
-			text: fmt.Sprintf("%sQueued %d · %s", marker, number, compactScheduledPrompt(prompt.text)),
+			text: fmt.Sprintf(" %s%2d  %s", marker, number, compactScheduledPrompt(prompt.text)),
 			kind: kind,
 		})
 	}
-	return lines
+	if number == 0 {
+		return nil
+	}
+	header := chatViewLine{text: fmt.Sprintf("Queued · %d · start when idle · /queue edit N", number), kind: "queued-prompt-header"}
+	return append([]chatViewLine{header}, lines...)
 }
 
 func (u *chatUI) dispatchQueuedPrompt() (bool, error) {

@@ -41,13 +41,17 @@ func alignRunnerBranch(o localRunnerOpen, last string, deviceLeads, force bool) 
 	if local.Head == "" {
 		return runnerBranchKept, nil
 	}
-	var remote gitCheckoutState
-	if err := rpc(o.remote, Request{Op: "git-state", ID: o.binding.Workspace}, nil, &remote); err != nil {
+	// The answer stays in o.known for the sync that follows, unless a
+	// checkout switches branch below.
+	answer, err := o.known.gitState(o.remote, o.binding, local.Head)
+	if err != nil {
 		return runnerBranchKept, err
 	}
+	remote := answer.gitCheckoutState
 	if remote.Head == "" || remote.Branch == local.Branch {
 		return runnerBranchKept, nil
 	}
+	o.known.forget()
 	if !deviceLeads && last != "" && local.Branch == last {
 		return runnerBranchDevice, followHostBranch(o.root, remote)
 	}
@@ -162,7 +166,7 @@ func pushBeforeRunning(o localRunnerOpen, last string) error {
 	}
 	if moved == runnerBranchDevice {
 		status, statusErr := gitOutput(o.root, "status", "--porcelain")
-		return syncWorkspace(o.remote, o.binding, o.root, "pull", statusErr == nil && status == "", o.includeIgnored)
+		return syncWorkspaceKnown(o.remote, o.binding, o.root, "pull", statusErr == nil && status == "", o.known, o.includeIgnored, false)
 	}
-	return syncWorkspace(o.remote, o.binding, o.root, "push", moved == runnerBranchHost, o.includeIgnored)
+	return syncWorkspaceKnown(o.remote, o.binding, o.root, "push", moved == runnerBranchHost, o.known, o.includeIgnored, false)
 }

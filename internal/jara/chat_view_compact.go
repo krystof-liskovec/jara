@@ -132,7 +132,9 @@ func chatQueueWindow(lines []chatViewLine, rows int) []chatViewLine {
 	}
 	if rows == 1 {
 		line := lines[0]
-		line.text += "  +" + strconv.Itoa(len(lines)-1) + " more (/queue)"
+		if line.kind != "queued-prompt-header" { // a header already counts them
+			line.text += "  +" + strconv.Itoa(len(lines)-1) + " more (/queue)"
+		}
 		return []chatViewLine{line}
 	}
 	visible := append([]chatViewLine(nil), lines[:rows-1]...)

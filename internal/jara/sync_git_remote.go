@@ -32,12 +32,7 @@ func syncGitRPC(q Request) error {
 		if err != nil {
 			return err
 		}
-		answer := gitStateAnswer{gitCheckoutState: checkoutState(w.Path)}
-		if answer.Head != "" && commitIDRE.MatchString(q.Commit) {
-			contains := hasCommit(w.Path, q.Commit) && isAncestor(w.Path, q.Commit, answer.Head)
-			answer.Contains = &contains
-		}
-		return json.NewEncoder(os.Stdout).Encode(answer)
+		return json.NewEncoder(os.Stdout).Encode(remoteGitState(w.Path, q.Commit))
 	case "git-bundle":
 		w, err := workspaceInfo(q.ID)
 		if err != nil {
