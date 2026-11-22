@@ -44,6 +44,12 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 	stopAccept := make(chan struct{})
 	schedules.onQueue = func(line []byte) { clients.broadcast(line, appMessage{Method: "jara/queue/updated"}) }
 	schedules.onPrompt = func(line []byte) { clients.broadcast(line, appMessage{Method: "jara/prompt/started"}) }
+	schedules.onStart = func(thread string) {
+		// A queued or scheduled prompt runs as if typed in its conversation.
+		stateMu.Lock()
+		state.startConversationTurn(thread)
+		stateMu.Unlock()
+	}
 	if runner.bootstrap != "" {
 		// No window opened this session: initialize the agent and load the
 		// conversation so scheduled and continued turns can start.
@@ -75,7 +81,7 @@ func serveChatDaemon(listener net.Listener, server *exec.Cmd, input io.WriteClos
 		pending[strconv.Quote(requestID)] = "thread/compact/start"
 		pendingMu.Unlock()
 		stateMu.Lock()
-		state.ActiveTurn = true
+		state.ActiveTurn, state.TurnThread = true, state.Conversation
 		stateMu.Unlock()
 		writeState()
 		clients.broadcast(notice, appMessage{Method: "jara/idleCompaction/started"})
@@ -348,7 +354,7 @@ drained:
 	}
 	stateWriteMu.Lock()
 	stateMu.Lock()
-	state.ActiveTurn = false
+	state.ActiveTurn, state.TurnThread = false, ""
 	state.Attached = false
 	state.AttachedClients = 0
 	snapshot := state

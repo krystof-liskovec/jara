@@ -36,6 +36,8 @@ type chatScheduleManager struct {
 	requestID string
 	onQueue   func([]byte) // broadcasts jara/queue/updated
 	onPrompt  func([]byte) // broadcasts jara/prompt/started
+	// onStart runs just before a prompt is sent to start a turn in thread.
+	onStart func(thread string)
 }
 
 func newChatScheduleManager(path string) (*chatScheduleManager, error) {
@@ -254,7 +256,7 @@ func (m *chatScheduleManager) startDue(input io.Writer, inputMu *sync.Mutex, bus
 	if err == nil {
 		err = m.saveLocked()
 	}
-	requestID, queued := m.requestID, job.Queued
+	requestID, queued, thread := m.requestID, job.Queued, job.ThreadID
 	started, _ := json.Marshal(map[string]any{"method": "jara/prompt/started", "params": map[string]any{"threadId": job.ThreadID, "prompt": job.Prompt}})
 	if err != nil {
 		job.Status = "failed"
@@ -272,6 +274,9 @@ func (m *chatScheduleManager) startDue(input io.Writer, inputMu *sync.Mutex, bus
 	if busy() {
 		inputMu.Unlock()
 		return m.deferStart(requestID)
+	}
+	if m.onStart != nil {
+		m.onStart(thread) // before the turn's own events can arrive
 	}
 	_, err = input.Write(append(message, '\n'))
 	inputMu.Unlock()

@@ -136,7 +136,7 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 			if chatScheduleRequest(message.Method) || chatQueueRequest(message.Method) {
 				if len(message.ID) > 0 {
 					stateMu.Lock()
-					threadID := state.Conversation
+					threadID := state.requestThread(message.Params)
 					stateMu.Unlock()
 					result, requestErr := schedules.handleClientRequest(message.Method, message.Params, threadID)
 					response := map[string]any{"id": message.ID}
@@ -154,7 +154,7 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 			if chatCrunchRequest(message.Method) {
 				if len(message.ID) > 0 {
 					stateMu.Lock()
-					threadID := state.Conversation
+					threadID := state.requestThread(message.Params)
 					stateMu.Unlock()
 					result, requestErr := crunch.handleClientRequest(message.Method, message.Params, threadID, input, inputMu)
 					response := map[string]any{"id": message.ID}
@@ -182,7 +182,8 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 		virtualID := message.ID
 		// A message to a subagent starts a turn in its own thread; it neither
 		// waits for nor marks the conversation's turn.
-		subagentTurn := message.Method == "turn/start" && chatDaemonOtherThread(message.Params, state, stateMu)
+		turnThread, subagentTurn := chatDaemonTurnTarget(message.Params)
+		subagentTurn = subagentTurn && message.Method == "turn/start"
 		if len(message.ID) > 0 && message.Method != "" {
 			var rewriteErr error
 			forwardLine, virtualID, rewriteErr = router.rewrite(client, line, message.ID)
@@ -220,7 +221,7 @@ func readChatDaemonClient(client *chatDaemonClient, input io.WriteCloser, inputM
 			}
 			stateWriteMu.Lock()
 			stateMu.Lock()
-			state.ActiveTurn = true
+			state.startConversationTurn(turnThread)
 			if model := chatDaemonRequestModel(message.Params); model != "" {
 				state.Agent = protocol.AgentForModel(model) // a model switch can change the agent
 			}
@@ -262,16 +263,26 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 		return false
 	}
 	changed := false
-	if (message.Method == "turn/started" || message.Method == "turn/completed") && chatDaemonOtherThread(message.Params, state, stateMu) {
-		return false // a subagent's turn, not the conversation's
-	}
 	stateMu.Lock()
+	if message.Method == "turn/started" || message.Method == "turn/completed" {
+		var target struct {
+			ThreadID string `json:"threadId"`
+		}
+		_ = json.Unmarshal(message.Params, &target)
+		if !state.conversationTurnEvent(target.ThreadID) {
+			stateMu.Unlock()
+			return false // a subagent's turn, not the conversation's
+		}
+		if message.Method == "turn/started" && target.ThreadID != "" {
+			state.TurnThread = target.ThreadID
+		}
+	}
 	switch message.Method {
 	case "turn/started":
 		state.ActiveTurn = true
 		changed = true
 	case "turn/completed":
-		state.ActiveTurn = false
+		state.ActiveTurn, state.TurnThread = false, ""
 		changed = true
 	case protocol.TurnSelectionUpdated:
 		var update protocol.TurnSelectionUpdate
@@ -304,6 +315,7 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 				stateMu.Lock()
 				state.Conversation = response.Thread.ID
 				state.ThreadLoaded = true
+				state.noteOpened(response.Thread.ID)
 				if response.Model != "" {
 					state.Agent = protocol.AgentForModel(response.Model)
 				}
@@ -319,7 +331,7 @@ func applyChatDaemonEvent(line []byte, state *chatDaemonState, stateMu *sync.Mut
 		// An idle compaction marks the turn active before its turn starts.
 		if (method == "turn/start" || method == "thread/compact/start") && message.Error != nil {
 			stateMu.Lock()
-			state.ActiveTurn = false
+			state.ActiveTurn, state.TurnThread = false, ""
 			stateMu.Unlock()
 			changed = true
 		}
@@ -406,21 +418,6 @@ func writeChatDaemonLine(conn net.Conn, line []byte) error {
 
 // chatDaemonSubagentTurn records a turn/start sent to a subagent's thread.
 const chatDaemonSubagentTurn = "turn/start#subagent"
-
-// chatDaemonOtherThread reports whether params name a thread other than the
-// session's conversation, such as a subagent's.
-func chatDaemonOtherThread(params json.RawMessage, state *chatDaemonState, stateMu *sync.Mutex) bool {
-	var target struct {
-		ThreadID string `json:"threadId"`
-	}
-	if json.Unmarshal(params, &target) != nil || target.ThreadID == "" {
-		return false
-	}
-	stateMu.Lock()
-	conversation := state.Conversation
-	stateMu.Unlock()
-	return conversation != "" && target.ThreadID != conversation
-}
 
 // chatDaemonRequestModel is the model a turn/start request selects, or "".
 func chatDaemonRequestModel(params json.RawMessage) string {

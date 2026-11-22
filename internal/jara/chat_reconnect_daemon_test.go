@@ -94,7 +94,7 @@ func TestSubagentTurnsDoNotTouchTheConversationTurn(t *testing.T) {
 	h := startDaemonHarness(t, daemonHarnessOptions{state: chatDaemonState{Conversation: "th-0", ThreadLoaded: true, ActiveTurn: true}})
 	client, _ := h.attach()
 	// A message to a subagent goes through while the conversation's turn runs.
-	client.send(map[string]any{"id": 7, "method": "turn/start", "params": map[string]any{"threadId": "child-1", "input": []any{}}})
+	client.send(map[string]any{"id": 7, "method": "turn/start", "params": map[string]any{"threadId": "child-1", "jaraSubagent": true, "input": []any{}}})
 	forwarded := h.server.nextMethod("turn/start")
 	if params, _ := forwarded["params"].(map[string]any); params["threadId"] != "child-1" {
 		t.Fatalf("forwarded = %v", forwarded)

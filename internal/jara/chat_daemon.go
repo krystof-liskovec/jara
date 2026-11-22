@@ -17,20 +17,24 @@ import (
 const chatDaemonStartupTimeout = 3 * time.Minute
 
 type chatDaemonState struct {
-	WorkspaceID     string `json:"workspace_id"`
-	Workspace       string `json:"workspace"`
-	CWD             string `json:"cwd"`
-	Conversation    string `json:"conversation,omitempty"`
-	Agent           string `json:"agent,omitempty"` // the conversation's runtime, from its model
-	Initialized     bool   `json:"initialized,omitempty"`
-	ThreadLoaded    bool   `json:"thread_loaded,omitempty"`
-	ActiveTurn      bool   `json:"active_turn,omitempty"`
+	WorkspaceID  string `json:"workspace_id"`
+	Workspace    string `json:"workspace"`
+	CWD          string `json:"cwd"`
+	Conversation string `json:"conversation,omitempty"`
+	Agent        string `json:"agent,omitempty"` // the conversation's runtime, from its model
+	Initialized  bool   `json:"initialized,omitempty"`
+	ThreadLoaded bool   `json:"thread_loaded,omitempty"`
+	ActiveTurn   bool   `json:"active_turn,omitempty"`
+	// TurnThread is the conversation the running turn belongs to.
+	TurnThread      string `json:"turn_thread,omitempty"`
 	Attached        bool   `json:"attached,omitempty"`
 	AttachedClients int    `json:"attached_clients,omitempty"`
 	// ReconnectingClients counts attached clients that reconnect by themselves.
 	ReconnectingClients int   `json:"reconnecting_clients,omitempty"`
 	PID                 int   `json:"pid"`
 	CreatedAt           int64 `json:"created_at"`
+	// opened lists the conversations windows opened in this session.
+	opened map[string]bool
 }
 
 type chatDaemonPaths struct {
