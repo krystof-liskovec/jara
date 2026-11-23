@@ -25,6 +25,7 @@ type chatTerminalKeyEvent struct {
 	reasoningStep int
 	autoMode      bool // Shift+Tab toggles auto mode
 	interrupt     bool
+	withKey       bool    // an Escape that came with the next key, perhaps as Alt
 	leave         bool    // Ctrl+D: leave on an empty input box, else delete
 	tap           *[2]int // column and row of a left click or tap, from zero
 	limitReached  bool
@@ -136,8 +137,22 @@ func (p *chatTerminalKeyParser) consumeEscape() (int, *chatTerminalKeyEvent, boo
 		return 2, &event, false
 	}
 	p.lastEscape = time.Time{}
-	if p.buffer[1] != '[' && p.buffer[1] != 'O' {
+	switch p.buffer[1] {
+	case '[', 'O':
+	case ']', 'P', '_', '^', 'X':
+		return p.consumeEscapeString()
+	case 0x1b:
+		if len(p.buffer) > 2 && (p.buffer[2] == '[' || p.buffer[2] == 'O') {
+			return 1, nil, false // Alt with a key sequence, as macOS Option+arrow
+		}
 		event := editorEvent(chatEditorEscape)
+		return 1, &event, false
+	default:
+		// Escape with the next key in one read: an Alt+key, or Escape typed
+		// just before the key. It acts as Escape, as Vim editing needs, but
+		// does not stop a running turn.
+		event := editorEvent(chatEditorEscape)
+		event.withKey = true
 		return 1, &event, false
 	}
 	for i := 2; i < len(p.buffer); i++ {
@@ -153,17 +168,67 @@ func (p *chatTerminalKeyParser) consumeEscape() (int, *chatTerminalKeyEvent, boo
 			p.pasteCapped = false
 			return i + 1, nil, false
 		}
-		if event == nil {
-			e := editorEvent(chatEditorEscape)
-			return i + 1, &e, false
-		}
+		// A sequence Jara does not use (another key combination, or a
+		// terminal report) is ignored: taking it for Escape would stop a
+		// running turn.
 		return i + 1, event, false
 	}
 	if len(p.buffer) > 64 {
-		event := editorEvent(chatEditorEscape)
-		return len(p.buffer), &event, false
+		return len(p.buffer), nil, false // not a sequence; dropped
 	}
 	return 0, nil, true
+}
+
+// consumeEscapeString skips a terminal string (OSC, DCS, APC, PM, or SOS),
+// such as a reply to a query, up to its BEL or ST terminator.
+func (p *chatTerminalKeyParser) consumeEscapeString() (int, *chatTerminalKeyEvent, bool) {
+	for i := 2; i < len(p.buffer); i++ {
+		if p.buffer[i] == 0x07 {
+			return i + 1, nil, false
+		}
+		if p.buffer[i] == 0x1b && i+1 < len(p.buffer) && p.buffer[i+1] == '\\' {
+			return i + 2, nil, false
+		}
+	}
+	if len(p.buffer) > 4096 {
+		return len(p.buffer), nil, false
+	}
+	return 0, nil, true
+}
+
+// chatTerminalKeyCode decodes a kitty keyboard protocol key (CSI code;mods u)
+// or an xterm modifyOtherKeys key (CSI 27;mods;code ~) into its Unicode code
+// and modifier bits (1 Shift, 2 Alt, 4 Ctrl, 8 Super, ...), Caps Lock and
+// Num Lock left out.
+func chatTerminalKeyCode(sequence string) (code, modifiers int, ok bool) {
+	body, found := strings.CutPrefix(sequence, "\x1b[")
+	if !found || len(body) < 2 {
+		return 0, 0, false
+	}
+	params := strings.Split(body[:len(body)-1], ";")
+	field := func(index int) (int, bool) {
+		if index >= len(params) {
+			return 1, true // an absent modifier field means none
+		}
+		value, _, _ := strings.Cut(params[index], ":") // drop alternates and event types
+		number, err := strconv.Atoi(value)
+		return number, err == nil
+	}
+	var mods int
+	switch {
+	case body[len(body)-1] == 'u' && len(params) <= 3:
+		code, ok = field(0)
+		mods, found = field(1)
+	case body[len(body)-1] == '~' && len(params) == 3 && params[0] == "27":
+		mods, ok = field(1)
+		code, found = field(2)
+	default:
+		return 0, 0, false
+	}
+	if !ok || !found || mods < 1 {
+		return 0, 0, false
+	}
+	return code, (mods - 1) &^ (64 | 128), true
 }
 
 func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEvent {
@@ -249,7 +314,7 @@ func (p *chatTerminalKeyParser) escapeEvent(sequence string) *chatTerminalKeyEve
 	case "\x1b[1;5F":
 		return &chatTerminalKeyEvent{returnToLive: true}
 	default:
-		return nil
+		return chatTerminalCodedKey(sequence)
 	}
 	event := editorEvent(key)
 	return &event
@@ -372,4 +437,37 @@ func chatFunctionKey(sequence string) int {
 		return 0
 	}
 	return strings.IndexByte("PQRS", final) + 1
+}
+
+// chatTerminalCodedKey handles keys the kitty keyboard protocol or
+// modifyOtherKeys encode that have no fixed sequence above. Other key
+// combinations do nothing.
+func chatTerminalCodedKey(sequence string) *chatTerminalKeyEvent {
+	code, modifiers, ok := chatTerminalKeyCode(sequence)
+	if !ok {
+		return nil
+	}
+	var key chatEditorKey
+	switch {
+	case code == 27 && modifiers == 0:
+		key = chatEditorEscape
+	case code == 13 && modifiers == 0:
+		key = chatEditorEnter
+	case code == 9 && modifiers == 0:
+		key = chatEditorTab
+	case (code == 127 || code == 8) && modifiers == 0:
+		key = chatEditorBackspace
+	case code == 'd' && modifiers == 4:
+		return &chatTerminalKeyEvent{leave: true}
+	case code == 'c' && modifiers == 4:
+		return &chatTerminalKeyEvent{interrupt: true}
+	case code >= 0x20 && code != 0x7f && (code < 0xe000 || code > 0xf8ff) && code <= utf8.MaxRune && modifiers&^1 == 0:
+		// Text, not a kitty functional key in the private use area.
+		event := editorEvent(chatEditorText, string(rune(code)))
+		return &event
+	default:
+		return nil
+	}
+	event := editorEvent(key)
+	return &event
 }

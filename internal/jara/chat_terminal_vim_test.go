@@ -68,3 +68,23 @@ func TestChatTerminalVimNormalLettersDoNotAnswerApproval(t *testing.T) {
 		t.Fatalf("Insert mode did not handle the approval shortcut: %s", wire)
 	}
 }
+
+func TestOnlyAnEscapePressStopsTheTurn(t *testing.T) {
+	term, wire := newTestChatTerminal(t)
+	term.u.busy, term.u.turn = true, "active-turn"
+	// Ctrl+A in the kitty protocol, Alt+X, Option+Left, and a terminal report.
+	typeChatKeys(t, term, "\x1b[97;5u\x1bx\x1b\x1b[D\x1b]11;rgb:0/0/0\x07")
+	if err := term.tick(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(wire.String(), "turn/interrupt") {
+		t.Fatalf("a key that is not Escape stopped the turn: %s", wire)
+	}
+	typeChatKeys(t, term, "\x1b")
+	if err := term.tick(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(wire.String(), "turn/interrupt") {
+		t.Fatalf("Escape did not stop the turn: %s", wire)
+	}
+}

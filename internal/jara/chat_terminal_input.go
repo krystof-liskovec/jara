@@ -24,7 +24,7 @@ func (t *chatTerminal) handleKey(event chatTerminalKeyEvent) (done bool, err err
 		event.input = &chatEditorInput{Key: chatEditorDelete}
 	}
 	if event.input != nil && event.input.Key == chatEditorEscape && !u.diff.fullScreen() {
-		return false, t.handleEscape(*event.input)
+		return false, t.handleEscape(*event.input, !event.withKey)
 	}
 	if u.diff.fullScreen() && t.handleFullScreenDiffKey(event) {
 		return false, nil
@@ -142,8 +142,9 @@ func (t *chatTerminal) openPicker(kind string) {
 
 // handleEscape applies Escape: it closes or steps back out of whatever is
 // open, the innermost first, and switches the Vim composer to Normal mode.
-// Without Vim or an open menu, Escape can stop a running turn.
-func (t *chatTerminal) handleEscape(input chatEditorInput) error {
+// Without Vim or an open menu, an Escape press (stops) can stop a running
+// turn.
+func (t *chatTerminal) handleEscape(input chatEditorInput, stops bool) error {
 	u := t.u
 	t.dirty = true
 	switch {
@@ -171,7 +172,7 @@ func (t *chatTerminal) handleEscape(input chatEditorInput) error {
 		t.editor.Apply(input) // back from a subagent, or suggestions hidden
 		return nil
 	}
-	if _, asking := t.questionChoices(); asking || t.editor.vim == chatVimNormal || !u.agentTurnActive() {
+	if _, asking := t.questionChoices(); asking || !stops || t.editor.vim == chatVimNormal || !u.agentTurnActive() {
 		return nil
 	}
 	return u.interrupt()
