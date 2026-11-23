@@ -130,7 +130,7 @@ For Jara's own conversation UI, use
 It uses plain scrolling text and typed commands: `/compose` and `/send` for
 multiline prompts, `/status` to check activity, `/sessions` to browse history,
 and `/answer` for agent questions. Ctrl-C interrupts a running turn and exits
-when idle. See [conversation controls](conversation-interface.md) for approval
+when idle. See [conversation controls](conversation-controls.md) for approval
 and cancellation behavior. Existing terminals retain the UI they started with.
 
 Connections using an ordinary key retain normal SSH behavior, so VS Code and
