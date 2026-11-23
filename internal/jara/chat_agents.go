@@ -15,7 +15,12 @@ import (
 // subagent in its own thread; Claude Code subagents are virtual threads the
 // agent router serves, and messages to them are relayed by the main agent.
 
-const chatAgentPollInterval = 1500 * time.Millisecond
+const (
+	chatAgentPollInterval = 1500 * time.Millisecond
+	// Running agents not on screen are checked less often, so one whose
+	// completion event never arrived is not shown as running forever.
+	chatAgentStatusInterval = 5 * time.Second
+)
 
 type chatAgent struct {
 	id, name, status string
@@ -131,10 +136,10 @@ func (u *chatUI) routeChatAgentEvent(m appMessage) bool {
 		return false // server requests, such as approvals, still go to the main view
 	}
 	var p struct {
-		ThreadID string `json:"threadId"`
-		Name     string `json:"name"`
-		Status   string `json:"status"`
-		AgentID  string `json:"agentId"`
+		ThreadID string          `json:"threadId"`
+		Name     string          `json:"name"`
+		Status   json.RawMessage `json:"status"`
+		AgentID  string          `json:"agentId"`
 		Turn     struct {
 			Status string `json:"status"`
 		} `json:"turn"`
@@ -143,6 +148,8 @@ func (u *chatUI) routeChatAgentEvent(m appMessage) bool {
 		return false
 	}
 	if m.Method == "jara/subagent/updated" {
+		var status string
+		_ = json.Unmarshal(p.Status, &status)
 		agent := u.chatAgentFor(p.ThreadID)
 		if agent == nil {
 			return true
@@ -153,7 +160,7 @@ func (u *chatUI) routeChatAgentEvent(m appMessage) bool {
 		if p.AgentID != "" {
 			agent.agentID = p.AgentID
 		}
-		u.setAgentStatus(agent, p.Status)
+		u.setAgentStatus(agent, status)
 		agent.stale = true
 		return true
 	}
@@ -166,6 +173,12 @@ func (u *chatUI) routeChatAgentEvent(m appMessage) bool {
 		u.setAgentStatus(agent, "running")
 	case "turn/completed":
 		u.setAgentStatus(agent, p.Turn.Status)
+	case "thread/status/changed":
+		var status struct {
+			Type string `json:"type"`
+		}
+		_ = json.Unmarshal(p.Status, &status)
+		u.applyAgentThreadStatus(agent, "", status.Type)
 	}
 	agent.stale = true
 	return true
@@ -178,10 +191,23 @@ func (u *chatUI) viewedAgent() *chatAgent {
 	return u.agentByID[u.viewing]
 }
 
-// pollChatAgent keeps the viewed agent's transcript current.
+// pollChatAgent keeps the viewed agent's transcript current, and checks
+// the status of the other running agents.
 func (u *chatUI) pollChatAgent(now time.Time) error {
+	if u.chatOffline() {
+		return nil
+	}
+	for _, agent := range u.agents {
+		if agent.reading || agent.id == u.viewing || !agent.running() || now.Sub(agent.lastRead) < chatAgentStatusInterval {
+			continue
+		}
+		agent.reading, agent.lastRead = true, now
+		if err := u.requestWithAction("thread/read", map[string]any{"threadId": agent.id, "includeTurns": false}, "agentstatus:"+agent.id); err != nil {
+			return err
+		}
+	}
 	agent := u.viewedAgent()
-	if agent == nil || agent.reading || u.chatOffline() {
+	if agent == nil || agent.reading {
 		return nil
 	}
 	if !agent.stale && !(agent.running() && now.Sub(agent.lastRead) >= chatAgentPollInterval) {
@@ -191,8 +217,47 @@ func (u *chatUI) pollChatAgent(now time.Time) error {
 	return u.requestWithAction("thread/read", map[string]any{"threadId": agent.id, "includeTurns": true}, "agent:"+agent.id)
 }
 
+// applyAgentThreadStatus applies the status a thread reports: Jara's own
+// for a Claude Code subagent, otherwise Codex's thread status. A thread that
+// is idle, or no longer loaded, is not running.
+func (u *chatUI) applyAgentThreadStatus(agent *chatAgent, jaraStatus, threadStatus string) {
+	switch {
+	case jaraStatus != "":
+		u.setAgentStatus(agent, jaraStatus)
+	case threadStatus == "active":
+		u.setAgentStatus(agent, "running")
+	case threadStatus == "systemError":
+		u.setAgentStatus(agent, "failed")
+	case (threadStatus == "idle" || threadStatus == "notLoaded") && agent.running():
+		u.setAgentStatus(agent, "completed")
+	}
+}
+
+// acceptChatAgentStatus handles the reply to a status check.
+func (u *chatUI) acceptChatAgentStatus(agent *chatAgent, m appMessage) {
+	agent.reading = false
+	var r struct {
+		Thread struct {
+			JaraStatus string `json:"jaraStatus"`
+			Status     struct {
+				Type string `json:"type"`
+			} `json:"status"`
+		} `json:"thread"`
+	}
+	if m.Error != nil || json.Unmarshal(m.Result, &r) != nil {
+		return // checked again later
+	}
+	u.applyAgentThreadStatus(agent, r.Thread.JaraStatus, r.Thread.Status.Type)
+}
+
 // acceptChatAgentResponse handles replies to subagent reads and messages.
 func (u *chatUI) acceptChatAgentResponse(m appMessage, p chatPending) bool {
+	if id, ok := strings.CutPrefix(p.action, "agentstatus:"); ok {
+		if agent := u.agentByID[id]; agent != nil {
+			u.acceptChatAgentStatus(agent, m)
+		}
+		return true
+	}
 	id, ok := strings.CutPrefix(p.action, "agent:")
 	if !ok {
 		return false
@@ -231,14 +296,7 @@ func (u *chatUI) acceptChatAgentResponse(m appMessage, p chatPending) bool {
 		if r.Thread.JaraAgentID != "" {
 			agent.agentID = r.Thread.JaraAgentID
 		}
-		switch {
-		case r.Thread.JaraStatus != "":
-			u.setAgentStatus(agent, r.Thread.JaraStatus)
-		case r.Thread.Status.Type == "active":
-			u.setAgentStatus(agent, "running")
-		case r.Thread.Status.Type == "idle" && agent.running():
-			u.setAgentStatus(agent, "completed")
-		}
+		u.applyAgentThreadStatus(agent, r.Thread.JaraStatus, r.Thread.Status.Type)
 		agent.turns, agent.readError, agent.notes, agent.stale = r.Thread.Turns, "", nil, false
 		agent.touch()
 	case "turn/start":
@@ -256,6 +314,9 @@ func (u *chatUI) acceptChatAgentResponse(m appMessage, p chatPending) bool {
 // expireChatAgentRequest drops a subagent request that got no reply.
 func (u *chatUI) expireChatAgentRequest(id string, pending chatPending) bool {
 	agentID, ok := strings.CutPrefix(pending.action, "agent:")
+	if !ok {
+		agentID, ok = strings.CutPrefix(pending.action, "agentstatus:")
+	}
 	if !ok {
 		return false
 	}

@@ -76,9 +76,9 @@ conversation has subagents, a strip above the input box lists the main agent
 and each subagent with its status (the latest four, plus `/agents` for all).
 Ctrl+↓ and Ctrl+↑ switch the transcript to the next or previous agent, tapping
 a row shows that agent, and Esc returns to the main agent. A subagent's view
-shows its own transcript (prompts, replies, commands with output, and file
-changes) and refreshes while it runs. Raw reasoning text is not shown. Plain
-output remains available for pipes and `TERM=dumb` terminals.
+shows its own transcript (prompts, replies, commands with output, and file changes); statuses are rechecked
+until each finishes. A subagent finishing while the main agent is idle wakes it (unless the agent continues
+itself). Raw reasoning text is not shown. Plain output remains available for pipes and `TERM=dumb` terminals.
 
 While a subagent is shown, what you type is sent to it, and slash commands still
 apply to the conversation (start a message with `//` to send a literal slash).
@@ -471,10 +471,10 @@ For Claude Code turns:
 - Claude Code runs in its `auto` permission mode unless `/auto off` is set;
   any remaining tool permissions arrive as ordinary approvals: `/approve` or `/deny`.
 - Ctrl+C interrupts the turn, and `/plan` switches Claude Code to plan mode.
-- Subagents started with the Task or Agent tool can be viewed like Codex
-  subagents. Their replies arrive as whole messages rather than streamed text,
-  and need Claude Code 2.1.275 or later; older versions show only their tool
-  calls. Their transcripts are kept only while the session runs.
+- Task/Agent subagents are viewable like Codex ones (whole replies, Claude Code 2.1.275+; kept while the
+  session runs). When a background subagent finishes after the main agent's turn ended, the main agent
+  continues with its result: Claude Code's own follow-up is shown as a turn, and if none starts within a
+  few seconds Jara tells the main agent itself. Subagents not on screen are rechecked while they run.
 - Claude Code does not expose thinking text in stream-json mode, even with
   `showThinkingSummaries`. The activity line instead shows live progress such
   as *Thinking · ~330 tokens*.

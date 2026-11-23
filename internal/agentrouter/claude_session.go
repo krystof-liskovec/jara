@@ -50,6 +50,8 @@ type claudeSession struct {
 	interrupted  bool
 	unanswered   bool   // a steered message no model call has started after
 	steerText    string // that message
+	wakeText     string // a background subagent finished while idle: the turn's label
+	wakePrompt   string // and what to tell the main agent if Claude Code does not continue
 	reply        strings.Builder
 	textItem     string
 	blockText    strings.Builder
@@ -228,6 +230,7 @@ func (s *claudeSession) openTurn(id json.RawMessage) {
 	s.turnCount++
 	s.turnID = s.backendID + "-turn-" + strconv.Itoa(s.turnCount)
 	s.interrupted = false
+	s.wakeText, s.wakePrompt = "", "" // this turn takes up any finished background subagent
 	s.reply.Reset()
 	s.turnStarted, s.tokens = time.Now(), 0
 	turn := map[string]any{"id": s.turnID, "status": "inProgress"}

@@ -50,27 +50,28 @@ type codexCall struct {
 }
 
 type agentRouter struct {
-	writeMu        sync.Mutex
-	out            io.Writer
-	events         chan routerEvent
-	codexIn        *json.Encoder
-	codexCmd       *exec.Cmd
-	codexCalls     map[string]codexCall
-	turnSelections map[string]turnSelectionRequest // settings used by turns awaiting a start response
-	sequence       int
-	defaultAgent   string
-	agentExplicit  bool     // defaultAgent was chosen explicitly, not configured
-	claudeArgs     []string // per-invocation Claude Code arguments
-	claudeLimits   *claudeRateLimits
-	threads        map[string]*Thread
-	codexToVirtual map[string]string
-	approvals      map[string]*claudeSession  // UI request ID -> session awaiting a decision
-	btw            map[string]*btwFork        // Codex fork thread -> pending side question
-	btwForking     int                        // side-question forks awaiting their thread ID
-	codexChildren  map[string]bool            // Codex subagent threads
-	claudeAgents   map[string]*claudeSubagent // Claude Code subagents by virtual thread ID
-	logins         claudeLogins               // a Claude Code sign-in from the interface
-	switches       accountSwitches            // turns continuing on another account
+	writeMu         sync.Mutex
+	out             io.Writer
+	events          chan routerEvent
+	codexIn         *json.Encoder
+	codexCmd        *exec.Cmd
+	codexCalls      map[string]codexCall
+	turnSelections  map[string]turnSelectionRequest // settings used by turns awaiting a start response
+	sequence        int
+	defaultAgent    string
+	agentExplicit   bool     // defaultAgent was chosen explicitly, not configured
+	claudeArgs      []string // per-invocation Claude Code arguments
+	claudeLimits    *claudeRateLimits
+	threads         map[string]*Thread
+	codexToVirtual  map[string]string
+	approvals       map[string]*claudeSession  // UI request ID -> session awaiting a decision
+	btw             map[string]*btwFork        // Codex fork thread -> pending side question
+	btwForking      int                        // side-question forks awaiting their thread ID
+	codexChildren   map[string]bool            // Codex subagent threads
+	codexBackground *codexBackground           // Codex subagents finishing while the main agent idles
+	claudeAgents    map[string]*claudeSubagent // Claude Code subagents by virtual thread ID
+	logins          claudeLogins               // a Claude Code sign-in from the interface
+	switches        accountSwitches            // turns continuing on another account
 }
 
 func runAgentRouter(input io.Reader, output io.Writer, codexCommand []string, defaultAgent string, claudeArgs ...string) error {
@@ -210,6 +211,17 @@ func (r *agentRouter) handle(event routerEvent) error {
 		}
 		event.session.handleLine(event.line)
 		return nil
+	case "codex-wake":
+		r.wakeCodexParent(event.thread)
+		return nil
+	case "codex-check":
+		r.checkCodexChildren(event.thread)
+		return nil
+	case "claude-wake":
+		if event.process == event.session.cmd {
+			event.session.wakeIfIdle()
+		}
+		return nil
 	}
 	return r.fromUI(event.message)
 }
@@ -237,6 +249,7 @@ func (r *agentRouter) fromCodex(m rpcMessage) error {
 	}
 	m.Params = r.rewriteCodexThread(m.Params)
 	r.observeCodexSubagents(m)
+	r.observeCodexBackground(m)
 	r.observeCodexNotification(m)
 	r.send(m)
 	return nil
@@ -343,6 +356,7 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 				r.fail(m.ID, "Claude Code subagents cannot receive messages directly; send it through the main agent")
 				return nil
 			}
+			r.noteUserSubagentTurn(thread)
 			return r.callCodex(codexCall{uiID: m.ID, method: m.Method}, forward)
 		}
 		return r.startTurn(m.ID, params)

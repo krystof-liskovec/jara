@@ -219,3 +219,41 @@ func TestCtrlArrowsSwitchAgents(t *testing.T) {
 		}
 	}
 }
+
+func TestSubagentStatusIsCheckedWithoutViewingIt(t *testing.T) {
+	u, wire := newAgentTestUI(t)
+	u.connected = true
+	agent := spawnTestAgent(t, u, "child-1", "tests")
+	other := spawnTestAgent(t, u, "child-2", "docs")
+	// Codex reports the thread went idle.
+	agentEvent(t, u, "thread/status/changed", map[string]any{"threadId": "child-2", "status": map[string]any{"type": "idle"}})
+	if other.status != "completed" {
+		t.Fatalf("status after idle: %s", other.status)
+	}
+	// No event arrives for the first: a status check finds it finished.
+	wire.Reset()
+	if err := u.pollChatAgent(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	request := lastWireRequest(t, wire)
+	params, _ := request["params"].(map[string]any)
+	if request["method"] != "thread/read" || params["threadId"] != "child-1" || params["includeTurns"] != false || !agent.reading {
+		t.Fatalf("status check: %+v", request)
+	}
+	if strings.Count(wire.String(), "\n") != 1 {
+		t.Fatalf("finished agents were checked too: %s", wire.String())
+	}
+	id, _ := json.Marshal(request["id"])
+	result, _ := json.Marshal(map[string]any{"thread": map[string]any{"id": "child-1", "status": map[string]any{"type": "notLoaded"}}})
+	if err := u.event(appMessage{ID: id, Result: result}); err != nil {
+		t.Fatal(err)
+	}
+	if agent.status != "completed" || agent.reading {
+		t.Fatalf("after the check: %+v", agent)
+	}
+	wire.Reset()
+	_ = u.pollChatAgent(time.Now().Add(time.Minute))
+	if wire.Len() != 0 {
+		t.Fatalf("finished agents are still checked: %s", wire.String())
+	}
+}

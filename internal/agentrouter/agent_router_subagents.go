@@ -250,6 +250,7 @@ func (s *claudeSession) finishBackgroundClaudeSubagent(line claudeLine) {
 		agent.items = append(agent.items, map[string]any{"id": agent.toolUseID + "-summary", "type": "agentMessage", "text": summary})
 	}
 	s.r.notifySubagent(agent)
+	s.noteBackgroundFinished(agent)
 }
 
 // notifySubagent tells the interface a subagent's transcript or status changed.

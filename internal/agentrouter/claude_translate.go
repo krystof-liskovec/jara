@@ -77,6 +77,9 @@ func (s *claudeSession) handleLine(raw []byte) {
 		s.recordNestedClaudeLine(line)
 		return
 	}
+	if !nested {
+		s.followSelfStartedTurn(line)
+	}
 	switch line.Type {
 	case "stream_event":
 		if nested || s.turnID == "" {
