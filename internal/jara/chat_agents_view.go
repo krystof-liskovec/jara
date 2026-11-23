@@ -46,18 +46,30 @@ func (u *chatUI) chatAgentList() string {
 		return "This conversation has no subagents yet.\n"
 	}
 	var list strings.Builder
-	list.WriteString("Subagents (Ctrl+↓/↑ or /agents N to view one, Esc to return):\n")
+	list.WriteString("Subagents (/agents N to view one, Ctrl+↓/↑ for those running or just finished, Esc to return):\n")
 	for index, agent := range u.agents {
 		fmt.Fprintf(&list, "  %d. %s · %s\n", index+1, textutil.SanitizeText(agent.name), agent.status)
 	}
 	return list.String()
 }
 
-// cycleChatAgentView moves the shown transcript to the next or previous agent,
-// the main agent coming first.
+// stripAgents lists the agents the strip shows: those running or recently
+// finished, and the viewed one.
+func (u *chatUI) stripAgents(now time.Time) []*chatAgent {
+	var agents []*chatAgent
+	for _, agent := range u.agents {
+		if agent.onStrip(now) || agent.id == u.viewing {
+			agents = append(agents, agent)
+		}
+	}
+	return agents
+}
+
+// cycleChatAgentView moves the shown transcript to the next or previous agent
+// on the strip, the main agent coming first.
 func (u *chatUI) cycleChatAgentView(step int) {
 	ids := []string{""}
-	for _, agent := range u.agents {
+	for _, agent := range u.stripAgents(time.Now()) {
 		ids = append(ids, agent.id)
 	}
 	current := 0
@@ -137,10 +149,12 @@ func renderChatAgentTranscript(out *chatTerminalOutput, agent *chatAgent) {
 }
 
 // chatAgentStrip describes the subagent strip above the composer: the main
-// agent first, then subagents with the viewed one kept visible. targets name
-// the agent each line shows ("main" for the main agent; "" for none).
+// agent first, then running and recently finished subagents with the viewed
+// one kept visible. targets name the agent each line shows ("main" for the
+// main agent; "" for none). Without such subagents there is no strip.
 func chatAgentStrip(u *chatUI, now time.Time) (lines []chatViewLine, targets []string) {
-	if len(u.agents) == 0 {
+	agents := u.stripAgents(now)
+	if len(agents) == 0 {
 		return nil, nil
 	}
 	mainState := "idle"
@@ -149,14 +163,14 @@ func chatAgentStrip(u *chatUI, now time.Time) (lines []chatViewLine, targets []s
 	}
 	lines = []chatViewLine{chatAgentStripLine(u.viewing == "", "main", mainState, "")}
 	targets = []string{"main"}
-	first := max(0, len(u.agents)-chatAgentStripRows)
-	for index, agent := range u.agents {
+	first := max(0, len(agents)-chatAgentStripRows)
+	for index, agent := range agents {
 		if agent.id == u.viewing && index < first {
 			first = index
 		}
 	}
-	end := min(len(u.agents), first+chatAgentStripRows)
-	for _, agent := range u.agents[first:end] {
+	end := min(len(agents), first+chatAgentStripRows)
+	for _, agent := range agents[first:end] {
 		detail := ""
 		if agent.running() && !agent.started.IsZero() {
 			detail = chatAgentElapsed(now.Sub(agent.started))
@@ -164,7 +178,7 @@ func chatAgentStrip(u *chatUI, now time.Time) (lines []chatViewLine, targets []s
 		lines = append(lines, chatAgentStripLine(agent.id == u.viewing, agent.name, agent.status, detail))
 		targets = append(targets, agent.id)
 	}
-	if hidden := len(u.agents) - (end - first); hidden > 0 {
+	if hidden := len(agents) - (end - first); hidden > 0 {
 		lines = append(lines, chatViewLine{text: fmt.Sprintf("    … %d more · /agents", hidden), kind: "queue"})
 		targets = append(targets, "")
 	}

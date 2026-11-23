@@ -257,3 +257,41 @@ func TestSubagentStatusIsCheckedWithoutViewingIt(t *testing.T) {
 		t.Fatalf("finished agents are still checked: %s", wire.String())
 	}
 }
+
+func TestFinishedAgentsLeaveTheStrip(t *testing.T) {
+	u, _ := newAgentTestUI(t)
+	done := spawnTestAgent(t, u, "child-1", "tests")
+	spawnTestAgent(t, u, "child-2", "docs")
+	agentEvent(t, u, "thread/status/changed", map[string]any{"threadId": "child-1", "status": map[string]any{"type": "idle"}})
+	now := time.Now()
+	if _, targets := chatAgentStrip(u, now); len(targets) != 3 {
+		t.Fatalf("a just finished agent left at once: %v", targets)
+	}
+	later := now.Add(chatAgentLinger + time.Second)
+	if _, targets := chatAgentStrip(u, later); len(targets) != 2 || targets[1] != "child-2" {
+		t.Fatalf("strip after the linger = %v", targets)
+	}
+	if !strings.Contains(u.chatAgentList(), "tests · completed") {
+		t.Fatalf("/agents dropped the finished agent: %s", u.chatAgentList())
+	}
+	// Viewing it keeps it on the strip; running again brings it back.
+	u.viewing = "child-1"
+	if _, targets := chatAgentStrip(u, later); len(targets) != 3 {
+		t.Fatalf("the viewed agent is hidden: %v", targets)
+	}
+	u.viewing = ""
+	agentEvent(t, u, "turn/started", map[string]any{"threadId": "child-1", "turn": map[string]any{"id": "t2"}})
+	if !done.onStrip(later) {
+		t.Fatal("a running agent is hidden")
+	}
+
+	// Agents that finished long ago in replayed history do not show.
+	replayed, _ := newAgentTestUI(t)
+	at := time.Now().Add(-time.Hour).Unix()
+	replayed.renderChatHistory([]protocol.HistoryTurn{{ID: "t", StartedAt: &at, Items: []protocol.HistoryItem{
+		{ID: "a", Type: "subAgentActivity", Kind: "started", AgentThreadID: "old", AgentPath: "old"},
+		{ID: "b", Type: "subAgentActivity", Kind: "completed", AgentThreadID: "old", AgentPath: "old"}}}})
+	if lines, _ := chatAgentStrip(replayed, time.Now()); len(replayed.agents) != 1 || lines != nil {
+		t.Fatalf("replayed finished agent on the strip: %v", lines)
+	}
+}

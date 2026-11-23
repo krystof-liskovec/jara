@@ -1,6 +1,7 @@
 package jara
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -20,12 +21,16 @@ const (
 	// Running agents not on screen are checked less often, so one whose
 	// completion event never arrived is not shown as running forever.
 	chatAgentStatusInterval = 5 * time.Second
+	// Finished agents leave the strip above the composer after this long;
+	// /agents still lists them.
+	chatAgentLinger = 30 * time.Second
 )
 
 type chatAgent struct {
 	id, name, status string
 	agentID          string // Claude Code's ID for SendMessage, when known
 	started          time.Time
+	finished         time.Time // when it stopped running; zero while it runs
 	turns            []protocol.HistoryTurn
 	readError        string
 	notes            []string // messages sent since the last read
@@ -89,11 +94,27 @@ func (u *chatUI) chatAgentFor(id string) *chatAgent {
 }
 
 func (u *chatUI) setAgentStatus(agent *chatAgent, status string) {
+	u.setAgentStatusAt(agent, status, time.Now())
+}
+
+// setAgentStatusAt applies a status reported at, which is in the past for
+// replayed history.
+func (u *chatUI) setAgentStatusAt(agent *chatAgent, status string, at time.Time) {
 	if status = chatAgentStatus(status); status != "" && status != agent.status {
 		agent.status = status
+		agent.finished = time.Time{}
+		if !agent.running() {
+			agent.finished = at
+		}
 		agent.stale = true
 		agent.touch()
 	}
+}
+
+// onStrip reports whether the strip above the composer shows the agent:
+// while it runs, and for a while after it finished.
+func (a *chatAgent) onStrip(now time.Time) bool {
+	return a.running() || now.Sub(a.finished) < chatAgentLinger
 }
 
 // noteSubagentItem registers the subagents a parent-thread item mentions.
@@ -110,7 +131,7 @@ func (u *chatUI) noteSubagentItem(item protocol.HistoryItem, at time.Time) {
 		if item.Kind == "started" && !at.IsZero() {
 			agent.started = at
 		}
-		u.setAgentStatus(agent, item.Kind)
+		u.setAgentStatusAt(agent, item.Kind, cmp.Or(at, time.Now()))
 	case "collabAgentToolCall":
 		spawn := item.Tool == "spawnAgent" || item.Tool == "spawn_agent"
 		for _, id := range item.ReceiverThreadIDs {
@@ -123,7 +144,7 @@ func (u *chatUI) noteSubagentItem(item protocol.HistoryItem, at time.Time) {
 		}
 		for id, state := range item.AgentsStates {
 			if agent := u.chatAgentFor(id); agent != nil {
-				u.setAgentStatus(agent, state.Status)
+				u.setAgentStatusAt(agent, state.Status, cmp.Or(at, time.Now()))
 			}
 		}
 	}

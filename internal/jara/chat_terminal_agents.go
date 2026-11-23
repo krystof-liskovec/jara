@@ -74,7 +74,8 @@ func (t *chatTerminal) tickAgents(now time.Time) error {
 	if err := u.pollChatAgent(now); err != nil {
 		return err
 	}
-	signature := len(u.agents)
+	// Finished agents leaving the strip change it too.
+	signature := len(u.agents)*31 + len(u.stripAgents(now))
 	for _, agent := range u.agents {
 		signature = signature*31 + agent.version
 	}
