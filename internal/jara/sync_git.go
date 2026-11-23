@@ -97,7 +97,11 @@ func commitPathsChanged(root, from, to string) ([]string, error) {
 // fast-forward. Uncommitted files that already match target count as
 // converged; other uncommitted changes to files the commits touch stop it
 // before anything changes.
-func fastForwardCheckout(root string, expected gitCheckoutState, target, bundle string) error {
+// fastForwardCheckout moves the checkout from expected to target. synced
+// holds what the last sync recorded for paths (see agreedSyncRecord): an
+// uncommitted file still holding it was only mirrored from the other side and
+// may be replaced.
+func fastForwardCheckout(root string, expected gitCheckoutState, target, bundle string, synced map[string]string) error {
 	if current := checkoutState(root); current != expected {
 		return fmt.Errorf("checkout changed during sync (now %s at %s); retry", current.describe(), shortCommit(current.Head))
 	}
@@ -112,7 +116,7 @@ func fastForwardCheckout(root string, expected gitCheckoutState, target, bundle 
 	if !isAncestor(root, expected.Head, target) {
 		return fmt.Errorf("commit %s does not descend from %s; histories have diverged", shortCommit(target), shortCommit(expected.Head))
 	}
-	if err := clearConvergedChanges(root, expected.Head, target); err != nil {
+	if err := clearConvergedChanges(root, expected.Head, target, synced); err != nil {
 		return err
 	}
 	return gitRun(root, "merge", "--ff-only", "--quiet", target)
@@ -122,8 +126,10 @@ func fastForwardCheckout(root string, expected gitCheckoutState, target, bundle 
 // incoming content so Git can fast-forward over them: content of the target,
 // or of any incoming commit (an earlier file-based sync mirrored work that was
 // committed later, then changed again). Either way the incoming history keeps
-// it. It changes nothing when any touched path holds other content.
-func clearConvergedChanges(root, from, to string) error {
+// it. So are paths unchanged since the last sync recorded them in synced: the
+// other side changed them further, then committed. It changes nothing when
+// any touched path holds other content.
+func clearConvergedChanges(root, from, to string, synced map[string]string) error {
 	changed, err := commitPathsChanged(root, from, to)
 	if err != nil {
 		return err
@@ -155,7 +161,7 @@ func clearConvergedChanges(root, from, to string) error {
 				return err
 			}
 		}
-		if want == have {
+		if want == have || unchangedSinceSync(root, name, synced) {
 			converged = append(converged, name)
 		} else {
 			blocked = append(blocked, name)

@@ -123,6 +123,10 @@ type Request struct {
 	Root       string `json:"root,omitempty"`
 	RemoteName string `json:"remote_name,omitempty"`
 	Workspace  string `json:"workspace,omitempty"`
+
+	// Synced holds, for paths a push changes, the content both sides agreed
+	// on at the last sync (see agreedSyncRecord).
+	Synced map[string]string `json:"synced,omitempty"`
 }
 
 // rpcToken is how rpc sends a request: asking for a compressed answer (see

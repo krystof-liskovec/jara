@@ -77,7 +77,7 @@ func syncGitRPC(q Request) error {
 			return err
 		}
 		defer cleanup()
-		return fastForwardCheckout(w.Path, gitCheckoutState{Head: q.Base, Branch: q.Branch}, q.Commit, bundle)
+		return fastForwardCheckout(w.Path, gitCheckoutState{Head: q.Base, Branch: q.Branch}, q.Commit, bundle, q.Synced)
 	case "git-switch":
 		return switchRemoteBranch(q)
 	case "git-replace":

@@ -62,7 +62,7 @@ func pushCommits(r Remote, b Binding, root string, local, remote gitCheckoutStat
 		return nil, err
 	}
 	defer cleanup()
-	q := Request{Op: "git-advance", ID: b.Workspace, Base: remote.Head, Branch: remote.Branch, Commit: local.Head, Force: force}
+	q := Request{Op: "git-advance", ID: b.Workspace, Base: remote.Head, Branch: remote.Branch, Commit: local.Head, Force: force, Synced: syncedRecordFor(b, root, remote.Head, local.Head)}
 	if err = rpc(r, q, bundle, nil); err != nil {
 		return nil, fmt.Errorf("commits were not transferred: %w", err)
 	}
@@ -95,7 +95,7 @@ func pullCommits(r Remote, b Binding, root string, local, remote gitCheckoutStat
 			return nil, fmt.Errorf("commits were not transferred: %w", err)
 		}
 	}
-	if err := fastForwardCheckout(root, local, remote.Head, bundlePath); err != nil {
+	if err := fastForwardCheckout(root, local, remote.Head, bundlePath, agreedSyncRecord(b, root)); err != nil {
 		return nil, fmt.Errorf("commits were not applied here: %w", err)
 	}
 	fmt.Fprintf(syncProgress.notices(), "Fast-forwarded this checkout to %s (%s).\n", shortCommit(remote.Head), commitCount(root, local.Head, remote.Head))
