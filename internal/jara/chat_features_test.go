@@ -253,3 +253,43 @@ func TestChatRequestFailuresKeepTheSession(t *testing.T) {
 		t.Fatal("a failed initialize still ends the session")
 	}
 }
+
+func TestChatMentionBrowsesFolders(t *testing.T) {
+	u := &chatUI{}
+	key := chatMentionFolderKey("/work", ".config/")
+	u.mentions.folderRequested = key
+	result, _ := json.Marshal(map[string]any{"entries": []map[string]any{
+		{"name": "claude", "dir": true}, {"name": "Code", "dir": true}, {"name": "has space", "dir": true}, {"name": ".hidden"}, {"name": "cava.conf"},
+	}})
+	u.acceptChatFolderResponse(appMessage{Result: result}, chatPending{action: key})
+	context := chatCompletionContextFromUI(u)
+	if !context.FolderListed || context.Folder != ".config/" || len(context.FolderEntries) != 4 {
+		t.Fatalf("context: %+v", context)
+	}
+	text := "I have a script in @.config/"
+	candidates := chatCompletionCandidates(text, len(text), context)
+	if len(candidates) != 3 || candidates[0].replacement != "@.config/claude/" || !candidates[0].keepOpen || candidates[0].append != "" {
+		t.Fatalf("folder candidates: %+v", candidates)
+	}
+	if hidden := chatCompletionCandidates("@.config/.", 10, context); len(hidden) != 1 || hidden[0].replacement != "@.config/.hidden" {
+		t.Fatalf("hidden entries: %+v", hidden)
+	}
+	if prefixed := chatCompletionCandidates("@.config/c", 10, context); len(prefixed) != 3 {
+		t.Fatalf("prefix is case-insensitive: %+v", prefixed)
+	}
+	editor := newChatEditor(1024)
+	editor.SetCompletionContext(context)
+	editor.SetText(text)
+	editor.Apply(chatEditorInput{Key: chatEditorTab})
+	if editor.Text() != "I have a script in @.config/claude/" || editor.dismissed {
+		t.Fatalf("folder applied: %q dismissed=%v", editor.Text(), editor.dismissed)
+	}
+	// The top level is listed for a bare @, before the fuzzy search answers.
+	top := chatCompletionContext{Folder: "", FolderListed: true, FolderEntries: []chatCompletionOption{{Value: ".config/", Description: "folder"}, {Value: "README.md", Description: "file"}}}
+	if bare := chatCompletionCandidates("@", 1, top); len(bare) != 1 || bare[0].replacement != "@README.md" {
+		t.Fatalf("bare @: %+v", bare)
+	}
+	if dot := chatCompletionCandidates("@.co", 4, top); len(dot) != 1 || dot[0].replacement != "@.config/" {
+		t.Fatalf("hidden top level: %+v", dot)
+	}
+}

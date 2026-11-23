@@ -222,8 +222,8 @@ Prompts typed while a window reconnects wait in that window until it is back.
   A conversation that only ran on Codex is reverted natively with Codex's
   `thread/revert`; any other conversation continues in a fresh session briefed
   on the remaining turns. Files in the working tree are not rolled back.
-- Typing `@` and part of a path lists matching workspace files, found by the
-  app-server's fuzzy file search; Enter or Tab inserts `@path`.
+- `@` lists the workspace's files; `@folder/` lists that folder (dotfiles after `.`), other text adds fuzzy
+  search. Enter or Tab inserts `@path`; a folder inserts `@folder/` and lists it.
 - Images join a prompt as `[Image #N]` placeholders: paste or drop an image
   file's path, press Ctrl+V with an image on the clipboard (`wl-paste`,
   `xclip`, or `pngpaste` on the machine running the interface), or use

@@ -426,10 +426,13 @@ func (e *chatEditor) applySelectedCompletion() bool {
 	e.text = updated
 	e.cursor = candidate.start + len(replacement)
 	e.pastePreviews = nil
-	e.dismissed = true
+	e.dismissed = !candidate.keepOpen
 	e.candidates = nil
 	e.historyIndex = len(e.history)
 	e.historyDraft = ""
+	if candidate.keepOpen {
+		e.refreshCompletions(true) // the folder's entries, once listed
+	}
 	return true
 }
 

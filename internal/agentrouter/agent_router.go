@@ -364,6 +364,13 @@ func (r *agentRouter) fromUI(m rpcMessage) error {
 	case "jara/commands/list":
 		r.reply(m.ID, map[string]any{"commands": LoadCustomCommands(params)})
 		return nil
+	case "jara/files/list":
+		if entries, err := ListFolder(params); err != nil {
+			r.fail(m.ID, err.Error())
+		} else {
+			r.reply(m.ID, map[string]any{"entries": entries})
+		}
+		return nil
 	case "jara/defaultModel/get":
 		return r.getDefaultModels(m.ID, params)
 	case "jara/defaultModel/set":

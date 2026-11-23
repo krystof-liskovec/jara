@@ -166,6 +166,8 @@ func (u *chatUI) acceptChatExtraResponse(m appMessage, p chatPending) bool {
 		return u.acceptChatRewindResponse(m, p)
 	case "fuzzyFileSearch":
 		u.acceptChatMentionResponse(m, p)
+	case "jara/files/list":
+		u.acceptChatFolderResponse(m, p)
 	case "jara/commands/list":
 		u.acceptCustomCommands(m)
 	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
@@ -188,7 +190,7 @@ func (u *chatUI) expireChatExtraRequest(id string, pending chatPending) bool {
 		u.expireGitDiffRequest()
 	case chatProjectLocationMethod:
 		u.project.requesting = false
-	case "fuzzyFileSearch", "jara/commands/list":
+	case "fuzzyFileSearch", "jara/commands/list", "jara/files/list":
 	case "jara/notify/get", "jara/notify/set", "jara/notify/test":
 		u.printRole("system", "Notifications: no reply in time.\n")
 	case "jara/idleCompaction/get", "jara/idleCompaction/set":

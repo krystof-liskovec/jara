@@ -14,8 +14,12 @@ type chatCompletionContext struct {
 	Models    []chatCompletionOption
 	Reasoning []chatCompletionOption
 	Sessions  []chatCompletionOption
-	Files     []chatCompletionOption  // @file matches
-	Commands  []chatCommandCompletion // custom commands
+	Files     []chatCompletionOption // @file matches
+	// The folder an @query browses, once listed, and its entries.
+	Folder        string
+	FolderListed  bool
+	FolderEntries []chatCompletionOption
+	Commands      []chatCommandCompletion // custom commands
 }
 
 type chatEditorCandidate struct {
@@ -23,6 +27,7 @@ type chatEditorCandidate struct {
 	start, end  int
 	replacement string
 	append      string
+	keepOpen    bool // completions continue after applying it (a folder)
 }
 
 type chatCommandCompletion struct {
@@ -83,6 +88,10 @@ func chatCompletionContextFromUI(u *chatUI) chatCompletionContext {
 		return context
 	}
 	context.Files = chatMentionOptions(u.mentions)
+	if key := u.mentions.folderKey; key != "" && key == u.mentions.folderRequested {
+		_, folder, _ := strings.Cut(key, "\x00")
+		context.Folder, context.FolderListed, context.FolderEntries = folder, true, u.mentions.entries
+	}
 	context.Commands = u.customCommandCompletions()
 	if u.models != nil && u.models.complete {
 		for _, model := range u.models.models {
