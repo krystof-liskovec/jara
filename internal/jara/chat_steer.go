@@ -17,10 +17,11 @@ func (u *chatUI) steerPrompt(message string) error {
 	if !u.canSteer() {
 		return u.queuePrompt(u.thread, message)
 	}
+	images := u.takeChatImageURLs(message)
 	params := map[string]any{
 		"threadId":       u.thread,
 		"expectedTurnId": u.turn,
-		"input":          append([]any{map[string]any{"type": "text", "text": message}}, u.takeChatImages(message)...),
+		"input":          chatPromptInput(message, images),
 	}
 	id, err := u.c.request("turn/steer", params)
 	if err != nil {
@@ -29,7 +30,7 @@ func (u *chatUI) steerPrompt(message string) error {
 	if u.pending == nil {
 		u.pending = map[string]chatPending{}
 	}
-	u.pending[id] = chatPending{method: "turn/steer", deadline: time.Now().Add(30 * time.Second), threadID: u.thread, queuedPrompt: message}
+	u.pending[id] = chatPending{method: "turn/steer", deadline: time.Now().Add(30 * time.Second), threadID: u.thread, queuedPrompt: message, queuedImages: images}
 	u.recordRole("user", message)
 	return nil
 }
@@ -48,7 +49,7 @@ func (u *chatUI) acceptChatSteerResponse(m appMessage, p chatPending) bool {
 	if m.Error == nil || p.queuedPrompt == "" {
 		return true
 	}
-	if err := u.queuePrompt(p.threadID, p.queuedPrompt); err != nil {
+	if err := u.queuePromptIn(p.threadID, p.queuedPrompt, p.queuedImages, false); err != nil {
 		u.printRole("system", "The running turn did not take the message ("+chatText(m.Error.Message)+") and it could not be queued: "+err.Error()+"\n")
 		return true
 	}

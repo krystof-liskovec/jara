@@ -25,9 +25,10 @@ func chatQueueRequest(method string) bool {
 
 func (m *chatScheduleManager) handleQueueRequest(method string, params json.RawMessage, currentThread string) (any, error) {
 	var request struct {
-		ID       string `json:"id"`
-		ThreadID string `json:"threadId"`
-		Prompt   string `json:"prompt"`
+		ID       string   `json:"id"`
+		ThreadID string   `json:"threadId"`
+		Prompt   string   `json:"prompt"`
+		Images   []string `json:"images"`
 	}
 	if err := json.Unmarshal(params, &request); err != nil {
 		return nil, fmt.Errorf("invalid queue request: %w", err)
@@ -38,7 +39,7 @@ func (m *chatScheduleManager) handleQueueRequest(method string, params json.RawM
 		if request.ThreadID == "" || request.ThreadID != currentThread {
 			return nil, fmt.Errorf("the conversation changed; queue the prompt again")
 		}
-		err = m.enqueue(request.ThreadID, request.Prompt)
+		err = m.enqueue(request.ThreadID, request.Prompt, request.Images)
 	case "jara/queue/update":
 		err = m.changeQueued(request.ID, func(job *chatSchedule) error {
 			prompt := strings.TrimSpace(request.Prompt)
@@ -67,13 +68,17 @@ func (m *chatScheduleManager) handleQueueRequest(method string, params json.RawM
 	return map[string]any{}, nil
 }
 
-func (m *chatScheduleManager) enqueue(threadID, prompt string) error {
+// enqueue queues prompt with the images it mentions, as data URLs.
+func (m *chatScheduleManager) enqueue(threadID, prompt string, images []string) error {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return fmt.Errorf("enter a prompt before queuing it")
 	}
 	if len(prompt) > maxBackgroundPrompt {
 		return fmt.Errorf("queued prompt exceeds 64 KiB")
+	}
+	if err := validChatImageURLs(images); err != nil {
+		return err
 	}
 	id := make([]byte, 5)
 	if _, err := rand.Read(id); err != nil {
@@ -92,7 +97,7 @@ func (m *chatScheduleManager) enqueue(threadID, prompt string) error {
 	}
 	now := time.Now()
 	m.jobs = append(m.jobs, chatSchedule{ID: "q-" + hex.EncodeToString(id), ThreadID: threadID, Prompt: prompt,
-		RunAt: now, CreatedAt: now, Status: "pending", Queued: true})
+		Images: images, RunAt: now, CreatedAt: now, Status: "pending", Queued: true})
 	return m.saveLocked()
 }
 

@@ -21,6 +21,8 @@ import (
 
 const chatImageLimit = 5 << 20 // the smallest per-image limit of the providers
 
+const chatQueuedImageLimit = 8 // images one queued prompt may carry to the session
+
 var chatImageTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
 
 func (u *chatUI) attachChatImage(data []byte) (string, error) {
@@ -146,9 +148,9 @@ func (u *chatUI) runChatImageCommand(args string) {
 	u.printRole("system", "Attached "+placeholder+"; it is sent with the message that mentions it.\n")
 }
 
-// takeChatImages returns the images a message mentions as turn inputs and
-// forgets them.
-func (u *chatUI) takeChatImages(message string) []any {
+// takeChatImageURLs returns the data URLs of the images a message mentions
+// and forgets them, so a queued prompt can carry its images with it.
+func (u *chatUI) takeChatImageURLs(message string) []string {
 	var numbers []int
 	for number := range u.images {
 		if strings.Contains(message, fmt.Sprintf("[Image #%d]", number)) {
@@ -156,10 +158,37 @@ func (u *chatUI) takeChatImages(message string) []any {
 		}
 	}
 	sort.Ints(numbers)
-	inputs := make([]any, 0, len(numbers))
+	urls := make([]string, 0, len(numbers))
 	for _, number := range numbers {
-		inputs = append(inputs, map[string]any{"type": "image", "url": u.images[number]})
+		urls = append(urls, u.images[number])
 		delete(u.images, number)
 	}
+	return urls
+}
+
+func chatImageInputs(urls []string) []any {
+	inputs := make([]any, 0, len(urls))
+	for _, url := range urls {
+		inputs = append(inputs, map[string]any{"type": "image", "url": url})
+	}
 	return inputs
+}
+
+// chatPromptInput is a turn's input: the prompt text, then its images.
+func chatPromptInput(text string, images []string) []any {
+	return append([]any{map[string]any{"type": "text", "text": text}}, chatImageInputs(images)...)
+}
+
+// validChatImageURLs checks images a window sent along with a queued prompt.
+func validChatImageURLs(urls []string) error {
+	if len(urls) > chatQueuedImageLimit {
+		return fmt.Errorf("a queued prompt can carry at most %d images", chatQueuedImageLimit)
+	}
+	for _, url := range urls {
+		mime, data, ok := strings.Cut(strings.TrimPrefix(url, "data:"), ";base64,")
+		if !strings.HasPrefix(url, "data:") || !ok || !chatImageTypes[mime] || base64.StdEncoding.DecodedLen(len(data)) > chatImageLimit+2 {
+			return fmt.Errorf("queued prompt images must be PNG, JPEG, GIF, or WebP data of at most %d MB", chatImageLimit>>20)
+		}
+	}
+	return nil
 }

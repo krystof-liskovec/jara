@@ -17,6 +17,7 @@ type chatPending struct {
 	action       string
 	threadID     string
 	queuedPrompt string
+	queuedImages []string // the images sent with queuedPrompt
 }
 
 // Text from the model and tools is untrusted terminal content.
@@ -261,7 +262,9 @@ func (u *chatUI) response(m appMessage) error {
 		}
 		if p.method == "turn/start" {
 			if p.queuedPrompt != "" {
-				u.queuedPrompts = append([]chatQueuedPrompt{u.newQueuedPrompt(p.threadID, p.queuedPrompt)}, u.queuedPrompts...)
+				entry := u.newQueuedPrompt(p.threadID, p.queuedPrompt)
+				entry.images = p.queuedImages
+				u.queuedPrompts = append([]chatQueuedPrompt{entry}, u.queuedPrompts...)
 			}
 			request, tracked := u.pendingTurnModels[string(m.ID)]
 			delete(u.pendingTurnModels, string(m.ID))

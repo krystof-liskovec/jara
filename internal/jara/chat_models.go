@@ -333,7 +333,7 @@ func (u *chatUI) chooseChatModel(value string) error {
 	return nil
 }
 
-func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt string) error {
+func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt string, images []string) error {
 	params["approvalsReviewer"] = u.approvalsReviewer()
 	id, err := u.c.request("turn/start", params)
 	if err != nil {
@@ -342,7 +342,7 @@ func (u *chatUI) requestTurnWithQueuedPrompt(params map[string]any, queuedPrompt
 	if u.pending == nil {
 		u.pending = map[string]chatPending{}
 	}
-	u.pending[id] = chatPending{method: "turn/start", deadline: time.Now().Add(30 * time.Second), threadID: u.thread, queuedPrompt: queuedPrompt}
+	u.pending[id] = chatPending{method: "turn/start", deadline: time.Now().Add(30 * time.Second), threadID: u.thread, queuedPrompt: queuedPrompt, queuedImages: images}
 	if u.pendingTurnModels == nil {
 		u.pendingTurnModels = map[string]chatTurnRequest{}
 	}

@@ -375,16 +375,22 @@ func (u *chatUI) sendDraft() error {
 }
 
 func (u *chatUI) sendPrompt(message string) error {
-	return u.sendPromptWithQueue(message, "")
+	return u.sendPromptWithQueue(message, "", nil)
 }
 
-func (u *chatUI) sendQueuedPrompt(message string) error {
-	return u.sendPromptWithQueue(message, message)
+// sendQueuedPrompt sends a prompt from the queue with the images it carries.
+func (u *chatUI) sendQueuedPrompt(message string, images []string) error {
+	return u.sendPromptWithQueue(message, message, images)
 }
 
-func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
+// sendPromptWithQueue sends message; a queued prompt brings its own images,
+// any other message takes the attached images it mentions.
+func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string, images []string) error {
+	if queuedPrompt == "" {
+		images = u.takeChatImageURLs(message)
+	}
 	if u.chatOffline() && u.thread != "" {
-		if err := u.queuePrompt(u.thread, message); err != nil {
+		if err := u.queuePromptIn(u.thread, message, images, false); err != nil {
 			u.printRole("system", "Not connected, and the prompt could not be queued: "+err.Error()+"\n")
 		} else {
 			u.printRole("system", "Not connected; the prompt will run once the session reconnects.\n")
@@ -397,7 +403,7 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 	}
 	if u.chatPlanUpdatePending() {
 		// Kept by this window: it must not run before the mode change applies.
-		if err := u.queueLocalPrompt(u.thread, message); err != nil {
+		if err := u.queueLocalPrompt(u.thread, message, images); err != nil {
 			u.print("Conversation mode change is pending and the prompt could not be queued: " + err.Error() + "\n" + u.chatPlanPrompt())
 		} else {
 			u.print("Conversation mode change is pending; prompt added to the queue.\n" + u.chatPlanPrompt())
@@ -416,7 +422,7 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 	u.setAgentState("running")
 	params := map[string]any{
 		"threadId": u.thread,
-		"input":    append([]any{map[string]any{"type": "text", "text": message}}, u.takeChatImages(message)...),
+		"input":    chatPromptInput(message, images),
 		"summary":  "concise",
 	}
 	if !u.sharedTurnSelection {
@@ -427,5 +433,5 @@ func (u *chatUI) sendPromptWithQueue(message, queuedPrompt string) error {
 			params["effort"] = u.nextReasoning
 		}
 	}
-	return u.requestTurnWithQueuedPrompt(params, queuedPrompt)
+	return u.requestTurnWithQueuedPrompt(params, queuedPrompt, images)
 }

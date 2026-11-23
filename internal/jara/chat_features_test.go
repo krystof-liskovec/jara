@@ -105,7 +105,7 @@ func TestChatImages(t *testing.T) {
 	if _, err := u.attachChatImage([]byte("not an image")); err == nil {
 		t.Fatal("non-images are rejected")
 	}
-	inputs := u.takeChatImages("see [Image #1]")
+	inputs := chatImageInputs(u.takeChatImageURLs("see [Image #1]"))
 	if len(inputs) != 1 || !strings.HasPrefix(inputs[0].(map[string]any)["url"].(string), "data:image/png;base64,") || len(u.images) != 0 {
 		t.Fatalf("image inputs: %v", inputs)
 	}

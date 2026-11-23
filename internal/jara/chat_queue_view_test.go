@@ -10,7 +10,7 @@ func TestQueuedPromptsShowUnderOneHeader(t *testing.T) {
 	term, _ := newTestChatTerminal(t)
 	term.u.threadReady, term.u.busy, term.u.turn = true, true, "turn-1"
 	for _, prompt := range []string{"first prompt", "second prompt"} {
-		if err := term.u.queueLocalPrompt(term.u.thread, prompt); err != nil {
+		if err := term.u.queueLocalPrompt(term.u.thread, prompt, nil); err != nil {
 			t.Fatal(err)
 		}
 	}

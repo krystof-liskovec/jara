@@ -13,20 +13,26 @@ type chatQueuedPrompt struct {
 	id       uint64
 	threadID string
 	text     string
-	session  string // the persistent session's ID for this prompt
+	images   []string // data URLs of the [Image #N] the prompt mentioned
+	session  string   // the persistent session's ID for this prompt
 }
 
+// queuePrompt queues a prompt from the composer with the attached images it
+// mentions.
 func (u *chatUI) queuePrompt(threadID, prompt string) error {
-	return u.queuePromptIn(threadID, prompt, false)
+	if err := u.checkQueuedPrompt(threadID, prompt); err != nil {
+		return err
+	}
+	return u.queuePromptIn(threadID, prompt, u.takeChatImageURLs(prompt), false)
 }
 
 // queueLocalPrompt queues a prompt this window sends itself, after a change
 // it is waiting for.
-func (u *chatUI) queueLocalPrompt(threadID, prompt string) error {
-	return u.queuePromptIn(threadID, prompt, true)
+func (u *chatUI) queueLocalPrompt(threadID, prompt string, images []string) error {
+	return u.queuePromptIn(threadID, prompt, images, true)
 }
 
-func (u *chatUI) queuePromptIn(threadID, prompt string, local bool) error {
+func (u *chatUI) checkQueuedPrompt(threadID, prompt string) error {
 	prompt = strings.TrimSpace(prompt)
 	if threadID == "" || prompt == "" {
 		return fmt.Errorf("enter a prompt before queuing it")
@@ -34,16 +40,33 @@ func (u *chatUI) queuePromptIn(threadID, prompt string, local bool) error {
 	if len(prompt) > maxBackgroundPrompt {
 		return fmt.Errorf("queued prompt exceeds 64 KiB")
 	}
+	return nil
+}
+
+// queuePromptIn queues prompt with its images, already taken from the
+// composer.
+func (u *chatUI) queuePromptIn(threadID, prompt string, images []string, local bool) error {
+	if err := u.checkQueuedPrompt(threadID, prompt); err != nil {
+		return err
+	}
+	prompt = strings.TrimSpace(prompt)
 	if u.persistentSession && !u.chatOffline() && !local {
 		// The session keeps the queue, so it survives this window and moves
 		// with the conversation; jara/queue/updated shows the result. While
 		// reconnecting, the window keeps the prompt and sends it afterwards.
-		return u.request("jara/queue/add", map[string]string{"threadId": threadID, "prompt": prompt})
+		// The images go along: the session starts the turn without this window.
+		params := map[string]any{"threadId": threadID, "prompt": prompt}
+		if len(images) > 0 {
+			params["images"] = images
+		}
+		return u.request("jara/queue/add", params)
 	}
 	if len(u.queuedPrompts) >= chatPromptQueueLimit {
 		return fmt.Errorf("prompt queue is full (%d prompts)", chatPromptQueueLimit)
 	}
-	u.queuedPrompts = append(u.queuedPrompts, u.newQueuedPrompt(threadID, prompt))
+	entry := u.newQueuedPrompt(threadID, prompt)
+	entry.images = images
+	u.queuedPrompts = append(u.queuedPrompts, entry)
 	return nil
 }
 
@@ -206,7 +229,7 @@ func (u *chatUI) dispatchQueuedPrompt() (bool, error) {
 			continue
 		}
 		u.queuedPrompts = append(u.queuedPrompts[:index], u.queuedPrompts[index+1:]...)
-		if err := u.sendQueuedPrompt(prompt.text); err != nil {
+		if err := u.sendQueuedPrompt(prompt.text, prompt.images); err != nil {
 			u.queuedPrompts = append(u.queuedPrompts, chatQueuedPrompt{})
 			copy(u.queuedPrompts[index+1:], u.queuedPrompts[index:])
 			u.queuedPrompts[index] = prompt

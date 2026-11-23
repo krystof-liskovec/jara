@@ -26,6 +26,8 @@ type chatSchedule struct {
 	TurnID    string    `json:"turnId,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	Queued    bool      `json:"queued,omitempty"` // a queued prompt, run when idle
+	// Images are data URLs sent with the prompt, kept until it has run.
+	Images []string `json:"images,omitempty"`
 }
 
 type chatScheduleManager struct {
@@ -249,7 +251,7 @@ func (m *chatScheduleManager) startDue(input io.Writer, inputMu *sync.Mutex, bus
 		"id": m.requestID, "method": "turn/start",
 		"params": map[string]any{
 			"threadId": job.ThreadID,
-			"input":    []any{map[string]any{"type": "text", "text": job.Prompt}},
+			"input":    chatPromptInput(job.Prompt, job.Images),
 			"summary":  "concise",
 		},
 	})
@@ -387,6 +389,11 @@ func (m *chatScheduleManager) finishFailed(requestID, detail string) {
 }
 
 func (m *chatScheduleManager) saveLocked() error {
+	for i := range m.jobs {
+		if m.jobs[i].Status != "pending" && m.jobs[i].Status != "running" {
+			m.jobs[i].Images = nil // only waiting prompts need them
+		}
+	}
 	data, err := json.MarshalIndent(m.jobs, "", "  ")
 	if err != nil {
 		return err
